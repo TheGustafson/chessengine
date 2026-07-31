@@ -667,6 +667,7 @@ pub(crate) fn apply_halfka_deltas_dual(
     {
         super::foldcount::HKA_DUAL.hit(adds.len() + subs.len());
         super::foldcount::note_hka_dual_shape(adds.len() + subs.len());
+        super::foldcount::note_dual_pair(adds.len(), subs.len());
         #[cfg(feature = "rowprobe")]
         {
             super::foldcount::note_row_reuse(0, adds);
@@ -1820,6 +1821,34 @@ mod avx512 {
     const TILES: usize = ACC / TILE;
     const _: () = assert!(TILES * TILE == ACC, "the tile walk must cover ACC exactly");
 
+    /// Expand a list of `(NA, NS)` pairs into const-generic kernel dispatch
+    /// arms: `shaped_dispatch!(kern(args…); na, ns; (1,1), (1,2), …)`.
+    ///
+    /// **Rust idiom note.** A `macro_rules!` repetition is the declarative way
+    /// to write a table whose rows differ only in two *const generic*
+    /// arguments. Neither a loop nor a `const fn` can do it: each row must be
+    /// its own monomorphisation, and the counts must be known at compile time —
+    /// that is the entire point of the kernel. The macro keeps the shape list
+    /// readable as a list of shapes instead of dozens of near-identical `match`
+    /// lines, and it makes "which pairs are covered" a single grep. Taking the
+    /// callee as `$f:ident` lets the same table serve the `into` fold and the
+    /// Finny `dual` fold, which have different arities.
+    ///
+    /// `macro_rules!` is *textually* scoped, so this must precede every use —
+    /// hence its position here at the head of the backend rather than beside
+    /// the first caller. The argument list is captured as a single `tt` (one
+    /// parenthesised token tree) rather than as `$($arg:expr),+`: a repetition
+    /// of arguments nested inside the repetition of shapes would have to repeat
+    /// the same number of times, which is not what is meant.
+    macro_rules! shaped_dispatch {
+        ($f:ident $args:tt; $na:expr, $ns:expr; $(($a:literal, $s:literal)),* $(,)?) => {
+            match ($na, $ns) {
+                $(($a, $s) => return $f::<$a, $s> $args,)*
+                _ => {}
+            }
+        };
+    }
+
     /// In-place i8 fold — the HalfKA Finny cold
     /// build. Same `REGS`-wide register tile; the row is a 32-byte load
     /// sign-extended to 32 i16 lanes, halving the bytes the tile pulls in.
@@ -1862,8 +1891,156 @@ mod avx512 {
 
     /// Two-destination i8 fold — the HalfKA Finny warm
     /// refresh, both homes written from the fold's own registers.
+    ///
+    /// # Perf study 62 — this kernel had NO shape dispatch, for no reason
+    ///
+    /// Study 25 gave `i8_deltas_into_inner` a compile-time-shape dispatch
+    /// because a HalfKA *make-move* fold is always one of four shapes. The
+    /// Finny warm refresh folds a **set difference between two king buckets**,
+    /// which is a different distribution, so the four arms would not have
+    /// covered it and it was left on the runtime-length body. Nobody ever
+    /// counted the distribution — `HKA_DUAL_SHAPE` records only the SUM of the
+    /// two list lengths, and a sum cannot answer the question a dispatch asks
+    /// (the same defect study 61 found in `THR_SHAPE`).
+    ///
+    /// Counted for the first time here (`foldcount::DUAL_PAIR`, 823,842 warm
+    /// refreshes in the study frame), the distribution is **concentrated on the
+    /// diagonal**: `(2,2)` 19.06 %, `(1,1)` 12.68 %, `(3,3)` 12.25 %, `(4,4)`
+    /// 5.38 %. Cumulative coverage of a square grid: `0..=3` 62.82 %, `0..=4`
+    /// **79.95 %**, `0..=5` 89.93 %, `0..=6` 95.01 %.
+    ///
+    /// So the site that "would not have been covered" is in fact the most
+    /// dispatch-friendly fold in the engine, and it has been running the
+    /// runtime-length body — two loops whose trip counts LLVM cannot see, an
+    /// unroll remainder each, **per tile, eight times per call** — for
+    /// 823,842 calls per 5 M nodes.
+    ///
+    /// # What it was worth. **LANDED.**
+    ///
+    /// The `0..=4` grid (24 arms, 79.95 % of warm refreshes) is
+    /// **−42.54 instructions/node** for +13,296 B of `.text` — 3.20 i/node per
+    /// KB, second only to the threat fold's first ring, and larger than
+    /// anything study 61 landed. The `0..=6` extension (`dual62b`, 24 more
+    /// arms, 95.01 %) is a further −13.71 i/n for +19,712 B = 0.70 i/node per
+    /// KB, which fails study 62 §4's pre-registered `.text` rule and is NOT
+    /// landed.
+    ///
+    /// > **The general lesson, which is why this banner is long: study 61
+    /// > screened this symbol on REFRESH RATE (at Stockfish parity) and on ROW
+    /// > LOCALITY (capacity-bound, and it is) and concluded "not an
+    /// > opportunity". Both facts were true and neither was about the kernel's
+    /// > loop control. A site screened on the axes that happen to have
+    /// > instruments is not screened.**
+    ///
+    /// `noshape62` restores the runtime-length body for the whole site.
     #[target_feature(enable = "avx512f,avx512bw")]
     unsafe fn i8_deltas_dual_inner(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i8],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
+    ) {
+        // SAFETY: the shaped kernel is bit-identical to the generic one — same
+        // tiles in the same order, same rows in the same order (adds then
+        // subs), same per-lane wrapping i16 arithmetic, same two stores — and
+        // each arm is selected only when the list lengths match its const
+        // parameters exactly.
+        unsafe {
+            #[cfg(not(feature = "noshape62"))]
+            shaped_dispatch!(i8_dual_shaped(acc, out, weights, adds, subs);
+                adds.len(), subs.len();
+                (1, 1), (1, 2), (2, 1), (2, 2), (1, 0), (0, 1), (2, 0), (0, 2),
+                (3, 0), (0, 3), (1, 3), (3, 1), (2, 3), (3, 2), (3, 3),
+                (4, 0), (0, 4), (4, 1), (1, 4), (4, 2), (2, 4), (4, 3), (3, 4), (4, 4));
+            // NOT LANDED — 0.70 i/node per KB, below study 62 §4's rule.
+            #[cfg(all(feature = "dual62b", not(feature = "noshape62")))]
+            shaped_dispatch!(i8_dual_shaped(acc, out, weights, adds, subs);
+                adds.len(), subs.len();
+                (5, 0), (0, 5), (5, 1), (1, 5), (5, 2), (2, 5), (5, 3), (3, 5), (5, 4), (4, 5),
+                (5, 5),
+                (6, 0), (0, 6), (6, 1), (1, 6), (6, 2), (2, 6), (6, 3), (3, 6), (6, 4), (4, 6),
+                (6, 5), (5, 6), (6, 6));
+            i8_deltas_dual_generic(acc, out, weights, adds, subs)
+        }
+    }
+
+    /// The Finny warm refresh with **compile-time row counts** — perf study 62.
+    ///
+    /// Exactly [`i8_into_shaped`] with the second destination store, and with
+    /// `acc` read as well as written (the fold is in-place on the cache entry).
+    /// `(0, 0)` is deliberately NOT dispatched: an empty warm refresh must copy
+    /// `acc` to `out` verbatim, which the generic body does and this one would
+    /// too, but keeping it on one path keeps the empty-list contract in one
+    /// place (0.38 % of calls).
+    #[target_feature(enable = "avx512f,avx512bw")]
+    #[inline]
+    unsafe fn i8_dual_shaped<const NA: usize, const NS: usize>(
+        acc: &mut [i16; ACC],
+        out: &mut [i16; ACC],
+        weights: &[i8],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
+    ) {
+        // SAFETY: as `i8_deltas_dual_generic`. The caller has checked
+        // `adds.len() == NA` and `subs.len() == NS`, so every index read below
+        // is in bounds; `TILES * TILE == ACC` is a const assert.
+        unsafe {
+            let mut arow = [0usize; NA];
+            for (slot, &feature) in arow.iter_mut().zip(adds) {
+                *slot = feature.0;
+            }
+            let mut srow = [0usize; NS];
+            for (slot, &feature) in srow.iter_mut().zip(subs) {
+                *slot = feature.0;
+            }
+            let mut off = 0;
+            while off + TILE <= ACC {
+                let mut v = [_mm512_setzero_si512(); REGS];
+                for (k, vk) in v.iter_mut().enumerate() {
+                    *vk = _mm512_loadu_si512(acc.as_ptr().add(off + k * LANES).cast());
+                }
+                for &base in &arow {
+                    let row = weights.as_ptr().add(base + off);
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                        *vk = _mm512_add_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
+                    }
+                }
+                for &base in &srow {
+                    let row = weights.as_ptr().add(base + off);
+                    for (k, vk) in v.iter_mut().enumerate() {
+                        let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                        *vk = _mm512_sub_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
+                    }
+                }
+                for (k, vk) in v.iter().enumerate() {
+                    // The `nt43` split is kept verbatim from the generic body —
+                    // see its comment for why only `acc` is a candidate for a
+                    // non-temporal store.
+                    #[cfg(feature = "nt43")]
+                    _mm512_stream_si512(acc.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                    #[cfg(not(feature = "nt43"))]
+                    _mm512_storeu_si512(acc.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                    _mm512_storeu_si512(out.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                }
+                off += TILE;
+            }
+        }
+    }
+
+    /// The runtime-length Finny warm refresh — the shapes the dispatch above
+    /// does not name, plus the empty-list copy contract.
+    ///
+    /// `#[inline(never)]` mirrors `i8_deltas_into_generic`: once a dispatch
+    /// exists, the runtime-length body must not be inlined back into the
+    /// dispatcher, or the shaped arms lose their straight-line layout. It is
+    /// dropped under `noshape62`, so that the revert build is byte-identical to
+    /// the pre-study-62 tree and stays a valid control — verified by building
+    /// (`.text` md5 `242abfdd` both sides, same feature set).
+    #[target_feature(enable = "avx512f,avx512bw")]
+    #[cfg_attr(not(feature = "noshape62"), inline(never))]
+    unsafe fn i8_deltas_dual_generic(
         acc: &mut [i16; ACC],
         out: &mut [i16; ACC],
         weights: &[i8],
@@ -2083,6 +2260,49 @@ mod avx512 {
         //
         // `noshape61` restores the study-25 dispatch so this contrast stays
         // measurable on the shipped tree.
+        //
+        // ## ⚠ PERF STUDY 62 REFUTED BOTH HALVES OF THAT CLOSING PARAGRAPH
+        //
+        // **(a) "The win per converted fold grows with the shape" is not a
+        // law.** Measured per-fold win against mean rows per fold, on the same
+        // frame, one ring of the grid at a time:
+        //
+        //   one-sided (1.24 rows)   −115 i/fold
+        //   three-row (4.61 rows)   −322
+        //   max = 4   (6.27 rows)   −211   <- MORE rows, CHEAPER fold
+        //   max = 5   (7.97 rows)   −292
+        //   max = 6   (9.60 rows)   −496
+        //   subs = 7  (~9.5 rows)   −177
+        //   subs = 8  (~10.5 rows)  −414
+        //
+        // It is not monotone in rows and it is not monotone in either list
+        // length. Study 62 pre-registered a mechanism for the non-monotonicity
+        // — LLVM unrolls the generic row loops ×4 and leaves a one-row
+        // remainder loop, so cost should track `len mod 4` — built the probe
+        // that separates `subs = 7` (3 remainder rows) from `subs = 8` (none),
+        // and **the probe refuted it**: `subs = 8` is worth 2.3× more per fold
+        // than `subs = 7`, the opposite of the prediction. **The per-fold win
+        // is not predictable from the shape; only measuring a ring prices it.**
+        //
+        // **(b) "Fix the generic kernel's loop control … the cheaper of the
+        // two" is refuted by outcome.** Continuing the table is a pure dispatch
+        // change, bit-identical by construction, and on this tree the remaining
+        // rings are worth **−61.80 i/n** on the threat fold alone. Route B is
+        // the one with three measured failures in this same kernel (study 37's
+        // paired loop +0.147 %, study 58's re-price of it +16.96 i/n, study
+        // 58's `as_chunks::<4>` +63.35 i/n) and it was not built.
+        //
+        // Landed here: the rest of the square grid to `0..=6`, in the three
+        // rings a/b/c measured separately (79.42 % → 87.04 % → **92.45 %** of
+        // threat folds), **−61.80 i/n and −2.387 % branches, 30/30 at se
+        // 0.000**, for +23,648 B of `.text`.
+        //
+        // NOT landed, and both are real instruction wins: the rectangular
+        // `subs = 7` and `subs = 8` columns (`shape62d`/`shape62e`, −3.91 and
+        // −5.37 i/n). They fail study 62 §4's pre-registered `.text` rule —
+        // 0.60 and 0.75 i/node per KB against 2.02–4.05 for everything landed.
+        //
+        // `noshape62` restores study 61's dispatch (and `noshape61` implies it).
         unsafe {
             match (adds.len(), subs.len()) {
                 (1, 1) => return i8_into_shaped::<1, 1>(dst, src, weights, adds, subs),
@@ -2120,6 +2340,73 @@ mod avx512 {
                 (3, 3) => return i8_into_shaped::<3, 3>(dst, src, weights, adds, subs),
                 _ => {}
             }
+            // ## Perf study 62 — the rest of the square grid. **LANDED.**
+            //
+            // Measured as three rings so the marginal value of each is on the
+            // record (single-run whole-frame totals, each reproduced to better
+            // than 4 parts in 10⁸; the combined arm is confirmed at 30/30,
+            // se 0.000 in `panel-ladder.txt`):
+            //
+            //   ring           arms  coverage  Δ i/node  Δ.text   i/node per KB
+            //   0..=3 (st.61)    15    68.40 %       —        —        —
+            //   0..=4 (a)        +9    79.42 %   −19.90   +4,912     4.05
+            //   0..=5 (b)       +11    87.04 %   −19.01   +7,408     2.57
+            //   0..=6 (c)       +13    92.45 %   −22.89  +11,328     2.02
+            //
+            // ROWS, which is the unit the generic kernel's control is charged
+            // in, move faster than folds: 59.66 % of all threat rows were still
+            // generic after study 61, and the three rings take that to 19.31 %.
+            //
+            // The last column is the study's landing rule (§4, pre-registered
+            // before the candidate was built): `.text` buys instructions, and
+            // `instructions:u` is structurally blind to what `.text` costs, so
+            // a rung lands only at >= 2.0 i/node per KB. Everything above
+            // qualifies; the two rungs below do not, by a factor of 2.9.
+            #[cfg(not(feature = "noshape62"))]
+            shaped_dispatch!(i8_into_shaped(dst, src, weights, adds, subs);
+                adds.len(), subs.len();
+                (4, 0), (0, 4), (4, 1), (1, 4), (4, 2), (2, 4), (4, 3), (3, 4), (4, 4),
+                (5, 0), (0, 5), (5, 1), (1, 5), (5, 2), (2, 5), (5, 3), (3, 5), (5, 4), (4, 5),
+                (5, 5),
+                (6, 0), (0, 6), (6, 1), (1, 6), (6, 2), (2, 6), (6, 3), (3, 6), (6, 4), (4, 6),
+                (6, 5), (5, 6), (6, 6));
+            // ## The rectangular rungs — MEASURED, NOT LANDED.
+            //
+            // The reason to go rectangular is an asymmetry the capped
+            // `THR_PAIR` histogram could not show. `foldcount::THR_LENS` (new
+            // in study 62) records the two list lengths uncapped:
+            //
+            //   adds:  <= 6 covers 98.64 % of folds, longest observed 12
+            //   subs:  <= 6 covers 92.99 %,          longest observed 16
+            //
+            // The whole residual tail is LONG SUB LISTS against short add
+            // lists, so a square ring past 6 would spend nine arms on
+            // `(7..12, s)` cells holding 1.36 % of the channel. These two add
+            // the next SUB COLUMNS instead, for every add count already
+            // covered.
+            //
+            // They are split in two because they were also the study's
+            // MECHANISM probe, and the probe REFUTED its hypothesis. LLVM
+            // unrolls the generic row loops ×4 and leaves a one-row remainder
+            // loop re-entered per list per TILE, so the win per fold ought to
+            // track `len mod 4`: `subs = 7` (3 remainder rows) should pay far
+            // more than `subs = 8` (none). Measured, it is the other way round
+            // — **−3.91 i/n for `subs = 7` against −5.37 for `subs = 8`**, i.e.
+            // ~177 vs ~414 instructions per converted fold. The per-fold win is
+            // not predictable from the shape.
+            //
+            // Both fail the landing rule: 0.60 and 0.75 i/node per KB. A quiet
+            // box that can resolve `cycles:u` should re-test them — study 62's
+            // front-end panel found the `.text` cost does NOT convert into
+            // dispatch starvation, which is the argument for reinstating them.
+            #[cfg(all(feature = "shape62d", not(feature = "noshape62")))]
+            shaped_dispatch!(i8_into_shaped(dst, src, weights, adds, subs);
+                adds.len(), subs.len();
+                (0, 7), (1, 7), (2, 7), (3, 7), (4, 7), (5, 7), (6, 7));
+            #[cfg(all(feature = "shape62e", not(feature = "noshape62")))]
+            shaped_dispatch!(i8_into_shaped(dst, src, weights, adds, subs);
+                adds.len(), subs.len();
+                (0, 8), (1, 8), (2, 8), (3, 8), (4, 8), (5, 8), (6, 8));
             i8_deltas_into_generic(dst, src, weights, adds, subs)
         }
     }

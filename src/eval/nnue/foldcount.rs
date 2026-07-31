@@ -302,6 +302,33 @@ pub static THR_PAIR: [AtomicU64; 64] = [const { AtomicU64::new(0) }; 64];
 #[inline]
 pub fn note_thr_pair(adds: usize, subs: usize) {
     THR_PAIR[adds.min(7) * 8 + subs.min(7)].fetch_add(1, Relaxed);
+    THR_LENS[adds.min(31)].fetch_add(1, Relaxed);
+    THR_LENS[32 + subs.min(31)].fetch_add(1, Relaxed);
+}
+
+/// Perf study 62 — the threat fold's per-list lengths, **uncapped at 7**.
+///
+/// [`THR_PAIR`] saturates each side at 7, which is fine for asking "does the
+/// dispatch table cover this fold" up to a 6×6 grid but useless for asking how
+/// far the tail runs — and the tail is what decides whether a square grid can
+/// ever close, or whether the generic kernel has to be fixed instead. Index
+/// `0..32` is `adds.len()`, `32..64` is `subs.len()`, each capped at 31
+/// (`THR_SHAPE` shows the SUM never exceeds 27, so 31 is not a real cap).
+pub static THR_LENS: [AtomicU64; 64] = [const { AtomicU64::new(0) }; 64];
+
+/// Perf study 62 — the Finny **warm refresh**'s `(adds, subs)` pair, capped at
+/// 7 each, exactly as [`THR_PAIR`] does for the threat fold.
+///
+/// `i8_deltas_dual_inner` is the one hot fold kernel with **no shape dispatch
+/// at all** (study 61 §10 item 5), and `HKA_DUAL_SHAPE` records only the SUM —
+/// which cannot answer the question a dispatch asks, for the same reason
+/// `THR_SHAPE` could not.
+pub static DUAL_PAIR: [AtomicU64; 64] = [const { AtomicU64::new(0) }; 64];
+
+/// Hook: a warm Finny refresh had `adds` add-rows and `subs` sub-rows.
+#[inline]
+pub fn note_dual_pair(adds: usize, subs: usize) {
+    DUAL_PAIR[adds.min(7) * 8 + subs.min(7)].fetch_add(1, Relaxed);
 }
 
 /// Perf study 38 — the JOINT (per-perspective) shape of one ply's threat fold,
@@ -595,6 +622,22 @@ pub fn dump(nodes: u64) {
         let n = cell.load(Relaxed);
         if n != 0 {
             emit!("FOLDCOUNT thr_pair.{}a{}s={n}", i / 8, i % 8);
+        }
+    }
+    for (i, cell) in THR_LENS.iter().enumerate() {
+        let n = cell.load(Relaxed);
+        if n != 0 {
+            emit!(
+                "FOLDCOUNT thr_lens.{}{}={n}",
+                if i < 32 { "a" } else { "s" },
+                i % 32
+            );
+        }
+    }
+    for (i, cell) in DUAL_PAIR.iter().enumerate() {
+        let n = cell.load(Relaxed);
+        if n != 0 {
+            emit!("FOLDCOUNT dual_pair.{}a{}s={n}", i / 8, i % 8);
         }
     }
     for (i, cell) in THR_JOINT.iter().enumerate() {
