@@ -1,0 +1,38 @@
+=== vfmadd231ps
+    fp_ops_retired_by_type.vector_mac:u                        63190822  ratio 0.9874
+    fp_ops_retired_by_type.vector_all:u                        63344870  ratio 0.9898
+    fp_ops_retired_by_width.pack_512_uops_retired:u            63761547  ratio 0.9963
+    (issued 64000000)
+=== vpdpbusd
+    fp_ops_retired_by_width.pack_512_uops_retired:u            66652297  ratio 1.0414
+    (issued 64000000)
+=== vpaddd
+    fp_ops_retired_by_width.pack_512_uops_retired:u            68226505  ratio 1.0660
+    (issued 64000000)
+=== vpmovsxbw
+    fp_ops_retired_by_width.pack_512_uops_retired:u            63006884  ratio 0.9845
+    (issued 64000000)
+=== vpaddw
+    fp_ops_retired_by_width.pack_512_uops_retired:u            70286932  ratio 1.0982
+    (issued 64000000)
+=== vpsubw
+    fp_ops_retired_by_width.pack_512_uops_retired:u            65915062  ratio 1.0299
+    (issued 64000000)
+=== vpsllw
+    fp_ops_retired_by_width.pack_512_uops_retired:u            67157029  ratio 1.0493
+    (issued 64000000)
+=== vpmullw
+    fp_ops_retired_by_width.pack_512_uops_retired:u            68789066  ratio 1.0748
+    (issued 64000000)
+=== vpaddsw
+    fp_ops_retired_by_width.pack_512_uops_retired:u            67249123  ratio 1.0508
+    (issued 64000000)
+=== vpmaxsw
+    fp_ops_retired_by_width.pack_512_uops_retired:u            64512534  ratio 1.0080
+    (issued 64000000)
+=== vpminsw
+    fp_ops_retired_by_width.pack_512_uops_retired:u            64805279  ratio 1.0126
+    (issued 64000000)
+=== vpmovwb
+    fp_ops_retired_by_width.pack_512_uops_retired:u            67161584  ratio 1.0494
+    (issued 64000000)

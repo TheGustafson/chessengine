@@ -2000,6 +2000,36 @@ mod avx512 {
     /// specialised, duplicated shape IS the optimisation, and a restructuring
     /// that lets LLVM re-merge the paths pays for it. Measure before believing
     /// a control-count argument.
+    ///
+    /// # ⚠ THE `vpmovsxbw` : `vpaddw` 1:1 RATIO IS A HARDWARE FLOOR (perf study 47)
+    ///
+    /// The disassembly of this function is **450 `vpmovsxbw` against 450
+    /// `vpaddw`/`vpsubw`** — the i8→i16 widening is half of every vector op it
+    /// issues, and at 7.1754 fold rows/node it is **287 `vpmovsxbw`/node, 22.3%
+    /// of every 512-bit op in the engine**. Study 47 measured the box to find
+    /// out whether that is reducible. It is not, and the number is:
+    ///
+    /// > the convert pipes run at **32 i16 lanes/cycle** (measured, and measured
+    /// > to be the SAME at 256 bits — Zen 4's double-pump is uniform), and the
+    /// > fold must widen 7.1754 rows × 1280 lanes = **9184 lanes/node**
+    /// > ⇒ **287 cycles/node = 6.87% of the frame, irreducible at this layout.**
+    ///
+    /// Four alternatives were measured or counted, none of them argued:
+    ///
+    /// * **64-B `vmovdqu64` + two register `vpmovsxbw`**: 3 ops per 64 B against
+    ///   2. The fused `vpmovsxbw zmm,[mem]` form already costs exactly what the
+    ///   register form does (both 1.005 c/op) — the load rides free.
+    /// * **ALU-domain sign extension** (`vpsllw`+`vpsraw`, or mask/shift/sub):
+    ///   16–21 lanes/cycle against 32. Shifts and logicals are 1-pipe here too.
+    /// * **`vpmaddubsw` with a {1,0} byte selector**: identical op count, and it
+    ///   scrambles lane order for nothing.
+    /// * **Summing rows in the i8 domain before one widen**: incorrect. Two i8
+    ///   weights sum to [−255, 254], outside i8.
+    ///
+    /// The only real win is **i16 weight rows**, measured at −0.195 c/chunk-update
+    /// (−1.34% of frame) — and it doubles the traffic of a kernel that study 44
+    /// measured at **86–88% load-stall**, i.e. it re-pays study 32's measured
+    /// −6.8% cycles to buy back a third of it. **Do not re-propose it.**
     #[target_feature(enable = "avx512f,avx512bw")]
     #[inline(never)]
     unsafe fn i8_deltas_into_generic(
@@ -2149,6 +2179,48 @@ mod avx512 {
         }
     }
 
+    /// # ⚠ THIS LOOP IS AT ITS ISSUE FLOOR — and the reason generalises (study 47)
+    ///
+    /// The emitted lane-iteration is **15 512-bit ops** (two 6-op merges plus a
+    /// 3-op tail), 40 iterations per eval, **258.7 ops/node = 20.1% of every
+    /// 512-bit op in the engine**. Measured against its own emitted shape it
+    /// costs **0.586 c/op** — the isolated per-op sum predicts 0.889, so this
+    /// mix already overlaps the pipes at a factor of 0.659, far better than the
+    /// fold kernel's 0.873. There is no arrangement win left here.
+    ///
+    /// **★ THE RULE THAT KILLS THE OBVIOUS IDEAS: on Zen 4 a folded memory
+    /// operand costs exactly ONE issue slot — the same as the register-form op**
+    /// (`vpmullw` reg 1.006, `vpmullw` mem 1.006; a bare `vmovdqu64` is 1.077).
+    /// Both loads that CAN fold here already do, read off the shipped
+    /// disassembly:
+    ///
+    /// ```text
+    /// vmovdqu64 (%rax,%r14,2),%zmm2       ; pst   load
+    /// vpsllw    $0x1,(%r8,%r14,2),%zmm3   ; threat load FOLDED into the shift
+    /// vpmullw   (%rbx,%r14,2),%zmm2,%zmm2 ; scale  load FOLDED into the multiply
+    /// ```
+    ///
+    /// So **CSE-ing a folded load STRICTLY LOSES**: the `scale` vectors are each
+    /// re-loaded once per perspective, and hoisting them turns
+    /// `2 × vpmullw[mem]` into `1 × vmovdqu64 + 2 × vpmullw[reg]` — three ops for
+    /// two. (This also retro-explains perf study 46 §3.2, which measured
+    /// spreading `l1_dot`'s tail as WORSE and could not say why.)
+    ///
+    /// Four more candidates, all closed by measurement rather than by argument:
+    ///
+    /// * **`vpaddsw` → `vpaddw`** would genuinely halve that op (1.003 → 0.518 —
+    ///   saturation costs 2× on this box, which nobody knew). It is **NOT
+    ///   bit-safe**: `vpmullw` is wrapping *by design* (see the study-32 note
+    ///   below), so the saturating add really can fire, and wrapping instead
+    ///   flips those lanes to the opposite clamp.
+    /// * **`vpsllw $1` → `vpaddw t,t`** (1.005 → 0.518) loses: the shift carries
+    ///   a folded load and the add cannot, so it costs 1.588 against 1.005.
+    /// * **`vpsllw $7` + `vpmulhuw` → `vpmullw` + `vpsrlw`**: two 1-pipe ops
+    ///   either way.
+    /// * **Pre-shifting the threat accumulator to delete `vpsllw`** is
+    ///   *backwards*: it moves work from here (34.5 merges/node) into the fold
+    ///   (287 chunk-updates/node), which runs 8× more often. **Never move work
+    ///   from `activate` to the fold.**
     #[target_feature(enable = "avx512f,avx512bw")]
     unsafe fn activate_inner<const SHIFT: u32>(
         out: &mut [u8; ACC],
