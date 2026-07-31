@@ -11745,3 +11745,50 @@ sawtooth and still not a trend; **sb1400 is ~12 h out** and remains the first
 readable point by construction.
 
 **Study 60** building, on memory locality in the four fold kernels.
+
+## Tick — 2026-07-31 15:0x, study 59's instruction claim VERIFIED EXACTLY; its cycles claim NOT checkable under load
+
+**Gate green on current main** (`All checks passed.`, `Bench: 587683`) with study
+59 merged plus the `wallclock_panel.py` commits.
+
+### Verified myself, from a fresh PGO build
+
+| | i/n |
+|---|---|
+| post-58 PGO | 5729.0 |
+| post-59 PGO | 5552.2 |
+| **delta** | **−176.8 (−3.086%)** |
+| study 59 claimed | −176.77 (−3.086%) |
+
+**Exact to the decimal.**
+
+### The cycles half is VOID, and the void is itself the finding
+
+I tried to check study 59's "~94% of the cycles delta is startup" and got **4.6%**
+— then checked the baseline instead of reporting it. **The same binary reads
+17.95 B cycles on a quieter box and 26.9 B now: +49.9% inflation.** Meanwhile its
+instruction count reproduces to **+0.0008%**.
+
+The box is currently running a 1500-game match (10 engine processes) plus study
+60's build. LLC and memory bandwidth are saturated, so stall cycles balloon — and
+`cycles:u` counts them.
+
+**So: `cycles:u` is NOT load-robust, and the σ = 1.57% figure measured on a
+quiet box understates it by more than an order of magnitude under real
+contention.** `instructions:u` is load-robust, which is exactly why it is the
+gate. **Study 59's 94% claim is neither confirmed nor refuted — it is unmeasurable
+from here**, and it must be re-checked on a quiet box before either its number or
+my earlier 49.7% is built on.
+
+That also puts a caveat on **my own 49.7% startup-share** from two ticks ago: it
+was a single-shot cycles pair taken while study 59 was building. **Direction
+(a large startup component exists) is corroborated by two independent routes;
+the magnitude is not settled.**
+
+### sb1060 periodic eval, at the 1000-game interval
+
+`Elo −8.69 ± 14.17`, DrawRatio 44.00%, Ptnml [28, 122, 220, 107, 23]. Consistent
+with the mid-cycling series and with the standing reading that mid-cycling is
+**statistically indistinguishable from sb700**. Final at 1500 next tick.
+
+**D49:** sb1066, 193k pos/s, four services active. **Study 60** building.
