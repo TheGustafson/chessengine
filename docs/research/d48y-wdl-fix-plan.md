@@ -12100,3 +12100,39 @@ an arbitrary phase of a sawtooth whose peaks measurably worsen the fit.
 **D49:** sb1101, 193k pos/s, four services active, 158 GB disk. **Study 61**
 working — `tools/perf61/` now holds `build61.sh`, `fills61.sh`, `ibstop61.py`,
 `med61.py`, so it is on IBS and cache fills as briefed.
+
+## Tick — 2026-07-31 16:31, re-tested the OTHER standing claims; found a double-count in my own pooling
+
+Last tick's EMA correction raised an obvious question: **what else am I repeating
+without re-testing?** So I re-derived the other standing claim.
+
+**Claim: "mid-cycling is statistically indistinguishable from sb700."**
+**It survives** — but the number I had been quoting was built wrongly.
+
+| | |
+|---|---|
+| mid-cycling, **clean** (sb900 + sb1060, 3000 games) | **−10.52 ± 8.05** |
+| vs sb700 (−4.14 ± 5.56) | −6.38 ± 9.79 = **0.65σ** |
+
+**The double-count.** I reported **−12.66 ± 5.88** by inverse-variance pooling
+"prior mid-cycling pooled (incl. sb900) −13.84 ± 6.89" with sb1060 — but that
+prior figure *already contained* sb900, and was itself built on a
+"−15.1 ± 8.6" whose composition I never set. **Pooling a pool with one of its own
+members double-counts it and shrinks the error bar illegitimately** — which is
+exactly why −12.66 ± 5.88 looked tighter than the clean −10.52 ± 8.05 despite
+resting on no more games.
+
+This is the project's own rule 8 — *re-derive any number before building on it,
+especially one whose `n` you did not set* — and I violated it while quoting the
+result across several ticks. **The operational conclusion does not change** (0.65σ
+vs 1.05σ, both far from significant), so nothing downstream was misled; the fix is
+to quote the clean figure from here.
+
+**Method note added to memory** as the complement to "quote levels, not trends":
+both failures — over-reading noise and repeating a stale caveat — are the same
+error of **quoting a conclusion instead of computing one**, and they point in
+opposite directions, so neither "be more cautious" nor "be more decisive" is the
+fix. Re-run the test when `n` has grown.
+
+**D49:** sb1109, 193k pos/s, four services active, 156 GB disk. **Study 61**
+building.
