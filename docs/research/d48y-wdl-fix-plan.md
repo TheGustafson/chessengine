@@ -9682,3 +9682,46 @@ and packs at 756, and screens with `ENGINE=target-sota` — CEN5-capable, so
 `screen.sh`'s new load guard passes rather than fires. No positional-argument
 hazard: `requant_threats.py` and `netpack.py` take explicit flags, and
 `screen.sh` takes `CAND REF GAMES NODES` in that order. Clean.
+
+## Study 51 commissioned — stop the fold evicting the head. Gate GREEN on study 50.
+
+**Gate on merged main: `Bench: 587683`, all checks passed.** Study 50 verified.
+**D49x: sb676, EMA 0.010599** — still falling in the anneal, ~24 sb to the handoff.
+
+Study 50's closing line is the commission: **"Bytes are the lever, not layout."**
+Its per-region IBS census found the mechanism:
+
+- **The evictor is the fold — 21.3 KB/eval of COLD weight rows through a 32 KB L1.**
+- **58.3% of `forward_into`'s misses are the head's five weight tables:**
+  `l1_weights` **89.0%**, `l2_weights` **98.95%**, `skip_q` **96.9%**,
+  `l3_weights` **100%**, `l1_biases` **100%**.
+- **A 2048-byte array cannot miss 98.9% of the time except by being evicted
+  between every use.**
+- Confirmed in the winning direction: removing 20 lines/eval of `ft_scale`
+  traffic improved `hka_stack` 52.4%→43.8% and `thr_stack` 24.7%→21.7%
+  **without touching either array.**
+
+**The question: how do you stop single-use streaming data from evicting a small
+hot working set?** Four mechanisms given, with the effort explicitly weighted:
+
+1. **NT loads — ⚠ VERIFY THE HARDWARE FIRST.** `VMOVNTDQA` only bypasses cache on
+   **WC** memory; on **WB** it behaves as a normal load on most x86. **Told not to
+   build an arm whose premise it has not tested**, and that "NT is blocked on WB,
+   therefore closed" obliges it to move to 2/3/4 rather than stop.
+2. `PREFETCHNTA` — a different hint from the seven prefetches already killed, but
+   the prior stands and the burden is theirs.
+3. Reordering to shrink the head tables' reuse distance.
+4. **Shrinking the streamed bytes** — *the one with a proven track record here*,
+   since study 50's win was exactly this, found by **dumping a value histogram**
+   and discovering 15 of 16 bits were padding. That technique now ships.
+
+**Ceiling stated up front:** `forward_into` converts only 2.0% of its miss latency
+to stall, so that symbol alone is ≤~2% of frame — **but the fold is the top TWO
+symbols in the engine (13.77% + 12.38%)**, and the prize is its own miss cost plus
+the collateral damage, not `forward_into`'s share.
+
+**Prior art that bounds it:** study 43's non-temporal STORES lost 30/30 at +5.82%
+cycles; prefetch is 0-for-7. **Anti-escape-hatch receipts attached:** a lever
+study 44 declared dead was the largest on the board; study 48 landed in `activate`
+right after study 47 priced it at its floor; **study 50 landed in a path study 47
+had already closed.**
