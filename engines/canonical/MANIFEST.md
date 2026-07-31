@@ -161,3 +161,50 @@ gain rather than a scoring artifact.
 
 Point `engines/canonical/net.cenn` back at `d48x-1280-sb520-ema.cenn` and
 restore the two NNUE pins. The original file was never modified.
+
+## PROVENANCE GAP — record the build commit (added 2026-07-31)
+
+**`engines/canonical/` records no commit for the binary it ships.** On
+2026-07-31 that made a real question unanswerable.
+
+**The question.** Perf study 60 found that `build_pgo.sh` had been silently
+emitting **untrained** PGO binaries: `engines/canonical/net.cenn` is a symlink
+into gitignored `data/`, so **it dangles in every fresh git worktree** — where
+every perf study since 40 has run — and the training session failed its
+`setoption` without stopping the build. Measured, node-identical:
+
+| build | i/node |
+|---|---:|
+| non-PGO native | 5819.68 |
+| PGO trained **with** the net | **5728.98** |
+| PGO trained **without** the net | **6040.90** |
+
+A netless PGO binary is **5.445% worse than the correct one and worse than no
+PGO at all**. `build_pgo.sh` now refuses to emit one (`[ -r ]` on the eval-file,
+plus a grep for `ERROR EvalFile` in the training log).
+
+**Why it could not be answered for `archon-s25`.** It is the default engine for
+five tools (`screen.sh`, `paired_nps.py`, `frame_compare.py`, `eval_bench.py`,
+`reprgap/twins.py`), so a 5.4% degradation would matter — most of all to
+`paired_nps.py`, which measures speed directly. Study 60's discriminator is
+unambiguous (correct PGO −1.559% vs non-PGO native; netless +3.801%) but it needs
+**a build at the binary's own commit**, and that commit is not recorded:
+
+- `uci` reports only `id name ARCHON 0.1.0` — no build identity.
+- This file carried no provenance line.
+- A structural test (are the NNUE kernels in a cold text section, as they would be
+  if never executed during profiling?) **does not discriminate** — both the
+  canonical binary and a known-good PGO build expose a single `.text`.
+
+**Requirement going forward.** Any binary placed in `engines/canonical/` records,
+here, in the same commit that promotes it:
+
+1. the **git commit** it was built from,
+2. the **exact build command**, including the `--features` string and the
+   **resolved absolute path** of the eval-file (never the `net.cenn` symlink —
+   that is what dangles), and
+3. the binary's **`.text` md5**, so the artifact can be tied back to a rebuild.
+
+Provenance by artifact — mtime, filename, or "I remember building it" — is not
+provenance. The same failure produced a phantom −0.473% measurement on
+2026-07-31 that a rebuild corrected to −3.056%.
