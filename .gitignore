@@ -99,3 +99,9 @@ perf42data/
 ttcensus42.txt
 bin44/
 bin48/
+# perf study 52 build/measurement artifacts (binaries, perf.data, PGO profiles, logs)
+bin52/
+perf52data/
+target52-pgo/
+gate52*.log
+pgo52.log
