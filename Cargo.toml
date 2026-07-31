@@ -202,6 +202,32 @@ insertwin34 = []
 #   wpin:   every fold folds weight row 0, whatever the feature index says.
 probe-accpin = ["sota"]
 probe-wpin = ["sota"]
+# Perf study 61 — `wpin`, split by channel. Study 51's -13.19% cycles is one
+# number covering two weight tables with different shapes (28.8 MB / 22,528
+# rows folded 2.279 per fold, against 77.7 MB / 60,720 rows folded 4.594 per
+# fold). These pin one channel each, so the prize can be attributed. Strict
+# subsets of `probe-wpin`, which now means exactly "both of these".
+probe-wpin-hka = ["sota"]
+probe-wpin-thr = ["sota"]
+# Perf study 61 -- the fold's shape dispatch, LANDED, and its revert arm.
+#
+# `i8_deltas_into_inner` matched on four (adds, subs) pairs, chosen in study 25
+# when the kernel was HalfKA-only and those four were a COMPLETE cover. Study 32
+# routed the whole FullThreats channel through the same dispatch without
+# revisiting the list. Counted for the first time in study 61
+# (`foldcount::THR_PAIR`): 19.11% of threat folds are a SINGLE weight row and
+# every one of them ran the runtime-length generic kernel.
+#
+# Landed unconditionally: the one-sided family (25.04% of threat folds) and the
+# three-row family (16.09%), taking straight-line coverage 27.27% -> 68.40%.
+# Measured together, 32 rounds, byte-identical null in the rotation:
+# **-1.219% instructions and -2.274% branches per node, 32/32, se 0.000** --
+# -68.9 i/n and -12.9 branches/n. Node-identical and eval-hash-identical.
+#
+# `noshape61` restores the study-25 dispatch, so the contrast stays reproducible
+# on the shipped tree -- the same falsifiability `null34` and `nogc54` keep for
+# their studies. It is a MEASUREMENT feature; never ship it.
+noshape61 = []
 # `probe-accpin` pins only the READ half of accumulator streaming; the folds
 # still WRITE 2560 B per call into the real per-ply stack, so that stack keeps
 # its full footprint and keeps evicting weight rows. Perf study 31 priced the

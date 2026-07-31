@@ -184,6 +184,8 @@ macro_rules! kernel_dispatch {
 #[cfg(any(
     feature = "probe-accpin",
     feature = "probe-wpin",
+    feature = "probe-wpin-hka",
+    feature = "probe-wpin-thr",
     feature = "probe-actpin",
     feature = "probe-addcopy"
 ))]
@@ -254,7 +256,11 @@ pub(crate) mod probe {
     /// Feature indices, all zero, for the `wpin` arm. The kernels read
     /// `adds.len()`/`subs.len()` for their shape dispatch, so the SLICE
     /// LENGTHS must be preserved exactly — only the values change.
-    #[cfg(feature = "probe-wpin")]
+    #[cfg(any(
+        feature = "probe-wpin",
+        feature = "probe-wpin-hka",
+        feature = "probe-wpin-thr"
+    ))]
     pub(crate) static ZERO_IDX: [super::RowOffset; 64] = [super::RowOffset(0); 64];
 
     /// Perf study 39's **SUBTRACTIVE** arm at study 31's magnitude, plus the
@@ -524,15 +530,42 @@ pub(crate) mod probe {
     }
 }
 
-#[cfg(feature = "probe-wpin")]
-macro_rules! pin_rows {
+/// Perf study 61 — the ceiling probe, **split by channel**.
+///
+/// Study 51 measured `probe-wpin` (all four fold sites pinned to row 0) at
+/// −13.19 % cycles and called it "the whole prize for the fold's weight rows".
+/// It is one number for two tables with completely different shapes:
+/// `hka_weights` is 28.8 MB / 22,528 rows and `thr_weights` is 77.7 MB /
+/// 60,720 rows, and the threat channel folds 4.594 rows per fold against
+/// HalfKA's 2.279. A prize that is 80 % one channel and 20 % the other is a
+/// different engineering problem from a 50/50 split, and nothing in studies
+/// 29–60 says which it is.
+///
+/// `probe-wpin-hka` pins only the three HalfKA sites; `probe-wpin-thr` pins
+/// only `apply_threat_deltas_into`. Both are strict subsets of `probe-wpin`,
+/// so `Δhka + Δthr ≈ Δboth` is a built-in consistency check on the pair.
+/// Measurement only — they compute wrong evaluations by construction.
+#[cfg(any(feature = "probe-wpin", feature = "probe-wpin-hka"))]
+macro_rules! pin_rows_hka {
     ($adds:ident, $subs:ident) => {
         let $adds: &[RowOffset] = &probe::ZERO_IDX[..$adds.len().min(64)];
         let $subs: &[RowOffset] = &probe::ZERO_IDX[..$subs.len().min(64)];
     };
 }
-#[cfg(not(feature = "probe-wpin"))]
-macro_rules! pin_rows {
+#[cfg(not(any(feature = "probe-wpin", feature = "probe-wpin-hka")))]
+macro_rules! pin_rows_hka {
+    ($adds:ident, $subs:ident) => {};
+}
+
+#[cfg(any(feature = "probe-wpin", feature = "probe-wpin-thr"))]
+macro_rules! pin_rows_thr {
+    ($adds:ident, $subs:ident) => {
+        let $adds: &[RowOffset] = &probe::ZERO_IDX[..$adds.len().min(64)];
+        let $subs: &[RowOffset] = &probe::ZERO_IDX[..$subs.len().min(64)];
+    };
+}
+#[cfg(not(any(feature = "probe-wpin", feature = "probe-wpin-thr")))]
+macro_rules! pin_rows_thr {
     ($adds:ident, $subs:ident) => {};
 }
 
@@ -570,8 +603,15 @@ pub(crate) fn apply_halfka_deltas(
     subs: &[RowOffset],
 ) {
     #[cfg(feature = "foldcount")]
-    super::foldcount::HKA_INPLACE.hit(adds.len() + subs.len());
-    pin_rows!(adds, subs);
+    {
+        super::foldcount::HKA_INPLACE.hit(adds.len() + subs.len());
+        #[cfg(feature = "rowprobe")]
+        {
+            super::foldcount::note_row_reuse(0, adds);
+            super::foldcount::note_row_reuse(0, subs);
+        }
+    }
+    pin_rows_hka!(adds, subs);
     kernel_dispatch!(i8_deltas(acc, weights, adds, subs))
 }
 
@@ -601,9 +641,11 @@ pub(crate) fn apply_halfka_deltas_into(
             super::foldcount::note_zero_rows(z, weights, subs, ACC);
             super::foldcount::note_row_fold(0, adds);
             super::foldcount::note_row_fold(0, subs);
+            super::foldcount::note_row_reuse(0, adds);
+            super::foldcount::note_row_reuse(0, subs);
         }
     }
-    pin_rows!(adds, subs);
+    pin_rows_hka!(adds, subs);
     pin_src!(src);
     pin_dst!(dst);
     kernel_dispatch!(i8_deltas_into(dst, src, weights, adds, subs))
@@ -625,6 +667,11 @@ pub(crate) fn apply_halfka_deltas_dual(
     {
         super::foldcount::HKA_DUAL.hit(adds.len() + subs.len());
         super::foldcount::note_hka_dual_shape(adds.len() + subs.len());
+        #[cfg(feature = "rowprobe")]
+        {
+            super::foldcount::note_row_reuse(0, adds);
+            super::foldcount::note_row_reuse(0, subs);
+        }
     }
     // Perf study 43 arm NT stores `acc` non-temporally, which the ISA only
     // defines for a 64-byte-aligned address. The alignment is structural
@@ -635,7 +682,7 @@ pub(crate) fn apply_halfka_deltas_dual(
         0,
         "the Finny cache entry's accumulator must be 64-byte aligned"
     );
-    pin_rows!(adds, subs);
+    pin_rows_hka!(adds, subs);
     pin_dst!(out);
     kernel_dispatch!(i8_deltas_dual(acc, out, weights, adds, subs))
 }
@@ -657,6 +704,7 @@ pub(crate) fn apply_threat_deltas_into(
     {
         super::foldcount::THR_INTO.hit(adds.len() + subs.len());
         super::foldcount::note_thr_shape(adds.len() + subs.len());
+        super::foldcount::note_thr_pair(adds.len(), subs.len());
         #[cfg(feature = "rowprobe")]
         {
             let z = &super::foldcount::ZERO_ROW_THR;
@@ -664,13 +712,15 @@ pub(crate) fn apply_threat_deltas_into(
             super::foldcount::note_zero_rows(z, weights, subs, ACC);
             super::foldcount::note_row_fold(1, adds);
             super::foldcount::note_row_fold(1, subs);
+            super::foldcount::note_row_reuse(1, adds);
+            super::foldcount::note_row_reuse(1, subs);
         }
     }
     // Perf study 39's placement arm: the same copies, issued from the fold
     // rather than from `activate` (`P39_SITE=fold`). Inert otherwise.
     #[cfg(feature = "probe-addcopy")]
     probe::addcopy::tick_fold();
-    pin_rows!(adds, subs);
+    pin_rows_thr!(adds, subs);
     pin_src!(src);
     pin_dst!(dst);
     kernel_dispatch!(i8_deltas_into(dst, src, weights, adds, subs))
@@ -1964,12 +2014,110 @@ mod avx512 {
         // generic fallback stays for the threat channel's longer feature lists
         // and for the EMPTY case, which must remain a plain copy — see the
         // "stale-child bug" note at `sota_accumulator.rs`'s forward fold.
+        // ## Perf study 61 — the ONE-SIDED and THREE-ROW shapes. **LANDED.**
+        //
+        // The four arms above were chosen in study 25, when this kernel was
+        // HalfKA-ONLY: `apply_dirty_directed` builds both lists in `[usize; 2]`
+        // and every real move emits at least one add and one sub, so `(1,1)`,
+        // `(1,2)`, `(2,1)`, `(2,2)` is a COMPLETE cover of HalfKA and the
+        // fallthrough was genuinely dead. Study 32 quantised HalfKA to i8,
+        // deleted the i16 family, and routed **the entire FullThreats channel**
+        // through this same dispatch — without revisiting the arm list, and
+        // without anyone counting what the new traffic's shapes are.
+        //
+        // Counted here for the first time (`foldcount::THR_PAIR`, 4,270,334
+        // threat folds in the study frame):
+        //
+        // | `(adds, subs)` | folds | share | path |
+        // |---|---:|---:|---|
+        // | `(0,1)` | 444,368 | **10.41 %** | generic |
+        // | `(1,0)` | 371,467 | **8.70 %** | generic |
+        // | `(0,2)` | 168,840 | 3.95 % | generic |
+        // | `(2,0)` | 84,674 | 1.98 % | generic |
+        // | the four study-25 arms | 1,164,466 | 27.27 % | shaped |
+        // | everything else | 2,036,519 | 47.69 % | generic |
+        //
+        // **19.11 % of every threat fold is a SINGLE weight row, and it runs the
+        // runtime-length kernel** — two loops whose trip counts LLVM cannot see,
+        // an x2 unroll with an odd/even remainder branch, and an empty-list test,
+        // eight times over (once per tile), to apply one row.
+        //
+        // A one-sided list is exactly the case the generic form was never for.
+        // Adding the four one-sided shapes takes straight-line coverage from
+        // 27.27 % to **52.31 %** of threat folds. `i8_into_shaped` already
+        // handles `NS = 0` correctly — `srow` is `[usize; 0]`, the `zip` fills
+        // nothing and the `for &base in &srow` loop compiles away entirely — so
+        // this is a dispatch change and not a kernel change.
+        //
+        // **Bit-identical by construction, at the strongest level:** the shaped
+        // and generic kernels walk the same tiles in the same order, read the
+        // same rows in the same order (adds then subs), and perform the same
+        // per-lane wrapping i16 add/sub. The gate checks it anyway.
+        //
+        // The cost is `.text`: eleven more instantiations of a straight-line
+        // tile body, measured at **+8,048 B total** (714,725 → 722,773), which
+        // is far less than the naive estimate because LLVM shares the tile
+        // prologue and epilogue across instantiations.
+        //
+        // **Measured together, 32 rounds, blocked Latin square, byte-identical
+        // null in the rotation, node total 5,001,562 on every run:**
+        //
+        // | arm | coverage of threat folds | `instructions:u` | `branches:u` |
+        // |---|---:|---:|---:|
+        // | study 25 (was) | 27.27 % | — | — |
+        // | + one-sided | 52.31 % | **−0.438 % (−24.7/node)** | **−0.509 %** |
+        // | + three-row (**shipped**) | **68.40 %** | **−1.219 % (−68.9/node)** | **−2.274 %** |
+        //
+        // Both counters read 32/32 at **se 0.000** against a null of exactly
+        // −0.000 %. `cycles:u` was NOT resolvable — a GPU training run shared
+        // the box and the null moved further than the arm — so this is landed
+        // on the exact counters and its wall-clock value is not established.
+        //
+        // **The win per converted fold GROWS with the shape**, which is the
+        // useful generalisation: −115 instructions per one-sided fold against
+        // −322 per three-row fold, because the generic kernel pays its loop
+        // control per row per tile. **31.60 % of threat folds are still
+        // generic** (both lists ≥ 4, or one ≥ 5) and the next study should
+        // either continue the table or fix the generic kernel's loop control,
+        // which is now the cheaper-looking of the two.
+        //
+        // `noshape61` restores the study-25 dispatch so this contrast stays
+        // measurable on the shipped tree.
         unsafe {
             match (adds.len(), subs.len()) {
                 (1, 1) => return i8_into_shaped::<1, 1>(dst, src, weights, adds, subs),
                 (1, 2) => return i8_into_shaped::<1, 2>(dst, src, weights, adds, subs),
                 (2, 1) => return i8_into_shaped::<2, 1>(dst, src, weights, adds, subs),
                 (2, 2) => return i8_into_shaped::<2, 2>(dst, src, weights, adds, subs),
+                #[cfg(not(feature = "noshape61"))]
+                (1, 0) => return i8_into_shaped::<1, 0>(dst, src, weights, adds, subs),
+                #[cfg(not(feature = "noshape61"))]
+                (0, 1) => return i8_into_shaped::<0, 1>(dst, src, weights, adds, subs),
+                #[cfg(not(feature = "noshape61"))]
+                (2, 0) => return i8_into_shaped::<2, 0>(dst, src, weights, adds, subs),
+                #[cfg(not(feature = "noshape61"))]
+                (0, 2) => return i8_into_shaped::<0, 2>(dst, src, weights, adds, subs),
+                // The THREE-row family. `(3,0) (0,3) (1,3) (3,1) (2,3) (3,2)
+                // (3,3)` is a further 686,947 folds = 16.09 % of the channel,
+                // taking coverage 52.31 % → 68.40 %. It was measured as its own
+                // arm (`shape61x`) precisely because a body up to six rows wide
+                // is where `.text` cost could plausibly overtake the win — and
+                // it does not: it MORE than doubles the win (−24.7 → −68.9 i/n)
+                // for +3,088 B.
+                #[cfg(not(feature = "noshape61"))]
+                (3, 0) => return i8_into_shaped::<3, 0>(dst, src, weights, adds, subs),
+                #[cfg(not(feature = "noshape61"))]
+                (0, 3) => return i8_into_shaped::<0, 3>(dst, src, weights, adds, subs),
+                #[cfg(not(feature = "noshape61"))]
+                (1, 3) => return i8_into_shaped::<1, 3>(dst, src, weights, adds, subs),
+                #[cfg(not(feature = "noshape61"))]
+                (3, 1) => return i8_into_shaped::<3, 1>(dst, src, weights, adds, subs),
+                #[cfg(not(feature = "noshape61"))]
+                (2, 3) => return i8_into_shaped::<2, 3>(dst, src, weights, adds, subs),
+                #[cfg(not(feature = "noshape61"))]
+                (3, 2) => return i8_into_shaped::<3, 2>(dst, src, weights, adds, subs),
+                #[cfg(not(feature = "noshape61"))]
+                (3, 3) => return i8_into_shaped::<3, 3>(dst, src, weights, adds, subs),
                 _ => {}
             }
             i8_deltas_into_generic(dst, src, weights, adds, subs)
