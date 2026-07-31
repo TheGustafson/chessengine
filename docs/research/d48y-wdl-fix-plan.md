@@ -10216,3 +10216,36 @@ intermediate loss uninformative by construction.
 family (16-binary lattice — affordable because instruction counts are
 deterministic), land the missing bound, and census the engine for more
 mechanism-B sites. Explicitly told **not** to extend mechanism A blindly.
+
+## Tick — 2026-07-31 09:0x, D49 sb900 + periodic eval launched
+
+**D49 healthy, and the one anomaly resolved as benign.** `cyc.log` live (0 min
+old), sb900 complete, **193k pos/s** (above the 178k baseline). Heldout
+sb900 value 0.010893, **ema 0.010671** — lowest of the last four readings but
+still inside the sawtooth, so *not* a trend. Per [[loss-is-not-elo]] this is an
+abort-condition instrument only.
+
+**Anomaly checked rather than assumed:** the python process showed 7h10m elapsed
+against a systemd unit last started 00:32 — an 83-minute gap that would have
+meant an unlogged restart. It did not. `cyc.log`'s first line reads *"queued
+2026-07-30T23:47:19, waiting for d49x (sb700)"*: the launcher **waited** for the
+predecessor extend run, which last wrote at 01:54:16; python started 01:54:45.
+Designed handoff, no crash. **Zero failed restarts this run.**
+
+**Rate re-derived from four consecutive checkpoint intervals** (21:24 / 21:21 /
+22:04 / 21:32 per 10 sb) = **2.16 min/sb**. **sb1400 in 18.0 h, sb1700 in 28.8 h.**
+
+**Periodic eval launched (`eval900`)**: requant + pack the sb900 EMA at the
+640/756/880 ladder, re-measure the frame, then screen **@756 vs canonical, 1500
+games @ 25k** (±9.9 Elo). 756 is D49's own measured optimum — *not* the scale
+whose stdev matches canonical, because the "matching eval stdev transfers"
+hypothesis was REFUTED (D49@1111 lost −14.47 ± 11.09 to D49@756).
+
+Purpose is the **stability question, not a verdict**: prior mid-cycling pooled
+−15.1 ± 8.6, and what matters is whether the debt is flat or compounding. The
+experiment stays unreadable until sb1400/sb1700 by construction.
+
+**Box discipline:** the eval is wrapped in `flock` on the shared build lock, so
+it serialises against study 56's builds rather than racing them; `CONC=5` pinned
+under `screen.sh`'s own memory-derived cap. 8.4 GB free, 155 GB disk, all five
+services active.
