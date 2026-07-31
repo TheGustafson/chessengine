@@ -10668,3 +10668,96 @@ counters, node-identical at 5,001,562. **Last worktree write was one minute ago.
 No conclusions drawn from its intermediate artifacts — it reports its own numbers.
 
 **D49:** sb954, 193k pos/s, four services active, 8.4 GB free, 150 GB disk.
+
+## Tick — 2026-07-31, study 57 complete; merge DEFERRED on a semantic conflict
+
+Study 57 landed two arms on `perf-study-57-i8deltas`, gate green, eval-bit-exact,
+node-identical. **Not merged yet** — see the conflict below.
+
+**Arm A — `RowOffset` (pre-scaled fold row offsets):** the runtime-length i8 fold
+kernels recomputed `feature * ACC` once per tile, and at the shipped `REGS = 5` an
+`ACC = 1280` accumulator is **eight tiles** — 2 of 6 scalar instructions per row,
+paid 8×. **instructions:u −0.694% (24/24, se 0.000, p<0.0001) = −41.27/node.**
+Carried as a **newtype, not a bare `usize`**, so nine producer/kernel sites cannot
+silently disagree on the unit.
+
+> **Provenance worth keeping:** perf study 37 §5 named this "the best-priced
+> remaining candidate" and priced it at −8 i/n **when the fold was 2 tiles wide**.
+> Study 44 then made the walk 4× wider and **nobody re-priced it.** The arm exists
+> only because study 57 read the catalogue of prior work first.
+
+**Reported regression, not buried:** `L1-dcache-loads:u` **+0.283%** (3/24,
+p=0.0003), priced at ≈+2.4 cycles/node in the cheapest load class; the alternative
+fix cost +14 i/n and was declined.
+
+**Arm B — `quantise_halfka` without `idiv`:** 28,835,840 non-pipelined divisions
+per engine start replaced by an exact round-up reciprocal (both domain bounds
+structural, 128× margin, two new tests sweep **every** input pair against the real
+division). Startup frame **cycles −22.496%** (39/39, p<0.0001), branches −31.4%,
+loads −5.9%, **instructions +4.5%**. ≈**−269 M cycles per process.**
+
+**That arm is the counterexample to our own gate.** `instructions:u` rises while
+cycles fall 22% — the idiv trade. It is the one place the licensed counter would
+have returned the wrong verdict, and it is exactly the shape the directive's
+study-20 note warns about.
+
+**Negative arm with its number:** deleting the `i % ACC` in the quantiser
+row-outer loses on **all five counters, 0/40 rounds** (+10.7% instructions,
++19.0% branches, +36.7% loads, +5.3% cycles) — `Aligned::from_iter_len` ends in
+`Vec::extend` and a `FlatMap` loses the bulk specialisation. Shipping the combined
+version would have landed a **5.3% startup regression while believing a division
+had been removed.**
+
+### THE MERGE IS DEFERRED — a semantic conflict, resolved by its owner
+
+Study 56 and study 57 both rewrote `resolve_into`'s buffers in
+`sota_threats.rs`, from different directions, and **both changes are wanted**:
+
+- **56:** `&mut [usize]` → `&mut [usize; DELTA_CAP]`, writing `adds[add_len & M]`
+  — the mask is what deletes the `cmp`/`ja panic` per event.
+- **57:** `&mut [usize]` → `&mut [RowOffset]`, writing `RowOffset::of(idx)`.
+
+Correct resolution is **`&mut [RowOffset; DELTA_CAP]` with
+`adds[add_len & M] = RowOffset::of(idx)`** — both wins, neither dropped.
+
+**I did not hand-merge it.** The point of making `RowOffset` a newtype was that
+nine producer/kernel sites cannot silently disagree on the unit; that invariant
+belongs to the study that created it, not to my guess under time pressure. Sent
+back with instructions to rebase, re-gate, and — **critically — re-measure against
+post-56 main**, because study 56 itself proved a retained arm's number expires the
+moment another study lands on its substrate (`bcmisc55`: −44.7 → +7.7).
+
+### Study 57's corrections to my brief, all measured
+
+- **My profile table came from a differently-inlined build.**
+  `i8_deltas_dual_inner` does not exist in theirs; `finny_refresh_into` is 6.34%,
+  not 1.56%. **The cause is mine: I profiled `./target-sota`, which I later
+  established was a PRE-52 binary.** I re-profiled to avoid a stale *list* and
+  then handed over a stale *build*. The shape holds — i8 family #1 at 21.95%.
+- **"This block has not been touched at all" is FALSE.** Studies
+  21/25/32/36/37/43/44/46/47/48/51 all worked it. Checking that catalogue is
+  precisely why arm A exists.
+- **The `_inner`/`_generic` split I flagged as a likely coverage failure is
+  CORRECT.** Measured: `hka_shape` sums to `hka_into.calls` exactly ⇒ 100% of
+  HalfKA folds are shaped; the generic path is the **threat channel**, 4.594
+  rows/call, 54.7% of all folded rows. My headline lead was wrong.
+
+### Study 57's own retractions
+
+1. It "found" mid-study that `instructions:u` is **bimodal** (0.694% on
+   byte-identical binaries). **Not real** — a `nohup`'d panel outlived its tool
+   call and appended to the same file as its replacement, scrambling label
+   attribution. Hazard inherited from `tools/perf55/exact55.sh`'s shape;
+   `panel57.sh` now `flock`s its output.
+2. Its own §6 re-pricing of the threat shape dispatch (−1.5%) was wrong; it is
+   **0.63%**. Folds of ≤4 rows are 59.9% of **calls** but only 29.6% of **rows**.
+   **Studies 25 §3, 36 §6 and study 57 have each over-priced this arm ~3× by
+   spending a per-call statistic on a per-row cost.** Arm stays closed.
+
+### FOR A HUMAN RULING — escalated, not actioned
+
+**Startup is now measured for the first time**: 5.42% of frame instructions,
+6.58% of frame cycles (two-budget difference) — the figure study 36 §4 listed as
+unmeasured. **The largest remaining item is the FNV-1a payload checksum at ~542 M
+cycles, ~45% of startup.** It is irreducible without changing the CENN container
+or the shipped net. Reported for a decision rather than changed quietly.
