@@ -399,8 +399,8 @@ pub struct PolicyScores {
 }
 impl PolicyScores {
     pub fn move_score(&self, from: Square, to: Square) -> f32 {
-        let from = from.relative_to(self.stm).index() as usize;
-        let to = to.relative_to(self.stm).index() as usize;
+        let from = from.relative_to(self.stm).idx();
+        let to = to.relative_to(self.stm).idx();
         let index = from * 64 + to;
         match &self.values {
             ScoreValues::Dense(values) => values[index],

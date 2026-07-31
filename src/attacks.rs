@@ -334,19 +334,19 @@ static DISTANCE: [[u8; 64]; 64] = {
 /// Squares a knight on `sq` attacks.
 #[inline]
 pub fn knight_attacks(sq: Square) -> Bitboard {
-    KNIGHT_ATTACKS[sq.index() as usize]
+    KNIGHT_ATTACKS[sq.idx()]
 }
 
 /// Squares a king on `sq` attacks.
 #[inline]
 pub fn king_attacks(sq: Square) -> Bitboard {
-    KING_ATTACKS[sq.index() as usize]
+    KING_ATTACKS[sq.idx()]
 }
 
 /// Squares a pawn of `color` on `sq` attacks.
 #[inline]
 pub fn pawn_attacks(color: Color, sq: Square) -> Bitboard {
-    PAWN_ATTACKS[color as usize][sq.index() as usize]
+    PAWN_ATTACKS[color as usize][sq.idx()]
 }
 
 /// Empty-board attacks for `pt` on `sq`. Debug-asserts `pt != Pawn` — pawns
@@ -360,9 +360,9 @@ pub fn pseudo_attacks(pt: PieceType, sq: Square) -> Bitboard {
     match pt {
         PieceType::Knight => knight_attacks(sq),
         PieceType::King => king_attacks(sq),
-        PieceType::Bishop => PSEUDO_BISHOP[sq.index() as usize],
-        PieceType::Rook => PSEUDO_ROOK[sq.index() as usize],
-        PieceType::Queen => PSEUDO_QUEEN[sq.index() as usize],
+        PieceType::Bishop => PSEUDO_BISHOP[sq.idx()],
+        PieceType::Rook => PSEUDO_ROOK[sq.idx()],
+        PieceType::Queen => PSEUDO_QUEEN[sq.idx()],
         PieceType::Pawn => Bitboard::EMPTY, // unreachable in debug
     }
 }
@@ -377,7 +377,7 @@ pub fn pseudo_attacks(pt: PieceType, sq: Square) -> Bitboard {
 /// keeps the pinner capturable in pin handling.
 #[inline]
 pub fn between(s1: Square, s2: Square) -> Bitboard {
-    BETWEEN[s1.index() as usize][s2.index() as usize]
+    BETWEEN[s1.idx()][s2.idx()]
 }
 
 /// The full line through both squares, extended to the board edges and
@@ -385,7 +385,7 @@ pub fn between(s1: Square, s2: Square) -> Bitboard {
 /// rank, file, or diagonal (including `s1 == s2`). Symmetric.
 #[inline]
 pub fn line(s1: Square, s2: Square) -> Bitboard {
-    LINE[s1.index() as usize][s2.index() as usize]
+    LINE[s1.idx()][s2.idx()]
 }
 
 /// The ray from `s1` (exclusive) through `s2` and past it to the board
@@ -394,7 +394,7 @@ pub fn line(s1: Square, s2: Square) -> Bitboard {
 /// `ray_pass(s1, s2)`. Consumer: NNUE discovered-attack rays (doc 03 §3.4).
 #[inline]
 pub fn ray_pass(s1: Square, s2: Square) -> Bitboard {
-    RAY_PASS[s1.index() as usize][s2.index() as usize]
+    RAY_PASS[s1.idx()][s2.idx()]
 }
 
 /// Chebyshev distance: `max(|Δfile|, |Δrank|)` — king moves between the
@@ -402,7 +402,7 @@ pub fn ray_pass(s1: Square, s2: Square) -> Bitboard {
 /// implementation the table is built from.
 #[inline]
 pub fn distance(s1: Square, s2: Square) -> u8 {
-    DISTANCE[s1.index() as usize][s2.index() as usize]
+    DISTANCE[s1.idx()][s2.idx()]
 }
 
 /// True if `s3` lies on the (extended) line through `s1` and `s2` — the
@@ -578,13 +578,13 @@ impl AttackTables {
     /// capture semantics; off-mask occupancy bits are ignored by design).
     #[inline]
     pub fn rook_attacks(&self, sq: Square, occupied: Bitboard) -> Bitboard {
-        self.slot(self.magics[sq.index() as usize].rook.index(occupied))
+        self.slot(self.magics[sq.idx()].rook.index(occupied))
     }
 
     /// Squares a bishop on `sq` attacks given `occupied`.
     #[inline]
     pub fn bishop_attacks(&self, sq: Square, occupied: Bitboard) -> Bitboard {
-        self.slot(self.magics[sq.index() as usize].bishop.index(occupied))
+        self.slot(self.magics[sq.idx()].bishop.index(occupied))
     }
 
     /// Squares a queen on `sq` attacks given `occupied`: two lookups OR'd —
@@ -767,8 +767,8 @@ fn init_magics(
             );
         }
         match slider {
-            Slider::Bishop => magics[s.index() as usize].bishop = found,
-            Slider::Rook => magics[s.index() as usize].rook = found,
+            Slider::Bishop => magics[s.idx()].bishop = found,
+            Slider::Rook => magics[s.idx()].rook = found,
         }
         offset += size;
     }
@@ -1745,7 +1745,7 @@ mod tests {
         let t = tables();
         let mut expected = 0usize; // rook block starts the shared table
         for sq in Square::all() {
-            let m = &t.magics[sq.index() as usize].rook;
+            let m = &t.magics[sq.idx()].rook;
             assert_eq!(m.offset as usize, expected, "rook offset on {sq}");
             assert_eq!(m.shift, 64 - m.mask.count_ones(), "rook shift on {sq}");
             assert!(
@@ -1756,7 +1756,7 @@ mod tests {
         }
         assert_eq!(expected, ROOK_TABLE_SIZE, "rook block size");
         for sq in Square::all() {
-            let m = &t.magics[sq.index() as usize].bishop;
+            let m = &t.magics[sq.idx()].bishop;
             assert_eq!(m.offset as usize, expected, "bishop offset on {sq}");
             assert_eq!(m.shift, 64 - m.mask.count_ones(), "bishop shift on {sq}");
             assert!(

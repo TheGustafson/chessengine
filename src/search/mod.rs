@@ -2772,7 +2772,7 @@ impl Worker {
                     && prev_move.kind() != MoveKind::Promotion
                 {
                     let pawn_key = self.board.pawn_key();
-                    self.histories.pawn_slot_mut(pawn_key)[pc.index()][sq.index() as usize]
+                    self.histories.pawn_slot_mut(pawn_key)[pc.index()][sq.idx()]
                         .update(params::EVALDIFF_PAWN_MULT() * eval_diff);
                 }
             }
@@ -3438,7 +3438,7 @@ impl Worker {
                     // this is dormant until the search's own updates drive a
                     // quiet's score below `-QHIST_PRUNE_MULT·depth`.
                     let pci = moved_piece.index();
-                    let to = m.to().index() as usize;
+                    let to = m.to().idx();
                     // Perf study 55 mechanism B: three 2-D `[pci][to]` chains,
                     // each re-deriving the same offset and re-checking the inner
                     // row. `stat_score` — called from THIS loop iteration, 160
@@ -3489,10 +3489,7 @@ impl Worker {
                     // keep the bounds check; `clamp(1, 16) - 1` is a provable
                     // 0..=15 and folds it away. Identical for every depth >= 1,
                     // which this arm of the move loop guarantees.
-                    #[cfg(feature = "bcmisc55")]
                     let divisor = params::LMR_DIVISOR[(depth.clamp(1, 16) - 1) as usize];
-                    #[cfg(not(feature = "bcmisc55"))]
-                    let divisor = params::LMR_DIVISOR[depth.min(16) as usize - 1];
                     lmr_depth += history / divisor;
 
                     // Parent futility (design/10 §3.5): the most optimistic
@@ -4259,7 +4256,7 @@ impl Worker {
                         .update(scaled_bonus * params::FL_MAIN_NUM() / params::FL_MAIN_DEN());
                     if pc.piece_type != PieceType::Pawn && prev_move.kind() != MoveKind::Promotion {
                         let pawn_key = self.board.pawn_key();
-                        self.histories.pawn_slot_mut(pawn_key)[pc.index()][sq.index() as usize]
+                        self.histories.pawn_slot_mut(pawn_key)[pc.index()][sq.idx()]
                             .update(scaled_bonus * params::FL_PAWN_NUM() / params::FL_PAWN_DEN());
                     }
                 }
@@ -4416,19 +4413,31 @@ impl Worker {
             self.root_delta > 0,
             "root_delta is beta - alpha, never zero"
         );
-        // Perf study 55 mechanism B: both indices arrive as `i32 as usize`, so
-        // LLVM can prove nothing about them and emits two bounds checks and two
-        // panic edges per MOVE. `clamp` states the range the search already
-        // guarantees. It also closes a latent panic: `move_number` reaches 256
-        // in a 256-move position, one past `reductions: [i32; MAX_MOVES]`.
-        #[cfg(feature = "bcmisc55")]
-        let scale = {
-            const LAST: i32 = crate::moves::MAX_MOVES as i32 - 1;
-            self.reductions[depth.clamp(0, LAST) as usize]
-                * self.reductions[move_number.clamp(0, LAST) as usize]
-        };
-        #[cfg(not(feature = "bcmisc55"))]
-        let scale = self.reductions[depth as usize] * self.reductions[move_number as usize];
+        // Perf study 56 mechanism B — the missing bound, in its cheap spelling.
+        //
+        // Both indices arrive as `i32 as usize`, so the optimizer can prove
+        // nothing about either and emitted two bounds checks and two panic
+        // edges per MOVE. The bound is real: `MAX_MOVES` is 256, `depth` is
+        // clamped to `MAX_PLY - 1` (245) at node entry (N0), and `move_number`
+        // counts moves that have PASSED the legality filter, of which a chess
+        // position has at most 218. So the mask is the identity on every
+        // reachable value.
+        //
+        // **This is a missing bound, not a reachable panic.** Study 55
+        // described it as "a latent panic: move_number reaches 256 in a
+        // 256-move position"; there is no 256-move position — 218 is the
+        // maximum, and `move_number` only counts legal moves. Landed anyway:
+        // it is free correctness and it rides along with a win.
+        //
+        // The SPELLING is what study 55 got wrong, and it is worth 15.2
+        // instructions/node. Study 55 wrote this as `clamp`, which is two
+        // compares and two `cmov`s per index, and measured `bcmisc55` at
+        // **+11.3 i/n on the shipping tree**. The mask is one `and`, equally
+        // provable, and measures **-3.9 i/n** (study 56 §3). Same bound, same
+        // semantics, opposite sign.
+        const RED_M: usize = crate::moves::MAX_MOVES - 1;
+        let scale =
+            self.reductions[depth as usize & RED_M] * self.reductions[move_number as usize & RED_M];
         scale - delta * params::RED_DELTA_MULT() / self.root_delta
             + i32::from(!improving) * scale * params::RED_NON_IMPROVING()
                 / params::RED_NON_IMPROVING_DEN()
@@ -4465,7 +4474,7 @@ impl Worker {
         } else {
             let us = self.board.side_to_move();
             // Two planes, one cell — flat-indexed (`history::piece_to`).
-            let q = crate::history::piece_to(moved_piece.index(), m.to().index() as usize);
+            let q = crate::history::piece_to(moved_piece.index(), m.to().idx());
             params::STATSCORE_MAIN_WEIGHT()
                 * self.histories.main[us as usize][m.raw16() as usize].get()
                 + crate::history::at_piece_to(

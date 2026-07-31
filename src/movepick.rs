@@ -347,7 +347,7 @@ fn score_capture(board: &Board, hist: &Histories, m: Move) -> i32 {
     let victim = board.piece_on(m.to());
     let victim_value = victim.map_or(0, |p| p.piece_type.value());
     let victim_slot = victim.map_or(NO_VICTIM, |p| p.piece_type as usize);
-    let cap_hist = hist.capture[pc.index()][m.to().index() as usize][victim_slot].get();
+    let cap_hist = hist.capture[pc.index()][m.to().idx()][victim_slot].get();
     CAPTURE_MVV_FACTOR() * victim_value + cap_hist
 }
 
@@ -1221,7 +1221,7 @@ impl MovePicker {
             // move the loop has not reached yet, so it asks rather than
             // asserts — the `expect` below stays the loop's own contract.
             if let Some(pc) = board.piece_on(m.from()) {
-                let q = crate::history::piece_to(pc.index(), m.to().index() as usize);
+                let q = crate::history::piece_to(pc.index(), m.to().idx());
                 crate::history::prefetch_piece_to(pawn_plane, q);
                 crate::history::prefetch_piece_to(c1, q);
                 crate::history::prefetch_piece_to(c2, q);
@@ -1252,7 +1252,7 @@ impl MovePicker {
                 let i = $i;
                 let row = $row;
                 let pci = $pci;
-                let to = m.to().index() as usize;
+                let to = m.to().idx();
                 let raw = m.raw16() as usize;
                 let q = crate::history::piece_to(pci, to);
 
@@ -1406,7 +1406,7 @@ impl MovePicker {
                 let pc = board
                     .piece_on(m.from())
                     .expect("an evasion starts on a piece of the side to move");
-                main_plane[m.raw16() as usize].get() + c1[pc.index()][m.to().index() as usize].get()
+                main_plane[m.raw16() as usize].get() + c1[pc.index()][m.to().idx()].get()
             };
             self.set_slot(i, ExtMove::new(m, value));
         }
@@ -2158,9 +2158,8 @@ mod tests {
         // becomes a positive material demand the even trade cannot meet → BAD,
         // emitted after every (good) quiet.
         let mut poked = Histories::new();
-        poked.capture[Piece::new(Color::White, PieceType::Rook).index()]
-            [Square::A2.index() as usize][PieceType::Rook as usize] =
-            crate::history::StatEntry::new(-10692);
+        poked.capture[Piece::new(Color::White, PieceType::Rook).index()][Square::A2.idx()]
+            [PieceType::Rook as usize] = crate::history::StatEntry::new(-10692);
         let emitted = drain(
             MovePicker::new(&b, Move::NULL, 8, 0, sentinels()),
             &b,

@@ -1,0 +1,5 @@
+ctl56c
+a_rinto rinto56
+a_inatk inatk56
+a_innnue innnue56
+a_inmisc inmisc56

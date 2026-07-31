@@ -209,7 +209,7 @@ pub fn psqt_eval(board: &Board) -> Value {
         for pt in PieceType::ALL {
             for sq in board.pieces(color, pt) {
                 // relative_to: White reads sq as-is, Black mirrors ranks.
-                total += PSQT[pt as usize][sq.relative_to(color).index() as usize] * sign;
+                total += PSQT[pt as usize][sq.relative_to(color).idx()] * sign;
                 phase += GAME_PHASE_INC[pt as usize];
             }
         }
@@ -237,10 +237,10 @@ mod tests {
         // A PSQT entry is exactly value + table; spot-check via corner
         // squares whose CPW row/col are unambiguous. White pawn a2:
         // a2 = index 8, CPW index 8 ^ 56 = 48 (row 6, col 0) = -35 mg, 13 eg.
-        let pawn_a2 = PSQT[PieceType::Pawn as usize][Square::A2.index() as usize];
+        let pawn_a2 = PSQT[PieceType::Pawn as usize][Square::A2.idx()];
         assert_eq!(pawn_a2, s(82 - 35, 94 + 13));
         // White knight a1: CPW index 56 (row 7, col 0) = -105 mg, -29 eg.
-        let knight_a1 = PSQT[PieceType::Knight as usize][Square::A1.index() as usize];
+        let knight_a1 = PSQT[PieceType::Knight as usize][Square::A1.idx()];
         assert_eq!(knight_a1, s(337 - 105, 281 - 29));
     }
 

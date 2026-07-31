@@ -1,0 +1,5 @@
+a_atk1 inatk56a
+a_atk2 inatk56b
+a_stat instat56
+c_fin m56red2,contcorr56,m56dbuf,m56lmr,inatk56
+c_fins m56red2,contcorr56,m56dbuf,m56lmr,inatk56,instat56

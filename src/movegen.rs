@@ -445,6 +445,7 @@ impl Board {
     /// testing hammers (doc 05 §3.8). The `||` chain short-circuits
     /// between the five terms; sliders first, they answer most often on
     /// the king-safety probes this serves.
+    #[inline(always)]
     pub fn attackers_to_exist(&self, sq: Square, occupied: Bitboard, c: Color) -> bool {
         let tables = attacks::tables();
         let queens = self.pieces(c, PieceType::Queen);
