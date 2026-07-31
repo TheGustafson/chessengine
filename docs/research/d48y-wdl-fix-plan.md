@@ -12136,3 +12136,77 @@ fix. Re-run the test when `n` has grown.
 
 **D49:** sb1109, 193k pos/s, four services active, 156 GB disk. **Study 61**
 building.
+
+## Tick — 2026-07-31, study 61 merged: −68.87 i/n AND the tenth route closed with a model
+
+**Merged `d99d537f`. Gate green** (`All checks passed.`, `Bench: 587683`), verified
+from my own v3 build: **post-58 5834.4 → post-61 5760.1 i/n = −74.4** for studies
+59 + 61 combined, against a claimed sum of −95.84 — **78% realised, non-additive
+as this series keeps showing.**
+
+### The win is a stale `match` arm — the series' recurring shape, again
+
+`i8_deltas_into_inner`'s shape dispatch matches four `(adds, subs)` pairs chosen
+in **study 25, when the kernel was HalfKA-only** — where those four are a
+*complete* cover. **Study 32 then routed the entire FullThreats channel through
+the same dispatch and nobody re-read the `match`.** Counting the threat channel's
+pairs for the first time: **19.11% of threat folds are a SINGLE weight row running
+the runtime-length generic kernel.** Straight-line coverage 27.27% → **68.40%**.
+
+That is now four studies whose best arm came from re-reading a decision made under
+assumptions a later change invalidated (37→57, 25→61, and study 58's inverse).
+
+### THE TENTH ROUTE IS CLOSED — with a validated model, not a shrug
+
+Two new instruments — a **fill-SOURCE census** (L2/L3/DRAM) and a
+**reuse-distance census** of every folded weight row — combine into a capacity
+model with **no fitted parameter** that predicts the hardware:
+
+| | model | measured |
+|---|---:|---:|
+| L1 hit on weight-row lines | 18.5% | **19.1%** |
+| P(L2 hit \| L1 miss) | 70.1% | **69.0%** |
+
+**The cache is already extracting essentially all the locality the access stream
+contains.** That explains the whole nine-route catalogue *at once*: **you cannot
+prefetch, pack or re-order away a CAPACITY miss.** Nine dead prefetch arms
+attacked L1 arrival, while **85.3% of L3 fills and 69.6% of DRAM fills are weight
+rows** — the money was one level down.
+
+**This is what a closed question should look like:** not "we tried and failed",
+but a mechanism that predicts the measurements and says why every route failed.
+
+### And it hands the ARCHITECTURE a number it did not have
+
+The model leaves exactly one free variable — **bytes per row** — and says width is
+**convex**: **1280 → 1024 is a 20% byte cut but a 30% cut in L2-MISSING bytes.**
+The standing width finding (768–1536 is ~Elo-neutral at equal time) was measured
+on *speed and fit*; this is the first cache-side argument in that decision, and it
+points **down**. Relevant to any gen-2 architecture choice after D49.
+
+### Corrections to my brief, all checked
+
+- **`cycles:u` non-robustness confirmed harder than I stated** — its
+  byte-identical null moved **further than the arm**. No cycles or wall-clock
+  number is quoted anywhere in the study.
+- **Branch mispredicts are ~11%, not the 9.4% I gave** — but **study 27 already
+  attacked that block and got a NULL on branch misses**, which is why it did not
+  go there. My "second largest block" fallback was already closed.
+- **"55.05% of miss latency" is IBS *unoverlapped* latency**, and study 51 §9
+  warns that is not cycles. I passed it on as though it were.
+- **New trap: `.text` md5 is NOT a valid identity check across a Cargo
+  feature-set change** — a Rust symbol name embeds the crate metadata hash, which
+  appears in objdump's branch annotations. It remains correct for same-feature
+  edits. **I have been recommending `.text` md5 as the provenance check all day**,
+  including in `engines/canonical/MANIFEST.md`; that guidance needs the caveat.
+
+**Negatives with numbers**, including its own hypothesis **refuted before an arm
+was written** (wider tile → L2 streamer trains: L3 fills go *up* +24.3% at
+REGS=20), and an IBS latency reading **retracted before publication**.
+
+**Still open, best-priced:** 31.60% of threat folds remain generic, and the win
+per converted fold **grows** with the shape (−115 i/fold one-sided vs −322
+three-row) — so continue the table, or fix the generic kernel's loop control,
+which now looks cheaper.
+
+**D49:** sb1109+, 193k pos/s, four services active.
