@@ -107,3 +107,5 @@ gate52*.log
 pgo52.log
 # perf study 53 build + measurement artifacts
 /bin53/
+# perf study 54 arm binaries (rebuildable via tools/perf54/build54.sh)
+bin54/
