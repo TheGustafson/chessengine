@@ -47,11 +47,18 @@ echo "  (canonical D48X@600 is 610.3; D49 measured 415-422 at 756 through sb270)
 
 echo
 echo "== 3. LADDER: pick D49's own optimum (1466 games each, +/-10 Elo) =="
-echo "  bash tools/screen.sh $OUT/d49-sb${SB}-880.cenn $OUT/d49-sb${SB}-756.cenn 1466 25000"
-echo "  bash tools/screen.sh $OUT/d49-sb${SB}-640.cenn $OUT/d49-sb${SB}-756.cenn 1466 25000"
+echo "  ENGINE=$BIN bash tools/screen.sh $OUT/d49-sb${SB}-880.cenn $OUT/d49-sb${SB}-756.cenn 1466 25000"
+echo "  ENGINE=$BIN bash tools/screen.sh $OUT/d49-sb${SB}-640.cenn $OUT/d49-sb${SB}-756.cenn 1466 25000"
 echo
 echo "== 4. VERDICT: D49 at its optimum vs canonical AT ITS OWN OPTIMUM =="
-echo "  bash tools/screen.sh $OUT/d49-sb${SB}-<best>.cenn engines/canonical/net.cenn 5880 25000"
+echo "  ENGINE=$BIN bash tools/screen.sh $OUT/d49-sb${SB}-<best>.cenn engines/canonical/net.cenn 5880 25000"
 echo
+echo
+echo "ENGINE= IS NOT OPTIONAL. engines/canonical/archon (screen.sh's default)"
+echo "predates CENN-v5 and CANNOT load a netpack-with-THREAT_QUANT container."
+echo "On 2026-07-30 that silently disabled NNUE on one side and returned"
+echo "-1106.98 Elo over 1466 games with FIVE draws. screen.sh now refuses to"
+echo "start in that case, but the invocations above name the right engine so it"
+echo "never gets that far."
 echo "Run each as a systemd SERVICE (a --scope dies with the session and killed"
 echo "a 5880-game screen at 1043). ENGINE=$BIN CONC=<=10."

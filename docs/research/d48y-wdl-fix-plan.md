@@ -9397,3 +9397,21 @@ rule recorded as "don't put DATA in /tmp" did not fire for "don't put a BUILD
 TREE in /tmp", because I matched the rule against the noun rather than the
 mechanism. Same failure as `oomguard` leaking three times by matching process
 NAMES instead of what a process IS.
+
+## Tick — the verdict script is now pinned to a CEN5-capable engine
+
+**D49x: sb616.** Anneal: EMA 0.010673 (sb600) → 0.010662 (sb610), **−11e-6 in the
+first 10 sb**. A flat extrapolation gives −99e-6 over the remaining 90, against
+the **−301e-6** D49's previous anneal delivered — but **n=1 and anneals accelerate
+as LR → 0**, so that is not a projection. The pre-registered −15 to −1 Elo range
+stands unmodified.
+
+**Closed the last hole in the CEN5 trap.** `screen.sh` now refuses to start when
+an engine cannot load a net — but `d49_verdict.sh` *printed* its three screen
+invocations **without `ENGINE=`**, mentioning it only in a trailing note. Anyone
+copy-pasting them would have hit the guard and had to diagnose it at verdict time.
+All three now carry `ENGINE=$BIN` inline, plus an explicit warning block naming
+the failure: *engines/canonical/archon predates CENN-v5, silently disabled NNUE on
+one side, and returned −1106.98 over 1466 games with five draws.*
+
+Box: 8872 MB, load 1.53, study 49 running on `current_full`.
