@@ -15,6 +15,7 @@
 //! the node count and the eval hash are untouched, and the study verifies
 //! that.
 
+use super::sota_features::RowOffset;
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 /// One counted site: how many times it ran, and how many weight rows it folded.
@@ -83,9 +84,9 @@ pub static ZERO_ROW_THR: Site = Site::new();
 /// costs one comparison and only a genuinely zero row pays the full `acc`
 /// scan. Diagnostic build only.
 #[inline]
-pub fn note_zero_rows(site: &Site, weights: &[i8], idx: &[usize], acc: usize) {
+pub fn note_zero_rows(site: &Site, weights: &[i8], idx: &[RowOffset], acc: usize) {
     for &r in idx {
-        let base = r * acc;
+        let base = r.0;
         if let Some(row) = weights.get(base..base + acc) {
             if row.iter().all(|&w| w == 0) {
                 site.calls.fetch_add(1, Relaxed);
@@ -112,10 +113,10 @@ static ROWMAXABS: [std::sync::OnceLock<Vec<u8>>; ROWCH] =
 
 /// Charge each index in `idx` to its row's fold counter.
 #[inline]
-pub fn note_row_fold(ch: usize, idx: &[usize]) {
+pub fn note_row_fold(ch: usize, idx: &[RowOffset]) {
     if let Some(c) = ROWCOUNT[ch].get() {
         for &r in idx {
-            if let Some(cell) = c.get(r) {
+            if let Some(cell) = c.get(r.feature()) {
                 cell.fetch_add(1, Relaxed);
             }
         }
@@ -264,7 +265,7 @@ pub const THR_CANCEL_NAMES: [&str; 6] = [
 /// lists are at most `DELTA_CAP` long and in practice ~5, and a hash set here
 /// would allocate inside the hot fold.
 #[inline]
-pub fn note_thr_cancel(adds: [&[usize]; 2], subs: [&[usize]; 2]) {
+pub fn note_thr_cancel(adds: [&[RowOffset]; 2], subs: [&[RowOffset]; 2]) {
     THR_CANCEL[0].fetch_add(1, Relaxed);
     for p in 0..2 {
         let (a, s) = (adds[p], subs[p]);
@@ -283,7 +284,8 @@ pub fn note_thr_cancel(adds: [&[usize]; 2], subs: [&[usize]; 2]) {
             }
         }
         THR_CANCEL[3].fetch_add(cancel, Relaxed);
-        let dups = |v: &[usize]| (1..v.len()).filter(|&i| v[..i].contains(&v[i])).count() as u64;
+        let dups =
+            |v: &[RowOffset]| (1..v.len()).filter(|&i| v[..i].contains(&v[i])).count() as u64;
         THR_CANCEL[4].fetch_add(dups(a), Relaxed);
         THR_CANCEL[5].fetch_add(dups(s), Relaxed);
     }

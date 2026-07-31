@@ -5,7 +5,7 @@
 //! changed feature. The scalar backend is the bit-exact reference; AVX2 is
 //! selected once at startup and preserves wrapping i16 arithmetic.
 
-use super::sota_features::ACC;
+use super::sota_features::{ACC, RowOffset};
 use super::sota_head::{FT_QUANT, FT_SHIFT, L2, L3, MAX_THREAT_SHIFT};
 use std::sync::LazyLock;
 
@@ -30,11 +30,11 @@ const _: () = assert!(
 // the threat channel and the HalfKA channel share every kernel below.
 //
 // In-place fold: the Finny cache's cold from-scratch build.
-type ApplyI8Fn = fn(&mut [i16; ACC], &[i8], &[usize], &[usize]);
+type ApplyI8Fn = fn(&mut [i16; ACC], &[i8], &[RowOffset], &[RowOffset]);
 // Fused copy+apply: read `src`, apply deltas, write `dst` in ONE pass — the
 // lazy fold's child = parent ± deltas without a separate ~1.5 KB memmove
 // (profiling-study §4.3/opt #2). `dst`/`src` may not alias.
-type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[usize], &[usize]);
+type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[RowOffset], &[RowOffset]);
 // TWO-DESTINATION in-place apply (perf study 9 item 4): `acc ±= deltas`, and
 // the result is ALSO written to `out`. The Finny cached refresh needs the same
 // bytes in two places — the cache entry (its memo for the next refresh with
@@ -43,7 +43,7 @@ type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[usize], &[usize])
 // Both destinations are written from the SAME registers the fold already
 // holds, so the second home costs one store per block instead of a whole
 // read+write pass. `acc` and `out` may not alias.
-type ApplyI8DualFn = fn(&mut [i16; ACC], &mut [i16; ACC], &[i8], &[usize], &[usize]);
+type ApplyI8DualFn = fn(&mut [i16; ACC], &mut [i16; ACC], &[i8], &[RowOffset], &[RowOffset]);
 type L1DotFn = fn(&mut [i32; L2], &[u8; ACC], &[u16], &[i8]);
 // The FT merge + pairwise activation. BOTH channels carry a net-dependent
 // rescale into it, and they are independent of one another:
@@ -255,7 +255,7 @@ pub(crate) mod probe {
     /// `adds.len()`/`subs.len()` for their shape dispatch, so the SLICE
     /// LENGTHS must be preserved exactly — only the values change.
     #[cfg(feature = "probe-wpin")]
-    pub(crate) static ZERO_IDX: [usize; 64] = [0usize; 64];
+    pub(crate) static ZERO_IDX: [super::RowOffset; 64] = [super::RowOffset(0); 64];
 
     /// Perf study 39's **SUBTRACTIVE** arm at study 31's magnitude, plus the
     /// control that says whether a pinning probe measures locality at all.
@@ -527,8 +527,8 @@ pub(crate) mod probe {
 #[cfg(feature = "probe-wpin")]
 macro_rules! pin_rows {
     ($adds:ident, $subs:ident) => {
-        let $adds: &[usize] = &probe::ZERO_IDX[..$adds.len().min(64)];
-        let $subs: &[usize] = &probe::ZERO_IDX[..$subs.len().min(64)];
+        let $adds: &[RowOffset] = &probe::ZERO_IDX[..$adds.len().min(64)];
+        let $subs: &[RowOffset] = &probe::ZERO_IDX[..$subs.len().min(64)];
     };
 }
 #[cfg(not(feature = "probe-wpin"))]
@@ -566,8 +566,8 @@ macro_rules! pin_dst {
 pub(crate) fn apply_halfka_deltas(
     acc: &mut [i16; ACC],
     weights: &[i8],
-    adds: &[usize],
-    subs: &[usize],
+    adds: &[RowOffset],
+    subs: &[RowOffset],
 ) {
     #[cfg(feature = "foldcount")]
     super::foldcount::HKA_INPLACE.hit(adds.len() + subs.len());
@@ -587,8 +587,8 @@ pub(crate) fn apply_halfka_deltas_into(
     dst: &mut [i16; ACC],
     src: &[i16; ACC],
     weights: &[i8],
-    adds: &[usize],
-    subs: &[usize],
+    adds: &[RowOffset],
+    subs: &[RowOffset],
 ) {
     #[cfg(feature = "foldcount")]
     {
@@ -618,8 +618,8 @@ pub(crate) fn apply_halfka_deltas_dual(
     acc: &mut [i16; ACC],
     out: &mut [i16; ACC],
     weights: &[i8],
-    adds: &[usize],
-    subs: &[usize],
+    adds: &[RowOffset],
+    subs: &[RowOffset],
 ) {
     #[cfg(feature = "foldcount")]
     {
@@ -650,8 +650,8 @@ pub(crate) fn apply_threat_deltas_into(
     dst: &mut [i16; ACC],
     src: &[i16; ACC],
     weights: &[i8],
-    adds: &[usize],
-    subs: &[usize],
+    adds: &[RowOffset],
+    subs: &[RowOffset],
 ) {
     #[cfg(feature = "foldcount")]
     {
@@ -865,14 +865,19 @@ pub(crate) fn skip_dot_i8(ft: &[u8], lane: &[i8]) -> i32 {
 mod scalar {
     use super::*;
 
-    pub(super) fn i8_deltas(acc: &mut [i16; ACC], weights: &[i8], adds: &[usize], subs: &[usize]) {
+    pub(super) fn i8_deltas(
+        acc: &mut [i16; ACC],
+        weights: &[i8],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
+    ) {
         for lane in 0..ACC {
             let mut value = acc[lane];
             for &feature in adds {
-                value = value.wrapping_add(i16::from(weights[feature * ACC + lane]));
+                value = value.wrapping_add(i16::from(weights[feature.0 + lane]));
             }
             for &feature in subs {
-                value = value.wrapping_sub(i16::from(weights[feature * ACC + lane]));
+                value = value.wrapping_sub(i16::from(weights[feature.0 + lane]));
             }
             acc[lane] = value;
         }
@@ -882,16 +887,16 @@ mod scalar {
         acc: &mut [i16; ACC],
         out: &mut [i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         for lane in 0..ACC {
             let mut value = acc[lane];
             for &feature in adds {
-                value = value.wrapping_add(i16::from(weights[feature * ACC + lane]));
+                value = value.wrapping_add(i16::from(weights[feature.0 + lane]));
             }
             for &feature in subs {
-                value = value.wrapping_sub(i16::from(weights[feature * ACC + lane]));
+                value = value.wrapping_sub(i16::from(weights[feature.0 + lane]));
             }
             acc[lane] = value;
             out[lane] = value;
@@ -902,16 +907,16 @@ mod scalar {
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         for lane in 0..ACC {
             let mut value = src[lane];
             for &feature in adds {
-                value = value.wrapping_add(i16::from(weights[feature * ACC + lane]));
+                value = value.wrapping_add(i16::from(weights[feature.0 + lane]));
             }
             for &feature in subs {
-                value = value.wrapping_sub(i16::from(weights[feature * ACC + lane]));
+                value = value.wrapping_sub(i16::from(weights[feature.0 + lane]));
             }
             dst[lane] = value;
         }
@@ -1253,20 +1258,20 @@ mod avx2 {
     unsafe fn i8_deltas_inner(
         acc: &mut [i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         // SAFETY: as `i8_deltas_into_inner`; each row is `ACC` in-bounds i8.
         unsafe {
             for off in (0..ACC).step_by(LANES) {
                 let mut value = _mm256_loadu_si256(acc.as_ptr().add(off).cast());
                 for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
+                    let row = weights.as_ptr().add(feature.0 + off);
                     value =
                         _mm256_add_epi16(value, _mm256_cvtepi8_epi16(_mm_loadu_si128(row.cast())));
                 }
                 for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
+                    let row = weights.as_ptr().add(feature.0 + off);
                     value =
                         _mm256_sub_epi16(value, _mm256_cvtepi8_epi16(_mm_loadu_si128(row.cast())));
                 }
@@ -1282,20 +1287,20 @@ mod avx2 {
         acc: &mut [i16; ACC],
         out: &mut [i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         // SAFETY: as `i8_deltas_inner`; `out` is a disjoint ACC-wide array.
         unsafe {
             for off in (0..ACC).step_by(LANES) {
                 let mut value = _mm256_loadu_si256(acc.as_ptr().add(off).cast());
                 for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
+                    let row = weights.as_ptr().add(feature.0 + off);
                     value =
                         _mm256_add_epi16(value, _mm256_cvtepi8_epi16(_mm_loadu_si128(row.cast())));
                 }
                 for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
+                    let row = weights.as_ptr().add(feature.0 + off);
                     value =
                         _mm256_sub_epi16(value, _mm256_cvtepi8_epi16(_mm_loadu_si128(row.cast())));
                 }
@@ -1310,47 +1315,34 @@ mod avx2 {
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         // SAFETY: as i8_deltas_inner; reads `src`, writes the disjoint `dst`.
-        // §6-F hoist + chunking — see the doc on that kernel.
+        //
+        // PERF STUDY 57 DELETED THE §6-F HOIST HERE, and the deletion is the
+        // point rather than a tidy-up. This kernel used to carry a
+        // `[MaybeUninit<usize>; 96]` pair plus a chunking loop whose ONLY job
+        // was to compute `feature * ACC` once instead of once per 16-lane
+        // block. Now that the row list arrives pre-scaled as [`RowOffset`],
+        // there is nothing left to hoist: the array, the two `assume_init`
+        // reads, the chunk cursor and the `source` re-point are all dead, and
+        // removing them takes the last `MaybeUninit` out of this backend.
+        // Bit-identical: same rows, same order (adds then subs), same wrapping
+        // i16 lane arithmetic — the chunked form folded the same multiset in
+        // the same sequence, it just re-entered the block loop every 96 rows.
         unsafe {
-            const CAP: usize = 96;
-            // MaybeUninit: only the written prefix is ever read — the zeroing
-            // memset of 2x96 usizes per call cost more than the hoist saved
-            // on the <=2-event HalfKA folds (measured flat on first cut).
-            let mut a_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
-            let mut s_off = [core::mem::MaybeUninit::<usize>::uninit(); CAP];
-            let (mut ai, mut si) = (0usize, 0usize);
-            let mut source: *const i16 = src.as_ptr();
-            loop {
-                let an = (adds.len() - ai).min(CAP);
-                let sn = (subs.len() - si).min(CAP);
-                for k in 0..an {
-                    a_off[k].write(adds[ai + k] * ACC);
+            for off in (0..ACC).step_by(LANES) {
+                let mut value = _mm256_loadu_si256(src.as_ptr().add(off).cast());
+                for &base in adds {
+                    let bytes = _mm_loadu_si128(weights.as_ptr().add(base.0 + off).cast());
+                    value = _mm256_add_epi16(value, _mm256_cvtepi8_epi16(bytes));
                 }
-                for k in 0..sn {
-                    s_off[k].write(subs[si + k] * ACC);
+                for &base in subs {
+                    let bytes = _mm_loadu_si128(weights.as_ptr().add(base.0 + off).cast());
+                    value = _mm256_sub_epi16(value, _mm256_cvtepi8_epi16(bytes));
                 }
-                for off in (0..ACC).step_by(LANES) {
-                    let mut value = _mm256_loadu_si256(source.add(off).cast());
-                    for base in a_off[..an].iter().map(|m| m.assume_init()) {
-                        let bytes = _mm_loadu_si128(weights.as_ptr().add(base + off).cast());
-                        value = _mm256_add_epi16(value, _mm256_cvtepi8_epi16(bytes));
-                    }
-                    for base in s_off[..sn].iter().map(|m| m.assume_init()) {
-                        let bytes = _mm_loadu_si128(weights.as_ptr().add(base + off).cast());
-                        value = _mm256_sub_epi16(value, _mm256_cvtepi8_epi16(bytes));
-                    }
-                    _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), value);
-                }
-                ai += an;
-                si += sn;
-                if ai >= adds.len() && si >= subs.len() {
-                    break;
-                }
-                source = dst.as_ptr();
+                _mm256_storeu_si256(dst.as_mut_ptr().add(off).cast(), value);
             }
         }
     }
@@ -1359,14 +1351,19 @@ mod avx2 {
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         // SAFETY: installed only after runtime AVX2 detection.
         unsafe { i8_deltas_into_inner(dst, src, weights, adds, subs) }
     }
 
-    pub(super) fn i8_deltas(acc: &mut [i16; ACC], weights: &[i8], adds: &[usize], subs: &[usize]) {
+    pub(super) fn i8_deltas(
+        acc: &mut [i16; ACC],
+        weights: &[i8],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
+    ) {
         // SAFETY: installed only after runtime AVX2 detection.
         unsafe { i8_deltas_inner(acc, weights, adds, subs) }
     }
@@ -1375,8 +1372,8 @@ mod avx2 {
         acc: &mut [i16; ACC],
         out: &mut [i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         // SAFETY: installed only after runtime AVX2 detection.
         unsafe { i8_deltas_dual_inner(acc, out, weights, adds, subs) }
@@ -1768,8 +1765,8 @@ mod avx512 {
     unsafe fn i8_deltas_inner(
         acc: &mut [i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         // SAFETY: as `i8_deltas_into_inner`; each row is `ACC` in-bounds i8.
         unsafe {
@@ -1780,14 +1777,14 @@ mod avx512 {
                     *vk = _mm512_loadu_si512(acc.as_ptr().add(off + k * LANES).cast());
                 }
                 for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
+                    let row = weights.as_ptr().add(feature.0 + off);
                     for (k, vk) in v.iter_mut().enumerate() {
                         let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
                         *vk = _mm512_add_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
                     }
                 }
                 for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
+                    let row = weights.as_ptr().add(feature.0 + off);
                     for (k, vk) in v.iter_mut().enumerate() {
                         let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
                         *vk = _mm512_sub_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
@@ -1808,8 +1805,8 @@ mod avx512 {
         acc: &mut [i16; ACC],
         out: &mut [i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         // SAFETY: as `i8_deltas_inner`; `out` is a disjoint ACC-wide array.
         unsafe {
@@ -1820,14 +1817,14 @@ mod avx512 {
                     *vk = _mm512_loadu_si512(acc.as_ptr().add(off + k * LANES).cast());
                 }
                 for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
+                    let row = weights.as_ptr().add(feature.0 + off);
                     for (k, vk) in v.iter_mut().enumerate() {
                         let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
                         *vk = _mm512_add_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
                     }
                 }
                 for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
+                    let row = weights.as_ptr().add(feature.0 + off);
                     for (k, vk) in v.iter_mut().enumerate() {
                         let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
                         *vk = _mm512_sub_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
@@ -1887,8 +1884,8 @@ mod avx512 {
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         // SAFETY: as `i8_deltas_into_inner`. The caller has checked
         // `adds.len() == NA` and `subs.len() == NS`, so every index read below
@@ -1897,11 +1894,11 @@ mod avx512 {
         unsafe {
             let mut arow = [0usize; NA];
             for (slot, &feature) in arow.iter_mut().zip(adds) {
-                *slot = feature * ACC;
+                *slot = feature.0;
             }
             let mut srow = [0usize; NS];
             for (slot, &feature) in srow.iter_mut().zip(subs) {
-                *slot = feature * ACC;
+                *slot = feature.0;
             }
             let mut off = 0;
             while off + TILE <= ACC {
@@ -1936,8 +1933,8 @@ mod avx512 {
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         // Perf study 25 arm 1 — dispatch on the SHAPE of the delta set.
         //
@@ -2058,8 +2055,8 @@ mod avx512 {
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         // SAFETY: as `i8_deltas_into_inner`; reads `src`, writes the disjoint
         // `dst`, and each row is a 32-byte load sign-extended to 32 i16 lanes.
@@ -2073,14 +2070,14 @@ mod avx512 {
                     *vk = _mm512_loadu_si512(src.as_ptr().add(off + k * LANES).cast());
                 }
                 for &feature in adds {
-                    let row = weights.as_ptr().add(feature * ACC + off);
+                    let row = weights.as_ptr().add(feature.0 + off);
                     for (k, vk) in v.iter_mut().enumerate() {
                         let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
                         *vk = _mm512_add_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
                     }
                 }
                 for &feature in subs {
-                    let row = weights.as_ptr().add(feature * ACC + off);
+                    let row = weights.as_ptr().add(feature.0 + off);
                     for (k, vk) in v.iter_mut().enumerate() {
                         let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
                         *vk = _mm512_sub_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
@@ -2420,7 +2417,12 @@ mod avx512 {
         }
     }
 
-    pub(super) fn i8_deltas(acc: &mut [i16; ACC], weights: &[i8], adds: &[usize], subs: &[usize]) {
+    pub(super) fn i8_deltas(
+        acc: &mut [i16; ACC],
+        weights: &[i8],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
+    ) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
         unsafe { i8_deltas_inner(acc, weights, adds, subs) }
     }
@@ -2429,8 +2431,8 @@ mod avx512 {
         acc: &mut [i16; ACC],
         out: &mut [i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
         unsafe { i8_deltas_dual_inner(acc, out, weights, adds, subs) }
@@ -2440,8 +2442,8 @@ mod avx512 {
         dst: &mut [i16; ACC],
         src: &[i16; ACC],
         weights: &[i8],
-        adds: &[usize],
-        subs: &[usize],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
     ) {
         // SAFETY: installed only after runtime avx512f+bw+vnni detection.
         unsafe { i8_deltas_into_inner(dst, src, weights, adds, subs) }
@@ -2920,8 +2922,8 @@ mod tests {
             *value = (i as u8).wrapping_mul(173) as i8;
         }
         let seed = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
-        let adds = [0, 2, 2, 6, 1];
-        let subs = [3, 5, 0, 3];
+        let adds = [0, 2, 2, 6, 1].map(RowOffset::of);
+        let subs = [3, 5, 0, 3].map(RowOffset::of);
 
         let mut reference = seed;
         scalar::i8_deltas(&mut reference, &i8_weights, &adds, &subs);
@@ -2952,8 +2954,10 @@ mod tests {
             *value = (i as u8).wrapping_mul(173) as i8;
         }
         let seed: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
-        let adds: Vec<usize> = (0..240).map(|i| (i * 7) % ROWS).collect();
-        let subs: Vec<usize> = (0..200).map(|i| (i * 5 + 3) % ROWS).collect();
+        let adds: Vec<RowOffset> = (0..240).map(|i| RowOffset::of((i * 7) % ROWS)).collect();
+        let subs: Vec<RowOffset> = (0..200)
+            .map(|i| RowOffset::of((i * 5 + 3) % ROWS))
+            .collect();
 
         for (a, s) in [
             (&adds[..], &subs[..]),
@@ -2996,8 +3000,8 @@ mod tests {
         }
         let src: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
         // Distinct row indices per slot so a transposed arm cannot cancel.
-        let adds = [1usize, 4];
-        let subs = [2usize, 6];
+        let adds = [1usize, 4].map(RowOffset::of);
+        let subs = [2usize, 6].map(RowOffset::of);
         for na in 0..=2 {
             for ns in 0..=2 {
                 let (a, s) = (&adds[..na], &subs[..ns]);
@@ -3037,8 +3041,8 @@ mod tests {
         }
         let src: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
         // Disjoint index pools, so an add applied as a sub cannot cancel.
-        let adds: Vec<usize> = (0..14).map(|i| i * 2).collect();
-        let subs: Vec<usize> = (0..14).map(|i| i * 2 + 1).collect();
+        let adds: Vec<RowOffset> = (0..14).map(|i| RowOffset::of(i * 2)).collect();
+        let subs: Vec<RowOffset> = (0..14).map(|i| RowOffset::of(i * 2 + 1)).collect();
         for na in 0..=14 {
             for ns in 0..=14 {
                 let (a, s) = (&adds[..na], &subs[..ns]);
@@ -3066,8 +3070,10 @@ mod tests {
             *value = (i as u8).wrapping_mul(173) as i8;
         }
         let seed: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
-        let adds: Vec<usize> = (0..240).map(|i| (i * 7) % ROWS).collect();
-        let subs: Vec<usize> = (0..200).map(|i| (i * 5 + 3) % ROWS).collect();
+        let adds: Vec<RowOffset> = (0..240).map(|i| RowOffset::of((i * 7) % ROWS)).collect();
+        let subs: Vec<RowOffset> = (0..200)
+            .map(|i| RowOffset::of((i * 5 + 3) % ROWS))
+            .collect();
 
         #[allow(clippy::type_complexity)]
         let mut backends: Vec<(&str, ApplyI8Fn, ApplyI8DualFn)> =
@@ -3162,8 +3168,8 @@ mod tests {
             *value = (i as u8).wrapping_mul(173) as i8;
         }
         let seed: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
-        let adds = [0, 2, 2, 6, 1];
-        let subs = [3, 5, 0, 3];
+        let adds = [0, 2, 2, 6, 1].map(RowOffset::of);
+        let subs = [3, 5, 0, 3].map(RowOffset::of);
         // LONG lists, run through EVERY backend (perf study 12, review C
         // finding 9). The `_into` kernels used to chunk their feature lists at
         // CAP = 96 and re-read `dst` as the source for each later chunk; the
@@ -3172,8 +3178,8 @@ mod tests {
         // test drove the DISPATCHED backend, so on any given box one of the two
         // shapes went unexercised. These straddle the old boundary in both
         // directions.
-        let long_adds: Vec<usize> = (0..240).map(|i| (i * 7 + 3) % 7).collect();
-        let long_subs: Vec<usize> = (0..200).map(|i| (i * 5 + 1) % 7).collect();
+        let long_adds: Vec<RowOffset> = (0..240).map(|i| RowOffset::of((i * 7 + 3) % 7)).collect();
+        let long_subs: Vec<RowOffset> = (0..200).map(|i| RowOffset::of((i * 5 + 1) % 7)).collect();
 
         let mut ft = [0u8; ACC];
         for (i, value) in ft.iter_mut().enumerate() {

@@ -92,7 +92,7 @@
 
 use super::sota_accumulator::{psqt_add, psqt_sub};
 use super::sota_features::{
-    ACC, KEPT_VICTIMS, THREAT_DIMS, ThreatPosition, ThreatRemap, ThreatResolver,
+    ACC, KEPT_VICTIMS, RowOffset, THREAT_DIMS, ThreatPosition, ThreatRemap, ThreatResolver,
     for_each_threat_at, refresh_threat_into_at, sf_code, threat_pair_kept,
 };
 #[cfg(test)]
@@ -1008,8 +1008,8 @@ pub struct ThreatContext<'a> {
     /// read). One pair per perspective so BOTH perspectives resolve (and
     /// prefetch their weight rows) before either folds — the perf study #4
     /// item #3 resolve→prefetch→fold pipeline.
-    add_scratch: [[usize; DELTA_CAP]; 2],
-    sub_scratch: [[usize; DELTA_CAP]; 2],
+    add_scratch: [[RowOffset; DELTA_CAP]; 2],
+    sub_scratch: [[RowOffset; DELTA_CAP]; 2],
     /// Top-of-stack ply for the cursor form of the API
     /// ([`apply`](Self::apply)/[`current`](Self::current)/[`undo`](Self::undo),
     /// which the standalone tests drive). The search stack uses the explicit
@@ -1194,8 +1194,8 @@ impl<'a> ThreatContext<'a> {
                 .expect("STACK_LEN fold states"),
             alias: AliasTable::new(),
             buf: DeltaBuf::new(),
-            add_scratch: [[0usize; DELTA_CAP]; 2],
-            sub_scratch: [[0usize; DELTA_CAP]; 2],
+            add_scratch: [[RowOffset::default(); DELTA_CAP]; 2],
+            sub_scratch: [[RowOffset::default(); DELTA_CAP]; 2],
             top: 0,
         };
         #[cfg(feature = "foldcount")]
@@ -1875,8 +1875,8 @@ fn discharge_refresh(
 #[allow(clippy::too_many_arguments)]
 fn resolve_both(
     events: &[ThreatDelta],
-    adds: &mut [[usize; DELTA_CAP]; 2],
-    subs: &mut [[usize; DELTA_CAP]; 2],
+    adds: &mut [[RowOffset; DELTA_CAP]; 2],
+    subs: &mut [[RowOffset; DELTA_CAP]; 2],
     resolvers: &[ThreatResolver; 2],
     psqt_table: &[i32],
     psqt_deltas: &mut [[i32; BUCKETS]; 2],
@@ -1885,7 +1885,8 @@ fn resolve_both(
 
     // `& (DELTA_CAP - 1)` below is a NO-OP on the value and a range fact for
     // the optimizer, the same move as `index_decoded`'s `& 63`. `adds`/`subs`
-    // are `[usize; DELTA_CAP]` and each event pushes at most ONE index into ONE
+    // are `[RowOffset; DELTA_CAP]` (perf study 57 retyped the element; the range
+    // argument is untouched) and each event pushes at most ONE index into ONE
     // of them, so a cursor can only reach `events.len() <= DELTA_CAP` — and the
     // last *write* is therefore at `DELTA_CAP - 1`. LLVM cannot see that (the
     // cursor is carried across a loop whose trip count it does not relate to
@@ -1910,10 +1911,10 @@ fn resolve_both(
                 };
                 debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
                 if d.add {
-                    adds[p][len[p].0 & M] = idx;
+                    adds[p][len[p].0 & M] = RowOffset::of(idx);
                     len[p].0 += 1;
                 } else {
-                    subs[p][len[p].1 & M] = idx;
+                    subs[p][len[p].1 & M] = RowOffset::of(idx);
                     len[p].1 += 1;
                 }
             }
@@ -1965,13 +1966,13 @@ fn resolve_both(
             // and a whole-row hint (`pf-full`, +2.0% instructions) bought
             // -0.69% misses. Numbers in that study's §5.
             if d.add {
-                adds[p][len[p].0 & M] = idx;
+                adds[p][len[p].0 & M] = RowOffset::of(idx);
                 len[p].0 += 1;
                 for (a, &w) in acc[p].iter_mut().zip(&rows[idx]) {
                     *a += w;
                 }
             } else {
-                subs[p][len[p].1 & M] = idx;
+                subs[p][len[p].1 & M] = RowOffset::of(idx);
                 len[p].1 += 1;
                 for (a, &w) in acc[p].iter_mut().zip(&rows[idx]) {
                     *a -= w;
@@ -1987,26 +1988,37 @@ fn resolve_into(
     events: &[ThreatDelta],
     // Perf study 56 mechanism B: these two were `&mut [usize]` — RUNTIME-LENGTH
     // slices — while the only production caller passes `&mut self.add_scratch[p]`,
-    // which is already a `[usize; DELTA_CAP]`. The signature threw the length
+    // which is already a fixed-size array. The signature threw the length
     // away, so all four cursor stores below carried a `cmp`/`ja panic` pair per
     // event. `resolve_both` — the fused two-perspective twin, twenty lines up,
-    // doing the identical job — takes `&mut [[usize; DELTA_CAP]; 2]` and masks
+    // doing the identical job — takes a fixed-size array pair and masks
     // with `& M` for exactly this reason (perf study 24). `resolve_into` never
     // got the same treatment, and it is the branch taken whenever only ONE
     // perspective needs folding. Same argument as there: each event pushes at
     // most one index into one buffer, so a cursor cannot pass `events.len() <=
     // DELTA_CAP`, and `DELTA_CAP` is a power of two, so the mask is free and is
     // the identity on every reachable value.
-    adds: &mut [usize; DELTA_CAP],
-    subs: &mut [usize; DELTA_CAP],
+    //
+    // Perf study 57 changed the ELEMENT TYPE from `usize` to [`RowOffset`] and
+    // nothing else about this argument. The two mechanisms are orthogonal and
+    // both are wanted: study 56's fixed size is what discharges the bounds
+    // check on the WRITE, study 57's pre-scaling is what stops the fold kernel
+    // recomputing `feature * ACC` once per tile on the READ.
+    adds: &mut [RowOffset; DELTA_CAP],
+    subs: &mut [RowOffset; DELTA_CAP],
     resolver: &ThreatResolver,
     psqt_table: &[i32],
     psqt_delta: &mut [i32; BUCKETS],
 ) -> (usize, usize) {
-    // OFF, `M` is all-ones: `x & usize::MAX` is `x`, which the optimizer folds
-    // away entirely, so the feature-off build is identical to the unmasked
-    // spelling and the study's control stays valid with ONE spelling of each
-    // store rather than a `#[cfg]` pair around all four.
+    // The mask that discharges the store's bounds check, per the argument on
+    // `adds` above. `DELTA_CAP` is a power of two, so `& M` is the identity on
+    // every reachable cursor value and costs one `and` that the optimizer folds
+    // into the addressing mode.
+    //
+    // (This comment replaces a fragment left on `main` by study 56's merge:
+    // it opened "OFF, `M` is all-ones" — a sentence about the `bcmisc55`
+    // feature gate that the same commit deleted, so it described a `#[cfg]`
+    // that no longer exists. Flagged rather than silently reflowed.)
     const M: usize = DELTA_CAP - 1;
     let mut add_len = 0usize;
     let mut sub_len = 0usize;
@@ -2015,10 +2027,10 @@ fn resolve_into(
             if let Some(idx) = resolver.index(d.attacker, d.from, d.to, d.victim) {
                 debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
                 if d.add {
-                    adds[add_len & M] = idx;
+                    adds[add_len & M] = RowOffset::of(idx);
                     add_len += 1;
                 } else {
-                    subs[sub_len & M] = idx;
+                    subs[sub_len & M] = RowOffset::of(idx);
                     sub_len += 1;
                 }
             }
@@ -2037,11 +2049,11 @@ fn resolve_into(
             if let Some(idx) = resolver.index(d.attacker, d.from, d.to, d.victim) {
                 debug_assert!(idx < THREAT_DIMS, "threat index {idx} out of range");
                 if d.add {
-                    adds[add_len & M] = idx;
+                    adds[add_len & M] = RowOffset::of(idx);
                     add_len += 1;
                     psqt_add(&mut acc, psqt_table, idx);
                 } else {
-                    subs[sub_len & M] = idx;
+                    subs[sub_len & M] = RowOffset::of(idx);
                     sub_len += 1;
                     psqt_sub(&mut acc, psqt_table, idx);
                 }
@@ -2719,8 +2731,8 @@ mod tests {
         let mut hist = [0usize; 80];
         let mut minhist = [0usize; 80];
         let mut buf = DeltaBuf::new();
-        let mut adds = [0usize; DELTA_CAP];
-        let mut subs = [0usize; DELTA_CAP];
+        let mut adds = [RowOffset::default(); DELTA_CAP];
+        let mut subs = [RowOffset::default(); DELTA_CAP];
         let mut pd;
         for game in 0..400u32 {
             let mut board = Board::startpos();

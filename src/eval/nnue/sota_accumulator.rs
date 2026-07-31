@@ -8,7 +8,9 @@
 //! skip channel. A net without a PSQ1 table (`psqt_weights` empty) skips
 //! every psqt update and the sums stay zero — bit-identical to pre-T6c.
 
-use super::sota_features::{ACC, halfka_index, halfka_king_key, halfka_oriented, halfka_row_base};
+use super::sota_features::{
+    ACC, RowOffset, halfka_index, halfka_king_key, halfka_oriented, halfka_row_base,
+};
 use super::sota_head::BUCKETS;
 use super::sota_simd::{apply_halfka_deltas, apply_halfka_deltas_dual, apply_halfka_deltas_into};
 use crate::bitboard::Bitboard;
@@ -41,7 +43,7 @@ const FINNY_KEYS: usize = 64;
 /// | 5 | 1 + 4 |
 #[cfg(feature = "pf43")]
 pub(crate) mod pf43 {
-    use super::ACC;
+    use super::{ACC, RowOffset};
     use std::sync::LazyLock;
 
     static MODE: LazyLock<u32> = LazyLock::new(|| {
@@ -77,7 +79,7 @@ pub(crate) mod pf43 {
 
     /// Hint the weight rows this refresh is about to fold. `ACC` i8 per row.
     #[inline]
-    pub(crate) fn rows(weights: &[i8], adds: &[usize], subs: &[usize]) {
+    pub(crate) fn rows(weights: &[i8], adds: &[RowOffset], subs: &[RowOffset]) {
         let mode = *MODE;
         if mode == 0 || mode == 4 {
             return;
@@ -87,7 +89,7 @@ pub(crate) mod pf43 {
         for &f in adds.iter().chain(subs) {
             // `wrapping_add`, not `add`: a hint needs no in-bounds proof, and
             // the wrapping form keeps this free of a provenance argument.
-            let base = weights.as_ptr().wrapping_add(f * ACC);
+            let base = weights.as_ptr().wrapping_add(f.0);
             if full {
                 for off in (0..ACC).step_by(64) {
                     hint(base.wrapping_add(off), t0);
@@ -770,9 +772,18 @@ impl<'a> HalfkaContext<'a> {
             // twice (perf study 22 §1.3, §5.3, both the same failure mode).
             const CAP: usize = 32;
             static PIECE_TYPES: [PieceType; 6] = PieceType::ALL;
-            let mut adds = [0usize; CAP];
+            // Perf study 57: TWO parallel lists per direction, because the two
+            // consumers want different units. The fold kernel walks its list
+            // once per TILE (8 of them at ACC = 1280, REGS = 5), so it takes
+            // pre-scaled [`RowOffset`]s and never multiplies; PSQ1 rows are
+            // `BUCKETS` wide, not `ACC`, so `psqt_add`/`psqt_sub` keep the
+            // plain feature index. One extra store per differing square buys
+            // 16 deleted instructions per row in the kernel.
+            let mut adds = [RowOffset::default(); CAP];
+            let mut add_feat = [0usize; CAP];
             let mut add_len = 0;
-            let mut subs = [0usize; CAP];
+            let mut subs = [RowOffset::default(); CAP];
+            let mut sub_feat = [0usize; CAP];
             let mut sub_len = 0;
             for color in [Color::White, Color::Black] {
                 // `board.pieces` is the `pub(crate)` FIELD, not the accessor:
@@ -805,12 +816,16 @@ impl<'a> HalfkaContext<'a> {
                     // misses a 40-line row takes).
                     for sq in new_bb & !*old_bb {
                         debug_assert!(add_len < CAP, "finny add cursor overflow");
-                        adds[add_len & (CAP - 1)] = base + halfka_oriented(perspective, sq, king);
+                        let f = base + halfka_oriented(perspective, sq, king);
+                        add_feat[add_len & (CAP - 1)] = f;
+                        adds[add_len & (CAP - 1)] = RowOffset::of(f);
                         add_len += 1;
                     }
                     for sq in *old_bb & !new_bb {
                         debug_assert!(sub_len < CAP, "finny sub cursor overflow");
-                        subs[sub_len & (CAP - 1)] = base + halfka_oriented(perspective, sq, king);
+                        let f = base + halfka_oriented(perspective, sq, king);
+                        sub_feat[sub_len & (CAP - 1)] = f;
+                        subs[sub_len & (CAP - 1)] = RowOffset::of(f);
                         sub_len += 1;
                     }
                     *old_bb = new_bb;
@@ -840,10 +855,10 @@ impl<'a> HalfkaContext<'a> {
             if !psqt_weights.is_empty() {
                 // Same register-resident accumulate as `psqt_fold`.
                 let mut acc = cached.psqt;
-                for &f in &adds[..add_len] {
+                for &f in &add_feat[..add_len] {
                     psqt_add(&mut acc, psqt_weights, f);
                 }
-                for &f in &subs[..sub_len] {
+                for &f in &sub_feat[..sub_len] {
                     psqt_sub(&mut acc, psqt_weights, f);
                 }
                 cached.psqt = acc;
@@ -860,12 +875,15 @@ impl<'a> HalfkaContext<'a> {
         // place (it is a real `FinnyEntry`, not an `Option` to be filled), so
         // the 2.5 KB stack temp the old form round-tripped through is gone too.
         cached.acc.copy_from_slice(&bias[..ACC]);
-        let mut adds = [0usize; 32];
+        let mut adds = [RowOffset::default(); 32];
+        let mut add_feat = [0usize; 32];
         let mut len = 0usize;
         cached.by_piece = [[Bitboard::EMPTY; 6]; 2];
         for square in board.all_occupancy() {
             let piece = board.piece_on(square).expect("occupied square");
-            adds[len] = halfka_index(perspective, piece, square, king);
+            let f = halfka_index(perspective, piece, square, king);
+            add_feat[len] = f;
+            adds[len] = RowOffset::of(f);
             len += 1;
             cached.by_piece[piece.color as usize][piece.piece_type as usize] |=
                 Bitboard::from_square(square);
@@ -875,7 +893,7 @@ impl<'a> HalfkaContext<'a> {
         cached.psqt = [0i32; BUCKETS];
         if !psqt_weights.is_empty() {
             let mut psqt = [0i32; BUCKETS];
-            for &f in &adds[..len] {
+            for &f in &add_feat[..len] {
                 psqt_add(&mut psqt, psqt_weights, f);
             }
             cached.psqt = psqt;
@@ -934,22 +952,40 @@ fn apply_dirty_directed<const FORWARD: bool>(
     king: Square,
 ) {
     let p = perspective as usize;
-    let mut adds = [0usize; 2];
-    let mut subs = [0usize; 2];
+    // Perf study 57: the shaped kernel used to scale these two indices itself
+    // (`i8_into_shaped`'s `arow`/`srow` prologue), so scaling here MOVES two
+    // instructions per row rather than adding them — this site is expected
+    // neutral. It changes because the kernel's row-list unit is now global:
+    // the same `i8_deltas_into` serves both channels, and the threat channel
+    // (which pays the multiply once per tile, 8 times) is where the win is.
+    let mut adds = [RowOffset::default(); 2];
+    let mut add_feat = [0usize; 2];
+    let mut subs = [RowOffset::default(); 2];
+    let mut sub_feat = [0usize; 2];
     for (i, &(piece, square)) in dirty.adds().iter().enumerate() {
-        adds[i] = halfka_index(perspective, piece, square, king);
+        let f = halfka_index(perspective, piece, square, king);
+        add_feat[i] = f;
+        adds[i] = RowOffset::of(f);
     }
     for (i, &(piece, square)) in dirty.subs().iter().enumerate() {
-        subs[i] = halfka_index(perspective, piece, square, king);
+        let f = halfka_index(perspective, piece, square, king);
+        sub_feat[i] = f;
+        subs[i] = RowOffset::of(f);
     }
+    let (na, ns) = (dirty.adds().len(), dirty.subs().len());
     let (a, s) = if FORWARD {
-        (&adds[..dirty.adds().len()], &subs[..dirty.subs().len()])
+        (&adds[..na], &subs[..ns])
     } else {
-        (&subs[..dirty.subs().len()], &adds[..dirty.adds().len()])
+        (&subs[..ns], &adds[..na])
     };
     apply_halfka_deltas_into(&mut entry.acc[p], &parent.acc[p], weights, a, s);
     if !psqt_weights.is_empty() {
-        psqt_fold(&mut entry.psqt[p], &parent.psqt[p], psqt_weights, a, s);
+        let (af, sf) = if FORWARD {
+            (&add_feat[..na], &sub_feat[..ns])
+        } else {
+            (&sub_feat[..ns], &add_feat[..na])
+        };
+        psqt_fold(&mut entry.psqt[p], &parent.psqt[p], psqt_weights, af, sf);
     }
 }
 
