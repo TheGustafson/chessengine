@@ -9149,3 +9149,44 @@ unless the environment says otherwise.**
 **Its operating envelope is now: ≤3 GB resident, ≤4 threads, sequential passes.**
 Both corrections to that study have been about footprint; neither about the
 science, and I said so to it explicitly.
+
+## ★ BOTH D49 SERIES ARE PAST THEIR BARS — the extension is unambiguous
+
+**sb570: raw 0.010784 vs bar 0.010824; EMA 0.010723 vs bar 0.010812.**
+
+| series | bar (sb390) | sb570 | margin |
+|---|---:|---:|---:|
+| EMA (deployed) | 0.010812 | **0.010723** | **−89e-6 ahead** |
+| raw value | 0.010824 | **0.010784** | **−40e-6 ahead** |
+
+The raw crossed between sb560 and sb570, consistent with the ~sb562 estimate.
+**The result no longer depends on which series you quote** — with 130 sb and the
+whole sb600–700 anneal still to run.
+
+## Study 48 commissioned — FEWER memory operations, the biggest live number
+
+Study 44's decomposition, re-stated as a lever: **53.8% of all instructions are
+memory ops; 2281 load dispatches/node; 1.12 stall cycles each ⇒ 2555 cycles/node
+of a 4179.7 frame.** The memory is **L2-at-volume, not DRAM** (1.6% of demand
+fills reach DRAM). **The engine is not waiting on slow memory — it is waiting on
+a great many individually cheap memory operations. So the lever is FEWER of
+them.**
+
+Study 47 closed the other half (issue throughput 20.8–24.4%, **fourteen rewrites
+priced and closed, none landed**), which leaves this as the largest live lever.
+
+**And this class has already landed once**, which is why "irreducible" is not
+available: **study 44's only win — −1.37% cycles — was a STORE-count reduction**
+(fold tile 20 → 5 `zmm`), and the store queue is still the largest single
+dispatch blocker at **509.3 cycles/node**.
+
+**Three sites where the cost is provably loads rather than compute:**
+`at_full` + `current_full` carry **11.35% of engine stalls with 21 and ZERO
+512-bit ops**; `finny_refresh_into` is **73% `load_not_complete`**, moving **234
+lines per refresh of which 114 (49%) are HalfKA weight rows, not Finny slots**.
+
+Told to **re-derive the 2281** rather than inherit it, to census the dispatches by
+*purpose* (study 29 catalogued what loads exist; nobody asked which are
+**redundant**), and that **the load count itself is a direct exact measure of the
+thing being reduced** — which sidesteps the fact that `cycles:u` cannot resolve
+sub-1% here.
