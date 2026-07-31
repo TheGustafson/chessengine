@@ -28,7 +28,7 @@ required-features = ["datagen"]
 # binary and none of them survives:
 #
 #   arm         study 55 (vs base55)   study 56 (vs shipped)
-#   bcmisc55         -44.7 i/n              +10.0 i/n
+#   bcmisc55         -44.7 i/n              +7.7 i/n   (rebuilt from 0ce956f4)
 #   bcsort55         -34.6 i/n              +14.7 i/n
 #   bccont55          +5.8 i/n              +55.6 i/n
 #

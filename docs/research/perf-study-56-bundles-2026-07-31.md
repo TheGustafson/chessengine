@@ -54,7 +54,7 @@ shipped binary):
 | `bcmisc55` — reduction `clamp` | *(bundled)* | **+11.3** | 0/7 |
 | `bcmisc55` — `LMR_DIVISOR` `clamp` | *(bundled)* | **+0.5** | 0/7 |
 | `bcmisc55` — `DeltaBuf::push` mask | *(bundled)* | **−1.8** | 7/7 |
-| **`bcmisc55` (whole bundle, rebuilt from `0ce956f4`)** | **−44.7** | **+10.4** | 0/8 |
+| **`bcmisc55` (whole bundle, rebuilt from `0ce956f4`)** | **−44.7** | **+7.7** | 0/6 |
 | **`bcsort55`** | **−34.6** | **+14.7** | 0/7 |
 | **`bccont55`** | **+5.8** | **+55.6** | 0/7 |
 
@@ -64,6 +64,14 @@ a straight retraction of a study-55 claim, and the general lesson is sharper
 than the specific one: **a retained arm's number expires the moment anything
 lands underneath it.** Study 55 said "do not assume they stack"; the stronger
 rule is *do not assume they still exist*.
+
+**A self-correction, because I nearly made the study's own error.** The
+`bcmisc55` row above was first written as **+10.0**, which was the *sum* of its
+three members — precisely the move §5 forbids. It has since been built as a
+bundle from study 55's own tree (`0ce956f4`, this study's build flags, `.text`
+md5 `662360d3`) and measured at **+0.129 %, 0/6, p = 0.0312 = +7.7 i/n**. The
+sum was wrong by 2.3 i/n, in the same favourable direction as every other
+combination here. The number in the table is the measured one.
 
 ### 0.3 ★ A bundle cannot tell you which member matters, and study 55's bundles were hiding a −33 i/n win and a +28 i/n loss
 
@@ -316,6 +324,7 @@ Every row below is a real binary, built and measured. `panel-r3/r5/r7/r8`.
 | combination | error vs sum of parts | direction |
 |---|---:|---|
 | `inatk56` = `atk1` + `atk2` | **0.000 pp** | *exactly additive* |
+| `bcmisc55` = `red`+`lmr`+`dbuf` | −0.039 pp (−2.3 i/n) | favourable |
 | `c_rcdl` | −0.039 pp (−2.3 i/n) | favourable |
 | `c_fin` | +0.085 pp (+5.1 i/n) | unfavourable |
 | `c_fin5` vs `c_fin3` | **−0.324 pp (−19.3 i/n)** | **favourable** |
@@ -396,7 +405,8 @@ final panel is the measurement of the thing that shipped.
 | `Bench:` trailer (portable default build, depth 6) | **587683** — **unmoved** |
 | **wl50 eval hash** | **`2e1ede95…93cf79c4`** — **unmoved** |
 | **d13 node total** | **1 739 588** — **unmoved** |
-| frame node identity, all 24 binaries | **5 001 562** exact |
+| `cargo test --features sota,arch-d48x` (the NNUE suite) | **PASSED** — 719 passed, 0 failed |
+| frame node identity, all 25 binaries | **5 001 562** exact |
 | `ctl56` `.text` md5 vs study 55's `promoted55` | **`4e4aad52`, identical** |
 | `ctl56b` ≡ `ctl56` on `instructions:u` | **0.000 %**, se 0.000 |
 | `ctl56c` ≡ `ctl56b` | **`153f7ef2`, byte-identical** |
@@ -405,6 +415,32 @@ final panel is the measurement of the thing that shipped.
 so a moved pin would have been evidence that an equivalence was wrong. The
 `zobrist.rs` and `board.rs` edits touch key computation directly, which is why
 `perft_full_suite` (not just the fast tier) is the gate that matters here.
+
+```
+Nodes searched  : 587683
+  eval hash  : 2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4
+  d13 nodes  : 1739588
+Bench: 587683
+All checks passed.
+```
+
+All three pins were **also computed independently** from the gate's own binary
+while its 719-test phase was still running, and the gate then agreed with each
+to the digit — study 55's hedge, repeated because it is cheap and it
+cross-checks `check.sh` itself.
+
+### 7.1 One defect the gate would NOT have caught, found by reading
+
+`HISTORIES_BYTES` — the compile-time accounting behind design/09 §8's ≤21 MiB
+catalogue guard — summed `size_of::<[PieceToCorr; CONT_CORR_NB]>()`, the
+**logical** slab count. `contcorr56` pads the **allocation** to
+`CONT_CORR_ALLOC`, so the guard would have silently under-reported this table by
+288 KiB per worker — and that guard is the only thing in the tree that would
+ever notice this padding growing. Fixed in the same branch. It is used solely by
+two `const _: () = assert!` statements, so the fix cannot change any binary
+output; the catalogue is **20.26 MiB** against the 21 MiB budget.
+
+**Every gate in this repo is a behaviour gate. None of them weighs the heap.**
 
 ---
 
