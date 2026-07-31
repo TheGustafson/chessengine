@@ -10492,3 +10492,39 @@ the standing reason not to assume one.
 
 **D49:** sb933, heldout ema 0.010666/0.010714 (sawtooth), 193k pos/s, four
 services active. Studies 56 and 57 alive, builds serialised on the shared lock.
+
+### Wall-clock panel result: FAILED ITS NULL. No time claim.
+
+Controlled median panel, main vs the rebuilt pre-52, run null-first:
+
+| | value |
+|---|---|
+| **NULL** (pre-52 vs byte-identical copy, n=8) | **+0.972%** |
+| **ARM** (main vs pre-52, n=14) | **−0.809%** |
+
+**The null is LARGER than the arm.** By rule 1 the instrument cannot answer this
+question under the current load, and it says so rather than reporting −0.809% as
+a result.
+
+**This also supersedes the −2.103% I recorded earlier in this tick.** That
+reading came from the *confounded* binary and used a null taken under lighter
+load (−0.132%). With controlled binaries and a contemporaneous null, it does not
+reproduce. **Retracted, not re-estimated.**
+
+Note how far the wall-clock null itself moved with box load: **−0.132% → +0.972%**
+within one tick. Wall-clock on a contended box is not a stable instrument at the
+3% scale, and no amount of rounds fixes a null that drifts with a third party's
+build.
+
+### Where this leaves the perf programme
+
+- **Instruction half: MEASURED and real.** −193.1 i/n, −3.056%, 93.6% of claims
+  realised. `instructions:u` is load-robust (0.000 null), which is exactly why it
+  survives on a busy box while wall-clock does not.
+- **Time/Elo half: STILL UNMEASURED**, and now with a *known* blocker rather than
+  a vague one — it needs a quiet box, not more rounds.
+
+**Queued for the first quiet box, in order:** (1) the median wall-clock panel
+re-run, null first; (2) a fixed-TIME PGO match, main vs pre-52. The pre-52 binary
+is preserved at `$SCRATCH/pre52_bin` so neither needs a rebuild; its build tree
+was deleted to return disk.
