@@ -12842,3 +12842,42 @@ stronger guarantee anyway: **there is no sawtooth to detect, because the ramp
 cannot produce one.**
 
 All four services active, 8.4 GB free, 148 GB disk. **Study 63** working.
+
+## Tick — 2026-07-31 19:33, RESTART MACHINERY MOVED OFF tmpfs (it was the run's single point of failure)
+
+**The entire restart machinery was living on tmpfs** — launcher, watchdog,
+checkpoint reaper and OOM guard all under
+`/tmp/claude-.../scratchpad`, with the running `d49wd` unit's `ExecStart`
+pointing straight at it.
+
+**That is the one failure the watchdog cannot survive**, and the run has ~19 h
+left. If `/tmp` is cleared the watchdog process dies *and* the script it would
+restart the trainer with disappears — so a trainer crash after that point would
+simply never be recovered. **`/tmp` is RAM-backed on this box** and has already
+caused trouble once this project (a full tmpfs made Bash return a bare exit 1 and
+killed jobs).
+
+**Relocated to `/home/nick/.local/share/archon-d49` (ext4).** Only the watchdog
+needed editing — its `S=` pointed at the scratchpad for the launcher path; the
+other three already used durable `/home/nick/...` paths. All four syntax-checked,
+then the three watchers were stopped and relaunched from the durable copies.
+
+**The trainer was never touched** — `d49y` still shows `ActiveEnterTimestamp
+18:59:44`, the same instance, now at **sb1184** on the decay leg.
+
+**Restart chain re-verified end to end from the new location**, rather than
+assumed from the copy succeeding:
+
+| step | result |
+|---|---|
+| watchdog will exec `$S/d49y_launch.sh`, `S=/home/nick/.local/share/archon-d49` | ✓ |
+| resolves to a file that | **EXISTS** |
+| which loads | **`runs/d49z_decay_1280.json`** — the decay config, not the old cyclical one |
+| survives tmpfs loss | **YES** (ext4) |
+
+That third line mattered: the durable copy had to be taken *after* the schedule
+switch, or the watchdog would have silently restarted the run on the **cyclical**
+config — reintroducing the schedule the owner just retired.
+
+**D49:** sb1184, 14 superbatches into the decay leg, four services active, 7.2 GB
+free. **Study 63** working.
