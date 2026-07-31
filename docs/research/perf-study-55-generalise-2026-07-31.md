@@ -256,18 +256,140 @@ more than two percentage points, and the first to show it failing *pessimistical
 
 ---
 
-## 4. WHAT LANDED
+## 4. WHAT LANDED — −83.8 instructions/node, the largest of the series
 
-*(pending the confirmation panel)*
+Three groups, promoted to unconditional, all node-identical:
+
+* **`#[inline(always)]` on nine SMALL hot helpers.** From mechanism A's winning
+  half: `Stage::bump`, `MovePicker::select`, `Board::legal`,
+  `Worker::is_shuffling` (the pure `search::<Pv>`/`search::<NonPv>` duplication
+  class) and `Board::unmake_move`, `Board::gives_check`, `Board::capture_stage`,
+  `TranspositionTable::probe`, `TtWriter::write`.
+* **`BUF_MASK` on `MovePicker::slot`/`set_slot`/`swap_slots`.** Mechanism B's
+  largest arm: −84.6 i/n on its own, and the binary gets **3576 bytes smaller**.
+
+### 4.1 The candidates, built and measured, never summed
+
+`panel-r6.txt`, n=6, five labels, `instructions:u` se **0.000** on every arm,
+6/6, p = 0.0312 each; byte-identical null at −0.000 %:
+
+| candidate | contents | instr % | **i/n** |
+|---|---|---:|---:|
+| **`landbuf55`** ← **LANDED** | small-inline + `BUF_MASK` | **−1.390** | **−83.8** |
+| `landa55` | small-inline only | −1.264 | −76.2 |
+| `landmisc55` | small-inline + `bcmisc55` | −1.032 | −62.2 |
+| `final55` | small-inline + all three B winners | −1.018 | −61.4 |
+
+**The judgement call, stated as one.** `landbuf55` is best on `instructions:u`,
+the counter study 52 §4 licenses, and **no memory counter regresses** with it.
+But `landa55` is better on all three memory counters (L1d −1.242 %, ld −1.375 %,
+st −1.167 %, every one ~1.2–1.4 % and coherent) and worse on the gate counter by
+0.126 pp = 7.6 i/n. I landed `landbuf55` because instructions is the counter with
+a zero null on this box and `landbuf55` does not lose anywhere; **a reader who
+weights the memory counters above 7.6 i/n should land `landa55`, and the numbers
+to do that are in this table.**
+
+### 4.2 "I measured what I landed"
+
+Promotion changes the binary — removing `#[cfg]` scaffolding relocates panic
+`Location` constants (study 35 §5.1), so `landbuf55`'s `.text` md5 is `1d5e7b18`
+and the promoted tree's is `4e4aad52`. `panel-final.txt` runs them against each
+other in one rotation:
+
+| `panel-final.txt`, n = 4 | instr % | i/n | L1d % | ld % | st % |
+|---|---:|---:|---:|---:|---:|
+| `null55` (byte-identical) | −0.000 | 0.0 | +0.161 | +0.423 | +0.460 |
+| `landbuf55` (the arm) | **−1.390** | −83.8 | −0.691 | −1.131 | −0.323 |
+| **`promoted55` (the tree)** | **−1.390** | **−83.8** | −0.888 | −1.884 | −1.087 |
+
+**Both read −1.390 %, se 0.000, in the same panel.** Every memory counter moves
+the right way net of this panel's own (positive) null.
+
+`cargo fmt` ran *after* `promoted55` was built, so the binary was rebuilt and
+compared: `.text` md5 `4e4aad52` unchanged. The formatting was cosmetic.
 
 ---
 
 ## 5. GATES
 
-*(pending)*
+| gate | result |
+|---|---|
+| `CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=1 bash tools/check.sh` | see §5.1 |
+| wl50 eval hash | `2e1ede95…79c4` — must be unmoved |
+| d13 node total | `1 739 588` — must be unmoved |
+| `Bench:` trailer (depth-6 default build) | `587683` — must be unmoved |
+| **D24 perft ritual** (`board`/`movegen` touched) | `perft_full_suite` |
+| frame node identity, all 20 binaries | **5 001 562** exact |
+| inert control `ctl55` `.text` md5 | **`1ce4526f` = `base55`** |
+| byte-identical null, `instructions:u` | **≤1250 counts in 3.0 × 10¹⁰** |
+| `promoted55` reproduces `landbuf55` | **−1.390 % both**, se 0.000 |
+
+No pin should move: every change here is behaviour-preserving, so a moved pin
+would be evidence that an equivalence was wrong.
 
 ---
 
 ## 6. WHAT I COULD NOT ESTABLISH
 
-*(pending)*
+Most doubtful first.
+
+1. **Why the combinations are non-additive by up to 2.6 percentage points.**
+   §3.2 establishes *that* they are, in both directions, and rules out the
+   counter (`instructions:u`'s null is ±0.00025 i/n). I did not decompose which
+   register or which inlining decision the arms are competing for. A static
+   stack-traffic census of `search::<NonPv>` across the pair — the instrument
+   study 54 §0.4 built and got a null from — is the obvious next step.
+2. **Why `bccont55` loses.** It has study 54's exact shape on a strictly worse
+   substrate (a runtime-length slice) and it is +5.8 i/n. Trip count 6 and
+   register pressure are the candidate explanations; neither is measured.
+3. **`bcmisc55` (−44.7) and `bcsort55` (−34.6) are unlanded wins.** Each is
+   large alone and each is blocked only by its interaction with `BUF_MASK`. They
+   are retained as features. **Do not assume they stack** — that is the exact
+   error §3.2 documents.
+4. **No cycles claim, anywhere.** This study's null read +0.558 % (se 0.703) on
+   `cycles:u`. The landed change is −1.390 % of instructions; at n = 16 paired
+   rounds the instrument still could not resolve it, and I did not run the ~23
+   rounds the owner's σ = 1.57 % measurement says would be needed.
+5. **No PGO measurement.** Every number here is non-PGO — the third study in a
+   row to owe this, and it now matters most, because the dominant mechanisms are
+   inlining and bounds-check elision, exactly what PGO re-litigates.
+6. **No games.** Every change is a node-identical refactor, so games are not owed
+   for correctness — only for the speed→Elo conversion at the standing ~120 Elo
+   per doubling.
+
+---
+
+## 7. WHAT THE NEXT STUDY SHOULD RUN
+
+1. **`bcmisc55` and `bcsort55`, as a landing question, not a measurement one.**
+   Both are large alone. Find the combination with `BUF_MASK` that keeps them —
+   or establish that the interaction is real and unavoidable. `bcmisc55` also
+   **closes a latent panic**: `move_number` reaches 256 in a 256-move position
+   and `reductions` is `[i32; 256]`. That is a correctness reason to land it
+   independent of speed.
+2. **The PGO pair**, now overdue across studies 52, 53, 54 and 55.
+3. **Do not extend `#[inline(always)]` upward without measuring.** §0.1 has the
+   size curve and it inverts. `do_move` is +25.7 i/n.
+4. **The census in §0.3 is reusable.** `tools/perf55/` has no census script, but
+   the method is: `objdump -C -d`, count `call`/`jmp` targets per symbol, join
+   against `nm -C --size-sort -S`. It found every candidate in this study and it
+   found `search::<Root>`'s disappearance, which nobody was looking for.
+
+---
+
+## 8. REPRODUCTION
+
+```bash
+git checkout perf-study-55-generalise
+bash tools/perf55/build55.sh base55                      # or any labelled arm
+bash tools/perf55/build55.sh landbuf55 inlas55,inlb55,bcbuf55   # pre-promotion
+bash tools/perf55/exact55.sh 16 base55 null55 landbuf55 promoted55
+python3 tools/perf55/med55.py docs/research/perf-artifacts-55/panel-final.txt \
+        base55 null55 landbuf55 promoted55
+CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=1 bash tools/check.sh
+cargo test --release -- --ignored perft_full_suite
+```
+
+`med55.py` fixes study 54 §3.4's reporting artifact: the mean-position line now
+averages over the **adjudicated** rounds, not every parsed round.
+
