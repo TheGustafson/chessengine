@@ -12007,3 +12007,48 @@ provenance-by-artifact problem that produced today's phantom −0.473%.
 
 **D49:** sb1086, heldout ema 0.010630, 193k pos/s, four services active.
 **sb1400 in 11.3 h, sb1700 in 22.1 h.** **Study 61** working.
+
+## Tick — 2026-07-31 15:5x, D49's cyclical schedule VERIFIED APPLIED (10.93σ)
+
+With ~11 h to the readable point, I had never confirmed the trainer is applying
+the specified schedule rather than merely carrying it. **Both halves now checked.**
+
+**Half 1 — the config matches the specification element for element:**
+
+| specified | `d49y_cyc_1280.json` |
+|---|---|
+| 1000 more on top of D49's 700 | `superbatches 1700`, `lr_end_superbatch 700` ✓ |
+| 35 cycles × 20 sb | **35 peaks**, spaced 20 ✓ |
+| 1e-4 down to 5e-6 | `[700, 1e-4] … [719, 5e-6]` ✓ |
+| peak decay **0.985**/cycle | 9.85e-5 / 1e-4 = **0.9850** ✓ |
+| at sb1400 jump to 5e-5, anneal to zero over 300 | `[1400, 5e-5] … [1700, 1e-7]` ✓ |
+
+**Half 2 — the trainer does not log LR, so it was inferred by phase-lock.**
+Across all 395 superbatches since sb701:
+
+| | train loss | n |
+|---|---|---|
+| near cycle **peak** (high LR) | 0.007158 | 59 |
+| near cycle **trough** (low LR) | 0.007040 | 57 |
+| **difference** | **+0.000118 ± 0.000011** | **10.93σ** |
+
+**A sawtooth phase-locked to the 20-superbatch boundary cannot arise unless the
+cyclical LR is being applied**, and the sign is correct — high LR raises training
+loss. Neither half would have sufficed alone: **a config can be right and
+ignored, and a loss curve can drift for unrelated reasons.** The phase-lock is
+what ties the two together.
+
+That also explains, mechanically, why every mid-cycling Elo point has landed
+modestly behind canonical: those checkpoints are sampled at arbitrary phases of a
+sawtooth whose peaks demonstrably *worsen* the fit. It is a reason to keep
+refusing to read the experiment before sb1400, not a reason to worry.
+
+**Left inconclusive, honestly:** the `archon-s25` netless-PGO question. A
+structural test — are the NNUE kernels banished to a cold text section, as they
+would be if never profiled? — **does not discriminate**; both the canonical binary
+and a known-good PGO build expose a single `.text`. Without its build commit the
+question cannot be settled, so I stopped rather than over-read a null test. The
+requirement to record commit + build command + `.text` md5 for any future
+canonical promotion is now in `engines/canonical/MANIFEST.md`.
+
+**D49:** sb1094, 193k pos/s, four services active. **Study 61** working.
