@@ -9190,3 +9190,32 @@ Told to **re-derive the 2281** rather than inherit it, to census the dispatches 
 **redundant**), and that **the load count itself is a direct exact measure of the
 thing being reduced** — which sidesteps the fact that `cycles:u` cannot resolve
 sub-1% here.
+
+## ⚠ PROCESS FAILURE — twelve commits went to the WRONG BRANCH, and the fix
+
+**The representation study works in the SHARED checkout with no worktree of its
+own.** When it created and checked out `repr-gap-study`, the shared working
+directory followed — and **every commit I made afterwards landed on that branch
+instead of `main`.** Twelve commits, mine and the agent's interleaved.
+
+**Study 47 saw it and I did not read it as a warning:** its report said *"main has
+since moved to `f9b09bf5` from another session — untouched by me."* That was the
+symptom, stated plainly, and I took it as a note about someone else's session.
+
+**What was stranded:** the study-47 merge, the `objdump` filename-in-hash fix,
+`oomguard` v3, the raw-crossing score, the load-29 record, and the study-48
+commission — none of it on `main`.
+
+**The fix, without disturbing the running agent.** `git checkout main` in the
+shared directory would have yanked the branch out from under a live study, so
+instead: a separate worktree at `main`, merge `perf-study-47-issue` properly
+there, cherry-pick my five commits in order (`-x`, all clean, no conflicts), and
+leave the shared checkout on `repr-gap-study` exactly as the agent left it.
+
+**Verified on the rebuilt `main`:** studies 43, 44 and 47 merged; blocked-Latin
+harness fix live in `panel34/37`; `objdump` banner stripped in `build44`;
+`oomguard` v3; study 48 commissioned; **`REGS_CAP` default still 5**.
+
+**Standing change: my own commits now go through the dedicated worktree, never
+the shared checkout.** An agent that does not take a worktree can move the branch
+under anyone sharing the directory, and nothing warns you — the commits succeed.
