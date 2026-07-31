@@ -10599,3 +10599,46 @@ for builds only — never wrap a match in it.**
 `inline(always)` attributes — **exactly what PGO re-litigates**, since PGO makes
 its own inlining decisions from profile data. The instruction win is measured on
 non-PGO builds; whether it survives PGO is unmeasured.
+
+### Study 56 gate: GREEN
+
+`All checks passed.`, `Bench: 587683`, all three pins unmoved. Merged at
+`46588c4b`, verified independently at **−69.9 i/n** against its claimed −65.8.
+
+**Session total on `instructions:u`, now measured end-to-end rather than summed:**
+pre-52 `f289433c` **6321.2** → main **6058.1** = **−263.1 i/n, −4.163%.**
+
+### Quiet window used for the PGO pair (the overdue item)
+
+Both studies idle and zero `rustc` running, so the box was finally quiet enough
+to start the thing that has been owed since study 52. Building **both** PGO
+binaries — current `main` and pre-52 `f289433c` — with `tools/build_pgo.sh
+sota,arch-d48x <out> <net>`, sequentially, flocked, 6G-capped, memory floor 3500 MB.
+
+**The eval-file argument is mandatory and is why this is done properly:** the
+script's own header records that a bench-only profile leaves the NNUE kernels
+unprofiled and **PGO inert** (measured 2026-07-18, `pgo == native` on the sota
+path). Passing the canonical net makes the profile exercise the real inference
+path.
+
+**Why this pair specifically.** Study 56 lands **six `inline(always)` attributes**,
+and PGO makes its own inlining decisions from profile data — so PGO is not a
+formality here, it is the thing most likely to *re-litigate* the win. The
+−263.1 i/n is measured on non-PGO builds; whether it survives PGO is unknown, and
+the match binaries are PGO by standing rule.
+
+**Once built, the queued fixed-TIME match can run** — the only instrument that
+can price the perf programme, since fixed-node screens are speed-blind by
+construction. It still needs sustained quiet, so it waits for study 57.
+
+**Pre-registered for that run, stated now rather than after seeing data:** the
+wall-clock panel's criterion becomes **median-only**. Justification is in hand
+already — across three panels the median null stayed in [−0.132%, +0.972%] while
+the mean null ranged to −2.068% with sd 6.3–9.5, destroyed by single contention
+rounds. Fixing the criterion *before* the run is the point; the last panel's
+median (arm −1.764% vs null −0.130%) is **suggestive and explicitly not licensed**
+under the criterion that was in force when it ran.
+
+**D49:** sb947, 193k pos/s, four services active, 8.3 GB free, 154 GB disk.
+**Study 57** still in census/analysis with no commits yet — expected, its brief
+front-loads a call-site measurement before any change.
