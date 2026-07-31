@@ -9866,3 +9866,53 @@ What is readable is the EMA, which smooths across cycles and is the deployed
 artifact: **0.010694 after one full cycle against sb700's 0.010592.** One cycle
 cannot beat a completed anneal; the experiment is only readable at **sb1400** (end
 of cycling) and **sb1700** (after the final anneal).
+
+## ★ AGGREGATE CYCLES PANEL — the whole batch is −1.475%, and the NULL is the story
+
+The measurement flagged as owed: **`06e05970` (last commit before study 44) vs
+current `main` (studies 44+48+50+51)**, both built from source with identical
+flags, plus **a byte-identical copy of the base as a null in the rotation**,
+blocked-Latin ordering, 10 rounds, pinned to one core, trainer live throughout.
+
+| arm | median | range | sign |
+|---|---:|---|---|
+| **NULL** (byte-identical) | **+0.517%** | [−2.71, +1.78] | 3/10 negative |
+| **HEAD** (44+48+50+51) | **−1.475%** | [−3.68, −0.54] | **10/10 negative** |
+
+**10/10 against a null that went 3/10 — sign test p ≈ 0.001.**
+
+**But the null's median is +0.517%, not zero.** Even under blocked-Latin ordering
+this harness carries a systematic ~0.5% bias, so the null-corrected cumulative is
+about **−2.0% cycles ⇒ +2.6 to +3.5 Elo**.
+
+**Instructions went +2.90%** — head does MORE work in FEWER cycles, study 44's
+tile pattern surviving to the aggregate, and further proof `instructions:u` would
+have rejected this entire batch.
+
+### What it says about the unpriced studies
+
+Studies 40+44 alone predicted **−1.53%**; the measured aggregate is **−1.475%**.
+So **studies 48, 50 and 51's landed changes contribute ≲0.5% and cannot be
+separated from noise even in aggregate.** They were real on exact counters —
+study 48's −0.286% instructions at 15/15 against a 0.000% null, study 50's
+−0.563% L1d with instructions at exactly 0.000% — and they remain **unpriced in
+cycles**. That is the honest position, not a claim that they did nothing.
+
+**Against the games threshold (~5.61% cycles before a 1466-game screen can
+resolve it), ~2% is still well short.** The cycles gate remains the only
+instrument for this work, and it is at the edge of its own resolution.
+
+### The fold's byte volume is bounded by TRAINING, not by code
+
+Study 51's forward pointer, now the perf line's binding constraint: weight-row
+bytes are exactly **rows/node (7.1754) × width (1280 B) = 9,184 B/node**, that
+streaming is **25.3% of all L1 fills, 55.05% of engine miss latency and ≥13.19%
+of cycles**, and it scales **linearly in width**. Both factors are training
+decisions. Study 51 also killed the one code-side lever (nibble-packing) with the
+**fold-weighted** entropy measurement — static entropy said 3.55 bits in 8, the
+touched population said 97.3% of folded HalfKA rows need all 8.
+
+**So the largest remaining perf lever cannot be pulled from the code side.** It
+reopens the width trade — the standing finding is that width is ~Elo-neutral
+across 768–1536 at equal time, and this says the speed half of that trade was
+under-credited.
