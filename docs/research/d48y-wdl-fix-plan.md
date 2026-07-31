@@ -11024,3 +11024,54 @@ binaries exist, the behavioural confound is eliminated, and it waits solely on a
 quiet box. Study 58 is running.
 
 **D49:** sb989, 193k pos/s, four services active.
+
+## Tick — 2026-07-31, THE FIXED-TIME MATCH IS INFEASIBLE. Plan corrected.
+
+I have been carrying "run a fixed-TIME PGO match" as the queued next step for
+several ticks. **I costed it and it does not survive the arithmetic.**
+
+| | |
+|---|---|
+| PGO-measured instruction win | −2.686% |
+| if it converts 1:1 to speed | 1.0276× → **~4.71 Elo** |
+| games to resolve at 2σ (bar 2.36) | **26,408** |
+| games to resolve at 3σ | 59,418 |
+| wall-clock at 0.2s+0.002s, conc 5 | **29.3 hours** |
+| at 1s+0.01s | 88.0 hours |
+| at 10s+0.1s | 440 hours |
+
+**29 hours at the fastest usable TC, for a 2σ read on a single perf series.**
+That is not a good use of a box that is also training D49, and at very short TC
+the result would additionally be confounded by time-management effects that have
+nothing to do with instruction count.
+
+**This is why the perf programme has never been priced in Elo — not negligence,
+but a genuine measurement-cost wall.** Worth stating plainly rather than leaving
+"fixed-time match" on the queue indefinitely as if it were merely waiting for a
+quiet hour.
+
+### The correct route, and it is much cheaper
+
+**Measure SPEED precisely, then convert with our own calibration constant.**
+
+1. **Wall-clock median panel, ~40 paired rounds, quiet box, criterion
+   pre-registered as median-only** (already registered, before the run — three
+   panels showed the median null stable in [−0.132%, +0.972%] while the mean null
+   reached −2.068% with sd 6.3–9.5). Study 57 independently established that a
+   ~1% effect needs **~40 rounds for the sign test**, not the 23 that resolve the
+   median — so 40 it is. **Cost: ~10 minutes.**
+2. **Convert via ~120 Elo per speed doubling** — our own measured constant
+   (exp-0154: V beat S-post +38 at equal time, 1.51× speed ≈ +73 Elo). Label the
+   result **derived**, never measured.
+
+**The node-null makes this conversion legitimate in a way it would not otherwise
+be.** Ptnml [0, 0, 499, 0, 0] proved the two binaries are behaviourally identical
+at fixed nodes, so the speed ratio is the *entire* difference between them. There
+is no behavioural term to contaminate the conversion — which is exactly the
+assumption a speed→Elo constant needs and almost never gets.
+
+**Standing correction:** the queue item is now "high-n wall-clock panel on a quiet
+box", not "fixed-time match". The PGO pair remains built and useful for it.
+
+**D49:** heldout sb990 ema 0.010701, 193k pos/s, four services active.
+**Study 58** working, no builds in flight.
