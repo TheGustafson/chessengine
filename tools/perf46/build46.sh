@@ -33,4 +33,4 @@ flock "$LOCK" env RUSTFLAGS="-C target-cpu=native" \
   systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 --quiet \
   cargo build --release --features "$FEATURES" -j2
 cp target/release/chessengine "bin46/$LABEL"
-echo "[build44] -> bin46/$LABEL  .text md5 $(objdump -d --section=.text "bin46/$LABEL" | md5sum | cut -c1-32)"
+echo "[build46] -> bin46/$LABEL  .text md5 $(objdump -d --section=.text "bin46/$LABEL" | grep -v "file format" | md5sum | cut -c1-32)"
