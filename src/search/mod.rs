@@ -1152,6 +1152,22 @@ pub struct Worker {
     /// [`SotaContext`]: crate::eval::nnue::sota_context::SotaContext
     #[cfg(feature = "sota")]
     policy_head: Option<&'static crate::eval::nnue::policy_head::PolicyHead>,
+    /// Perf study 68 — the same snapshot, extended to the two knobs that
+    /// GUARD that handle. `ord_weight()` and `ord_min_depth()` are
+    /// `LazyLock`s over environment variables, i.e. process constants, and
+    /// `ord_weight() != 0.0` is the FIRST test at the P-ORD site — so the
+    /// shipped build performed a `Once`-state acquire load, a compare, a
+    /// branch and an `f32` load at **every interior main-search node** to
+    /// re-learn that `CPL_ORD_W` is unset. A `LazyLock` deref cannot be
+    /// hoisted out of a recursive function: it reads an atomic. Snapshotted
+    /// per `go`, the whole site is one `ucomiss` against a register.
+    #[cfg(feature = "sota")]
+    ord_weight: f32,
+    #[cfg(feature = "sota")]
+    ord_min_depth: i32,
+    /// Ditto for the `ARCHON_NMP_ALLNODE` A/B gate (a `OnceLock<bool>` read
+    /// at every node that reaches the null-move block).
+    nmp_allnode: bool,
     /// Poll-cadence bitmask for [`Worker::check_time`] (design/12 §3.8;
     /// Reckless bundle D31): the real clock/limit check runs when `nodes &
     /// mask == mask`. Recomputed per `go` — tighter (a smaller power of
@@ -1302,6 +1318,11 @@ impl Worker {
             histories: Histories::new(),
             #[cfg(feature = "sota")]
             policy_head: None,
+            #[cfg(feature = "sota")]
+            ord_weight: 0.0,
+            #[cfg(feature = "sota")]
+            ord_min_depth: 1,
+            nmp_allnode: false,
             check_time_mask: params::CHECK_TIME_CALLS as u64 - 1,
             thread_idx: 0,
             counters,
@@ -1861,6 +1882,16 @@ impl Worker {
         self.counters.nodes.store(0, Ordering::Relaxed);
         self.counters.best_move_changes.store(0, Ordering::Relaxed);
         self.nmp_min_ply = 0;
+        // Perf study 68: the process-constant env probes, read ONCE per `go`
+        // here rather than once per node at their use sites. `iterative_deepening`
+        // is the one entry both the pool path and the direct bench/test path go
+        // through, which is why the reset above lives here too.
+        #[cfg(feature = "sota")]
+        {
+            self.ord_weight = crate::eval::nnue::policy_head::ord_weight();
+            self.ord_min_depth = crate::eval::nnue::policy_head::ord_min_depth();
+        }
+        self.nmp_allnode = crate::search::nmp_allnode_probe();
         self.check_time_mask = self.compute_check_time_mask();
         self.last_best_move_pv.clear();
         self.last_best_move_score = -VALUE_INFINITE;
@@ -3165,7 +3196,7 @@ impl Worker {
             // hotter cutNode LMR) shrinks the trees that gate leaves behind,
             // and we did not port those. ARCHON_NMP_ALLNODE=1 tries the
             // SF16-style gate for measurement; landing is a post-D47 decision.
-            let nmp_node_ok = if crate::search::nmp_allnode_probe() {
+            let nmp_node_ok = if self.nmp_allnode {
                 !NT::PV
             } else {
                 cut_node
@@ -3427,16 +3458,12 @@ impl Worker {
         // long before QuietInit. `CPL_ORD_W` unset/0 ⇒ never constructed ⇒
         // ordering bit-identical.
         #[cfg(feature = "sota")]
-        if crate::eval::nnue::policy_head::ord_weight() != 0.0
-            && depth >= crate::eval::nnue::policy_head::ord_min_depth()
+        if self.ord_weight != 0.0
+            && depth >= self.ord_min_depth
             && let Some(head) = self.policy_head
             && let Some(l2) = self.eval_ctx.last_l2_for(&self.board)
         {
-            mp.set_quiet_prior(head.quiet_prior(
-                &self.board,
-                l2,
-                crate::eval::nnue::policy_head::ord_weight(),
-            ));
+            mp.set_quiet_prior(head.quiet_prior(&self.board, l2, self.ord_weight));
         }
         #[cfg(feature = "policy")]
         {
