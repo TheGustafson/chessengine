@@ -13122,3 +13122,63 @@ gone the other way.
 (0.010564 → 0.010539 → 0.010522), 188k pos/s, four services active, 146 GB disk.
 **Study 63** still working; its tool fix merges with its report rather than being
 cherry-picked mid-study.
+
+## Tick — 2026-07-31 21:4x, RETRACTION: two published Elo figures measured NOTHING
+
+Study 63 merged (gate green: `All checks passed.`, `Bench: 587683`). Chasing a
+0.021s round time in its repaired tool, I found a defect worse than the two it
+found — **and it is mine.**
+
+**`engines/canonical/net.cenn` is a symlink into gitignored `data/`, so it dangles
+in every fresh worktree.** `wallclock_panel.py`'s default `--net` resolves relative
+to the **script's own location**, i.e. to whichever worktree it runs from. With a
+dangling net the engine prints `reading NNUE file: No such file` and **exits
+having searched ZERO nodes, in ~0.02 s.** The panel then reports a median over
+three near-instant exits — **a plausible-looking percentage with nothing behind
+it.**
+
+This is **perf study 60's trap, in a second tool.** Study 60 found it in
+`build_pgo.sh` and added a guard. I wrote this tool afterwards and did not apply
+the lesson.
+
+### What is retracted, and what survives
+
+| figure | how it was run | verdict |
+|---|---|---|
+| **+1.77 Elo** (studies 52–56) | standalone `wc40.py`, ROOT hardcoded to the **main checkout**, `os.path.realpath` | **STANDS** |
+| **+1.58 Elo** (studies 52–58) | `wallclock_panel.py` from `mainwt`, **no `--net`** | **VOID** |
+| **+3.14 Elo** (studies 61–62) | `wallclock_panel.py` from `mainwt`, **no `--net`** | **VOID** |
+
+**And the redirect receipt goes with them.** "Two studies after the redirect
+delivered ~4× the game-relevant Elo of the seven before" compared **+0.79
+(derived from the void 52–58 panel)** against **+3.14 (void)**. **Both sides were
+measurements of an engine that never searched.** That claim is withdrawn in full —
+not weakened, withdrawn.
+
+**What still stands independently of any panel:** the instruction counts
+(`instructions:u`, 0.000 null, load-robust, verified by my own rebuilds at each
+merge), the gates, node-identity, and study 63's own kill of the three rungs —
+which it measured with an explicit net on a repaired instrument.
+
+### Fixed in the tool, not just noted
+
+Two guards, matching study 60's shape: **the net must be a readable file**, and
+**a probe run must print `Nodes searched`** before any round is timed. Verified: it
+now refuses the dangling worktree default (printing the resolved path it tried)
+and proceeds on an explicit resolved net.
+
+Also added, from study 63's finding that a before/after census cannot see a job
+that starts *and* ends between the checks: a **mid-run stability check** on the
+base binary's own per-round timings, flagging >2% first-half/second-half drift as
+VOID.
+
+### The pattern worth naming
+
+Three tools have now had the same dangling-symlink defect — `build_pgo.sh`,
+`wallclock_panel.py`, and (as a near-miss) `screen.sh`, which I had already given
+a load guard for exactly this reason. **A default that resolves relative to the
+running script is a trap in a repo that uses worktrees**, and the symptom is never
+an error — it is a fast, clean-looking number.
+
+**D49 unaffected throughout:** the trainer uses an absolute config path and its own
+data; sb1225+, four services active.
