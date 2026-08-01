@@ -13885,3 +13885,46 @@ is **available, not proposed.**
 active, **sb1700 in 14.9 h**. Memory: 7819 MB avail but **swap 4091/4095 —
 effectively full again**, the earlier warning sign, though not urgent at this
 avail level.
+---
+
+## 2026-07-31 23:48 — tick: export-match armed (it had never been wired), sb1700 ETA corrected
+
+**D49:** sb1293, heldout ema **0.010487** (sb1290), 176.8k pos/s. Five services
+active plus the new one. Trainer RSS 4.9 GB.
+
+**Found a real gap and closed it.** `export_match.sh` had existed since 22:27 —
+**and nothing called it.** No service, no timer, no caller in any script
+(`grep -l export_match *.sh` returned empty). The user asked for a short
+equal-nodes match vs canonical on the next export; I wrote the script and never
+armed it, so the sb1300 export would have passed silently. Now running as
+`d49xm.service`, waiting on an export newer than sb1290 (exports land every
+**10** sb, so sb1300 fires ~00:05).
+
+Two things fixed while arming, both from lessons already paid for:
+
+- **Output moved off the session scratchpad to ext4.** It wrote to
+  `/tmp/claude-1000/.../scratchpad/xm.out` — `/tmp` is tmpfs, i.e. RAM, and swap
+  is already full; a session reset also wipes it mid-match. Now
+  `/home/nick/.local/share/archon-d49/xm-sb<N>.out`.
+- **CONC 5 → 3** (~830 MB of nets instead of ~1.4 GB). The trainer was
+  oom-killed once tonight and study 65 is building concurrently. The screen is
+  fixed-node, so lower concurrency costs only wall time, never the result.
+
+Unit is capped `MemoryMax=3G MemorySwapMax=0`.
+
+**CORRECTION — sb1700 ETA. I quoted 14.9 h last tick; measured, it is ~16.3 h.**
+From checkpoint mtimes: sb1100→1200 took 235.1 min and sb1200→sb1293 has taken
+220 min, i.e. **2.39 min/sb** (the sb1000→1100 leg was faster at 214.1 min —
+the run has slowed under study contention plus the OOM restart). 408 sb
+remaining ⇒ **sb1700 at ~16:05 on 2026-08-01**, not ~14:40. The number matters
+because it schedules the 5880-game verdict screen.
+
+**Memory:** avail 8252 MB, free 2452, **swap 4066/4095 — still effectively
+full**. Top swap holders are the trainer (781 MB), gnome-shell (386), codex
+(297), claude (252). Throughput is unaffected (176.8k vs ~178k nominal), so this
+stays a watch item. Disk 137 GB free.
+
+**Note on instrument contention:** the sb1300 match will overlap study 65's
+measurements. Tolerable *because of what study 65 is gated on* — `instructions:u`
+(load-robust, 0.000 null) and bit-exactness. Any `cycles:u` number it reports
+from this window is not evidence; `cycles:u` read +49.9% under load tonight.
