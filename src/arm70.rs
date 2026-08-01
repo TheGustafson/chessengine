@@ -51,6 +51,34 @@ pub struct Arm {
     /// Seed for the jitter, so the null is a DISTRIBUTION rather than one
     /// draw (one draw of a chaotic statistic proves nothing).
     pub jseed: i32,
+
+    // --- history UPDATE shape: what the ordering learns from a cutoff ---
+    /// Override `QUIET_MALUS_START_NUM` (1024ths). 0 = shipped.
+    pub malus_start: i32,
+    /// Override `QUIET_MALUS_DECAY_NUM` (1024ths). 0 = shipped. 1024 makes
+    /// the malus UNIFORM across the tried quiets instead of decaying, and
+    /// values above 1024 invert the shape (late failures punished hardest).
+    pub malus_decay: i32,
+    /// Override `QUIET_BEST_BONUS_NUM` (1024ths). 0 = shipped.
+    pub best_bonus: i32,
+    /// Override `STAT_BONUS_TTMOVE`. -1 = shipped.
+    pub tt_bonus: i32,
+    /// **Defended-destination penalty on captures (16ths of the attacker's
+    /// value).** Shipped capture ordering is `7*victim + capture_history` with
+    /// NO attacker term at all — the good/bad SEE split is supposed to price
+    /// attacker risk, but that split does not run in QSEARCH, where 90% of
+    /// cutoffs come from the raw MVV order. One cached bitboard test
+    /// (`all_threats`, already filled for every evaluated node) says whether a
+    /// recapture is coming.
+    pub def_cap: i32,
+    /// The same penalty applied ONLY in the qsearch/ProbCut pipelines
+    /// (`depth <= DEPTH_QS`), where the good/bad SEE split does not run.
+    pub def_cap_qs: i32,
+    /// Give the tried-but-not-best CAPTURES a malus even when the best move
+    /// was a QUIET, and the tried quiets a malus when the best was a capture.
+    /// Shipped: each kind is only punished when the best move shares its kind,
+    /// so half the evidence at every node is discarded.
+    pub cross_malus: i32,
 }
 
 pub const SHIPPED: Arm = Arm {
@@ -65,6 +93,13 @@ pub const SHIPPED: Arm = Arm {
     offense_w: 16,
     jitter: 0,
     jseed: 0,
+    malus_start: 0,
+    malus_decay: 0,
+    best_bonus: 0,
+    tt_bonus: -1,
+    def_cap: 0,
+    def_cap_qs: 0,
+    cross_malus: 0,
 };
 
 fn parse(spec: &str) -> Arm {
@@ -86,6 +121,13 @@ fn parse(spec: &str) -> Arm {
             "offensew" => a.offense_w = n,
             "jitter" => a.jitter = n,
             "jseed" => a.jseed = n,
+            "malusstart" => a.malus_start = n,
+            "malusdecay" => a.malus_decay = n,
+            "bestbonus" => a.best_bonus = n,
+            "ttbonus" => a.tt_bonus = n,
+            "crossmalus" => a.cross_malus = n,
+            "defcap" => a.def_cap = n,
+            "defcapqs" => a.def_cap_qs = n,
             other => panic!("arm70: unknown knob {other:?}"),
         }
     }

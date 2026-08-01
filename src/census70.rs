@@ -97,6 +97,12 @@ pub static ALL_BEST_IDX: [[AtomicU64; IDXS]; KINDS] = zeros!(KINDS, IDXS);
 pub static TT_YES: [[AtomicU64; DEPTHS]; KINDS] = zeros!(KINDS, DEPTHS);
 pub static TT_NO: [[AtomicU64; DEPTHS]; KINDS] = zeros!(KINDS, DEPTHS);
 
+/// Cutoffs at nodes that had a usable TT move vs. nodes that did not, with
+/// the first-move subset of each. Splits "our scoring is weak" from "we did
+/// not have a TT move to score with" — two completely different fixes.
+pub static CUT_TT: [[AtomicU64; 2]; KINDS] = zeros!(KINDS, 2);
+pub static CUT1_TT: [[AtomicU64; 2]; KINDS] = zeros!(KINDS, 2);
+
 /// **The cost of mis-ordering.** An LMR scout that beats alpha is the search
 /// saying "I reduced a move I should not have"; the full-depth re-search that
 /// follows is a whole extra subtree bought by putting that move late. Counted
@@ -139,9 +145,14 @@ fn ibucket(idx: i32) -> usize {
 /// A beta cutoff: `kind` node, `depth` plies left, on the `move_count`-th
 /// searched move, emitted by `MovePicker` stage `src`.
 #[inline]
-pub fn cutoff(kind: usize, depth: i32, move_count: i32, src: u8) {
+pub fn cutoff(kind: usize, depth: i32, move_count: i32, src: u8, had_tt: bool) {
     CUT_IDX[kind][dbucket(depth)][ibucket(move_count)].fetch_add(1, Relaxed);
     CUT_SRC[kind][(src as usize).min(SRCS - 1)].fetch_add(1, Relaxed);
+    let t = usize::from(had_tt);
+    CUT_TT[kind][t].fetch_add(1, Relaxed);
+    if move_count == 1 {
+        CUT1_TT[kind][t].fetch_add(1, Relaxed);
+    }
 }
 
 /// A node whose move loop ended without a cutoff.
@@ -237,6 +248,14 @@ pub fn report(nodes: u64) {
                 .map(|(i, &c)| format!("{}={c}({:.2}%)", SRC_NAMES[i], 100.0 * c as f64 / st as f64))
                 .collect();
             eprintln!("C70 src kind={kname} {}", named.join(" "));
+        }
+        let (n0, n1) = (CUT_TT[k][0].load(Relaxed), CUT_TT[k][1].load(Relaxed));
+        if n0 + n1 > 0 {
+            eprintln!(
+                "C70 ttsplit kind={kname} no_tt_fh={n0} no_tt_fhf={:.4}                  has_tt_fh={n1} has_tt_fhf={:.4}",
+                CUT1_TT[k][0].load(Relaxed) as f64 / n0.max(1) as f64,
+                CUT1_TT[k][1].load(Relaxed) as f64 / n1.max(1) as f64,
+            );
         }
         let b = row(&ALL_BEST_IDX[k]);
         if b.iter().sum::<u64>() > 0 {

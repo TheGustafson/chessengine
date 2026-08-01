@@ -3518,7 +3518,9 @@ impl Worker {
             (_, false, true) => crate::census70::KIND_NONPV_CHK,
         };
         #[cfg(feature = "census70")]
-        crate::census70::node_entry(c70_kind, depth, matches!(mp.stage_id(), 0 | 7));
+        let c70_had_tt = matches!(mp.stage_id(), 0 | 7);
+        #[cfg(feature = "census70")]
+        crate::census70::node_entry(c70_kind, depth, c70_had_tt);
         // Index of the move that is currently `best_move` (study 70 census).
         #[cfg(feature = "census70")]
         let mut c70_best_idx = 0i32;
@@ -4458,7 +4460,13 @@ impl Worker {
                         // remaining depth, and the picker stage that emitted
                         // the cutting move.
                         #[cfg(feature = "census70")]
-                        crate::census70::cutoff(c70_kind, depth, move_count, mp.stage_id());
+                        crate::census70::cutoff(
+                            c70_kind,
+                            depth,
+                            move_count,
+                            mp.stage_id(),
+                            c70_had_tt,
+                        );
                         // Perf study 34: the ordering-quality instrument — the
                         // index of the move that actually caused the cutoff.
                         #[cfg(feature = "census34")]
@@ -5285,7 +5293,9 @@ impl Worker {
             crate::census70::KIND_QS
         };
         #[cfg(feature = "census70")]
-        crate::census70::node_entry(c70_kind, 0, matches!(mp.stage_id(), 7 | 13));
+        let c70_had_tt = matches!(mp.stage_id(), 7 | 13);
+        #[cfg(feature = "census70")]
+        crate::census70::node_entry(c70_kind, 0, c70_had_tt);
         #[cfg(feature = "census70")]
         let mut c70_best_idx = 0i32;
 
@@ -5393,7 +5403,7 @@ impl Worker {
                     }
                     if value >= beta {
                         #[cfg(feature = "census70")]
-                        crate::census70::cutoff(c70_kind, 0, move_count, mp.stage_id());
+                        crate::census70::cutoff(c70_kind, 0, move_count, mp.stage_id(), c70_had_tt);
                         break; // fail high
                     }
                     alpha = value;

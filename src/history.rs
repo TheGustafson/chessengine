@@ -785,9 +785,16 @@ impl Histories {
     ) {
         debug_assert!(cur >= SS_OFFSET);
 
+        #[cfg(not(feature = "arm70"))]
+        let tt_bonus = params::STAT_BONUS_TTMOVE();
+        #[cfg(feature = "arm70")]
+        let tt_bonus = match crate::arm70::arm().tt_bonus {
+            -1 => params::STAT_BONUS_TTMOVE(),
+            v => v,
+        };
         let mut bonus = (params::STAT_BONUS_DEPTH_MULT() * depth - params::STAT_BONUS_DEPTH_SUB())
             .min(params::STAT_BONUS_MAX())
-            + params::STAT_BONUS_TTMOVE() * (best_move == tt_move) as i32
+            + tt_bonus * (best_move == tt_move) as i32
             + stack[cur - 1].stat_score / params::STAT_BONUS_STATSCORE_DIV();
         let malus = (params::STAT_MALUS_DEPTH_MULT() * depth - params::STAT_MALUS_DEPTH_SUB())
             .min(params::STAT_MALUS_MAX());
@@ -798,23 +805,56 @@ impl Histories {
             bonus += (bonus as i64 * tried / params::STAT_BREADTH_DIVISOR()) as i32;
         }
 
+        #[cfg(not(feature = "arm70"))]
+        let (best_num, malus_start, malus_decay, cross) = (
+            params::QUIET_BEST_BONUS_NUM(),
+            params::QUIET_MALUS_START_NUM(),
+            params::QUIET_MALUS_DECAY_NUM(),
+            false,
+        );
+        #[cfg(feature = "arm70")]
+        let (best_num, malus_start, malus_decay, cross) = {
+            let a = crate::arm70::arm();
+            let pick = |v: i32, d: i32| if v == 0 { d } else { v };
+            (
+                pick(a.best_bonus, params::QUIET_BEST_BONUS_NUM()),
+                pick(a.malus_start, params::QUIET_MALUS_START_NUM()),
+                pick(a.malus_decay, params::QUIET_MALUS_DECAY_NUM()),
+                a.cross_malus != 0,
+            )
+        };
+        let quiet_malus = |me: &mut Self, board: &Board, stack: &[Stack]| {
+            // Geometrically decaying malus: earliest failures punished hardest.
+            let mut m = malus * malus_start / params::STAT_WEIGHT_DEN();
+            for &q in quiets_searched {
+                m = m * malus_decay / params::STAT_WEIGHT_DEN();
+                me.update_quiet_histories(board, stack, cur, q, -m);
+            }
+        };
+        let capture_malus = |me: &mut Self, board: &Board| {
+            for &c in captures_searched {
+                me.capture_entry_mut(board, c)
+                    .update(-malus * params::CAPTURE_MALUS_NUM() / params::STAT_WEIGHT_DEN());
+            }
+        };
         if !board.capture_stage(best_move) {
             self.update_quiet_histories(
                 board,
                 stack,
                 cur,
                 best_move,
-                bonus * params::QUIET_BEST_BONUS_NUM() / params::STAT_WEIGHT_DEN(),
+                bonus * best_num / params::STAT_WEIGHT_DEN(),
             );
-            // Geometrically decaying malus: earliest failures punished hardest.
-            let mut m = malus * params::QUIET_MALUS_START_NUM() / params::STAT_WEIGHT_DEN();
-            for &q in quiets_searched {
-                m = m * params::QUIET_MALUS_DECAY_NUM() / params::STAT_WEIGHT_DEN();
-                self.update_quiet_histories(board, stack, cur, q, -m);
-            }
+            quiet_malus(self, board, stack);
         } else {
             self.capture_entry_mut(board, best_move)
                 .update(bonus * params::CAPTURE_BEST_BONUS_NUM() / params::STAT_WEIGHT_DEN());
+            // Study 70 arm: the tried quiets also failed at this node, and the
+            // shipped code throws that evidence away whenever the best move
+            // happened to be a capture.
+            if cross {
+                quiet_malus(self, board, stack);
+            }
         }
 
         // Refutation malus: the parent's move was a quiet it tried first and
@@ -836,10 +876,7 @@ impl Histories {
             }
         }
 
-        for &c in captures_searched {
-            self.capture_entry_mut(board, c)
-                .update(-malus * params::CAPTURE_MALUS_NUM() / params::STAT_WEIGHT_DEN());
-        }
+        capture_malus(self, board);
     }
 
     /// The capture-history value for `m` in `board` (read side): the same

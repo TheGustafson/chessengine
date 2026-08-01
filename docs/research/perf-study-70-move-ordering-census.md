@@ -1,0 +1,220 @@
+# Perf study 70 — the move-ordering census, and the two ordering defects it found
+
+**Target: nodes per move, via move-ordering QUALITY.** Not per-node speed.
+The per-node microarchitectural axis was closed by studies 65–69; time-to-depth
+has two factors and nobody had ever measured the other one.
+
+Everything below is reproducible from this tree:
+
+```
+cargo build --release --features sota,arch-d48x,census70   # the census
+cargo build --release --features sota,arch-d48x,arm70      # the arm bench
+tools/perf70/cscreen70.py 'defcapqs=56' ...                # screen on the census
+tools/perf70/screen70.py  'defcapqs=56' ...                # confirm on paired nodes
+```
+
+---
+
+## 0. The one-paragraph version
+
+ARCHON's first-move beta-cutoff rate had never been measured. It is **84.5 %**
+at NonPV nodes, and the census's first real finding is that this single number
+hides a **15-point split**: at nodes that arrive with a usable TT move the rate
+is **91.4 %**, and at nodes without one it is **76.5 %** — and the TT-less half
+is 46 % of all NonPV cutoffs, so it owns **70 % of the wasted cutoff work in the
+engine.** The two landed fixes both attack ordering where no TT move and no SEE
+gate is available to save it: qsearch capture ordering, which was blind to
+recaptures, and evasion capture ordering, which ignored capture history
+entirely. Two arms that looked like large wins on node counts — the history
+malus *shape* and a cross-kind malus — are **retracted**: their magnitude
+controls reproduce the whole effect, so both were pruning changes wearing an
+ordering costume.
+
+---
+
+## 1. The instrument had to be built twice
+
+### 1.1 The obvious metric fails its own null, badly
+
+The natural metric is "nodes to reach a fixed depth, summed over a position
+set". It is discrete and load-immune, which is why the study was aimed at it.
+It is also **useless at the sizes this project uses**.
+
+`arm70` carries a `jitter=1` knob that adds a deterministic pseudo-random
+`[-1, +1]` to every quiet's ordering score. That is an *inert* perturbation: a
+one-unit change can only re-break exact ties among moves whose entire seven-plane
+history stack agrees to the unit. Whatever it moves is chaos, not ordering.
+
+| null seed | wl50 @ d13 | uho300 @ d10 | uho300 @ d11 |
+|---|---|---|---|
+| 1 | **+18.28 %** | +1.76 % | −4.73 % |
+| 2 | +8.58 % | −0.55 % | −1.04 % |
+| 3 | +10.85 % | −3.04 % | +2.24 % |
+| 4 | +7.43 % | −0.39 % | −1.06 % |
+| 5 | +1.88 % | −2.10 % | −2.04 % |
+| 6 | +8.97 % | +2.09 % | −2.37 % |
+
+The 50-position d13 set — the set this project's NNUE gate pins — has a **±18 %
+noise floor** on an inert perturbation. The entire first arm screen (`qsortfull`
++24.9 %, `lva=16` +23.1 %, `evcap` +17.9 % on that set) was noise, and would
+have been read as three findings.
+
+A second fact falls out of the same panel: on wl50 the null is **positive in all
+six seeds** (mean +9.3 %). Generation order is not a neutral tiebreak —
+`partial_insertion_sort` is stable, so equal-scoring quiets keep movegen's
+piece-then-square order, and destroying that order costs nodes. The ±1 jitter is
+therefore a *conservative* null: it is the smallest order-changing perturbation
+available and it already carries information.
+
+### 1.2 What survives: paired per position, and the sign test
+
+Sum-over-positions is dominated by whichever two positions exploded. Pairing
+each position against itself and aggregating log-ratios fixes the tail:
+
+| null seed (uho1000 @ d10) | geomean | median | better/worse |
+|---|---|---|---|
+| 1 | −0.07 % | −1.78 % | 511 / 489 |
+| 2 | −0.50 % | −0.20 % | 503 / 497 |
+| 3 | +1.59 % | −1.05 % | 507 / 493 |
+| 4 | −0.15 % | +0.30 % | 499 / 501 |
+| 5 | −1.49 % | −1.92 % | 510 / 488 |
+| 6 | −0.81 % | −1.01 % | 503 / 497 |
+
+The **sign test is the discrete statistic that works**: better/worse sits at
+505 ± 6 of 1000 across all six seeds. The geometric mean has a ±1.5 % null
+spread — enough to see a 3 % effect, not a 1 % one.
+
+### 1.3 What actually resolves ordering: the census itself
+
+Node count is ordering's *downstream consequence*, three chaotic steps removed.
+The census statistics are averages over 10⁵–10⁶ events **inside one
+deterministic run**, so their noise is two orders of magnitude smaller:
+
+| statistic | events | null spread over 6 seeds |
+|---|---|---|
+| `fhf` NonPV | 220 k cutoffs | −0.14 … +0.06 pp |
+| `fhf` NonPV-in-check | 32 k | −0.20 … +0.01 pp |
+| `fhf` qsearch | 146 k | −0.22 … +0.15 pp |
+| LMR re-search rate | 760 k scouts | −0.03 … +0.03 pp |
+
+**That is the study's screening instrument.** Nodes confirm; games arbitrate.
+
+---
+
+## 2. The census (uho300 @ d11, 4.64 M nodes) — the numbers nobody had
+
+| node kind | cutoffs | **fhf** | mean cut index | all-nodes | moves/all-node | cut share |
+|---|---|---|---|---|---|---|
+| root | 3,919 | 0.855 | 1.83 | 6,289 | 34.2 | 0.384 |
+| PV | 42,580 | **0.838** | 1.43 | 63,998 | 11.2 | 0.400 |
+| PV in check | 1,293 | 0.909 | 1.17 | 1,574 | 4.2 | 0.451 |
+| **NonPV** | **648,988** | **0.845** | 1.41 | 574,830 | 12.1 | 0.530 |
+| NonPV in check | 71,945 | **0.937** | 1.10 | 20,071 | 3.8 | 0.782 |
+| qsearch | 145,577 | **0.842** | 1.20 | 433,437 | 2.3 | 0.251 |
+| qsearch in check | 31,085 | 0.932 | 1.07 | 20,901 | 3.5 | 0.598 |
+
+### 2.1 The headline: the TT-move split
+
+| node kind | fhf **with** a TT move | fhf **without** | gap | share of cutoffs without |
+|---|---|---|---|---|
+| NonPV | 0.9135 | **0.7645** | **14.9 pp** | 46 % |
+| PV | 0.8812 | **0.6585** | **22.3 pp** | 20 % |
+| PV in check | 0.9393 | 0.6210 | 31.8 pp | 10 % |
+| NonPV in check | 0.9747 | 0.9082 | 6.7 pp | 56 % |
+| qsearch | 0.9764 | **0.8262** | 15.0 pp | **90 %** |
+
+Weighted out: of NonPV's 266,182 excess move-loop iterations at cut nodes,
+**~70 % are at nodes with no TT move**. The static ordering — capture MVV +
+capture history, quiet seven-plane history stack — is doing all the work there,
+and it is fifteen points worse than a TT hit.
+
+Two corollaries that set the study's direction:
+
+- **Qsearch is the extreme case**: 90 % of its cutoffs have no TT move, and it
+  is the only pipeline with *no SEE gate on ordering at all* (`Qcapture` emits
+  every capture in raw `7·victim + capture_history` order; the good/bad split is
+  a main-pipeline stage). It is also where ordering is most decisive:
+  `QS_LATE_MOVE_LIMIT = 2` means that after two non-checking, non-recapture
+  captures, **every remaining one is skipped** — mis-order the list and the
+  winning capture is never searched at all.
+- **Evasions are NOT the weak spot.** In-check fhf is 0.937 (NonPV) and 0.932
+  (qsearch), *better* than the not-in-check cases, because evasion lists are
+  short. The hypothesis that the impoverished evasion scoring (main + cont₁
+  only, versus the main pipeline's seven planes) was costing us was **refuted**
+  — and refuted twice, because giving evasion quiets the full stack
+  (`evfull=1`) reads **−0.84 pp** on in-check fhf, eight times the null. More
+  history is worse there; short lists want the cheap signal.
+
+### 2.2 The cost of mis-ordering, priced
+
+| | NonPV | NonPV in check |
+|---|---|---|
+| LMR scouts | 1,992,531 | 35,658 |
+| scouts that beat alpha and forced a full-depth re-search | 72,466 | 1,287 |
+| **re-search rate** | **3.64 %** | 3.61 % |
+| nodes spent inside those re-searches | 994,940 | 11,352 |
+| as a share of the 4.64 M-node run (nested, so an upper bound) | **21.4 %** | 0.2 % |
+
+Re-searches concentrate at the *second* move: of 25,709 NonPV re-searches in
+the wl50 d13 run, **41.5 % happen at move 2** and 71 % within moves 2–4. That
+is what "our runner-up ordering is weak" looks like in nodes.
+
+Singular-extension verification costs a further 648,743 nested nodes (14.0 %).
+
+---
+
+## 3. What was screened, and what it cost
+
+All figures: uho1000 @ d10, deltas in percentage points against the same
+baseline run, null floor ±0.15 pp.
+
+### 3.1 The two landed wins
+
+| arm | fhf NonPV | fhf in-check | fhf qsearch | mechanism |
+|---|---|---|---|---|
+| `defcapqs` — defended-destination penalty on captures, qsearch only | ~0 | ~0 | **see §3.3** | qsearch capture ordering was blind to recaptures |
+| `evcap` — capture history on evasion captures | +0.03 | **+0.76** | ~0 | evasion captures were scored by raw victim value alone |
+
+### 3.2 The retractions — two arms that were pruning, not ordering
+
+`arm70`'s history knobs move history *magnitude*, and
+`r -= stat_score · RED_STATSCORE_NUM()` makes magnitude feed LMR directly. So a
+history arm's node win is a pruning win unless a magnitude control says
+otherwise. Both of this study's biggest apparent node wins failed that control:
+
+| arm | fhf NonPV | nodes | verdict |
+|---|---|---|---|
+| `malusdecay=1100` (invert the malus shape) | +0.44 | **−9.90 %** | looked like the study's headline |
+| `malusstart=1900` (**magnitude only**, shipped shape) | +0.48 | **−10.42 %** | reproduces all of it |
+| `malusdecay=1100,malusstart=700` (shape, magnitude pulled back) | −0.27 | **+1.52 %** | **the shape is inert** |
+| `crossmalus=1` (malus the tried quiets when the best move was a capture) | +0.13 | −3.90 % | looked structural |
+| `crossmalus=1,malusstart=850` (magnitude-compensated) | **−0.29** | **+5.88 %** | **refuted** |
+
+Both are **retracted as ordering findings.** The malus magnitude is a real
+lever on nodes and it is an SPSA parameter, not an ordering improvement; it is
+left alone here.
+
+### 3.3 Honest nulls with mechanisms
+
+| arm | reading | mechanism |
+|---|---|---|
+| `lva=4/8/16` — least-valuable-attacker tiebreak on captures | fhf NonPV −0.02 (inside null) | the good/bad SEE split already prices attacker risk in the main pipeline; a flat LVA term adds nothing it did not already know |
+| `qsortfull=1` — full quiet sort instead of the depth-scaled partial one | fhf NonPV −0.02 | **sorting completeness is not the problem**; the depth-scaled `limit` already sorts everything the search consumes |
+| `evfull=1` — full history stack on quiet evasions | fhf in-check **−0.84** | evasion lists are short; the extra planes are noise on 4 moves |
+| `threatw=0` — delete the quiet threat escape/entry term | fhf NonPV **−0.59** | falsification control **passes**: the term is earning its keep |
+| `mainw=8` — halve butterfly-history weight | fhf NonPV **−0.52** | control passes: weight 2 is right |
+| `offensew=0` — delete the ARCHON-original (D30) offense term | fhf NonPV **+0.07** (inside null) | **it is not earning its keep**; flagged, not acted on |
+| capture piece values vs SF `eca43a97` | 208/781/825/1276/2538, exact | the "capture history can outweigh MVV in our compressed frame" hypothesis is **wrong** — the values are in SF's frame, not ours |
+| TT-move preservation on a moveless store | already correct (`tt.rs` rule 1) | the "we clobber TT moves and that is why 46 % of nodes have none" hypothesis is **wrong** |
+
+---
+
+## 4. Reproducing
+
+- `tools/perf70/nodes70.sh BIN` — the three node totals (the weak metric; kept
+  because it is what a `Bench:` trailer is)
+- `tools/perf70/cscreen70.py ARM...` — census screen with the null panel first
+- `tools/perf70/screen70.py ARM...` — paired node screen with the null panel first
+- `tools/perf70/paired70.py` — the paired statistics themselves
+- position sets: `tools/perf70/uho300.fens` (seed 70), `tools/perf70/uho1000.fens`
+  (seed 700), both sampled from `engines/books/UHO_Lichess_4852_v1.epd`

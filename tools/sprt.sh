@@ -112,10 +112,23 @@ echo "SPRT [$ELO0, $ELO1] nElo  $CANDIDATE vs $BASELINE"
 echo "limit: ${limit_args[*]}  Hash=$HASH  concurrency=$CONCURRENCY  book=$BOOK"
 echo "output: $OUT/  (record the verdict in docs/strength-log.md, D25)"
 
+# The net, passed EXPLICITLY (same rule as tools/screen.sh): `EvalFile`
+# defaults to <empty>, and an empty EvalFile silently evaluates PSQT — a match
+# that looks fine and measures the wrong engine. Set NET= (empty) to test a
+# PSQT/no-net pair deliberately.
+NET="${NET-engines/canonical/net.cenn}"
+net_args=()
+if [ -n "$NET" ]; then
+    [ -f "$NET" ] || { echo "error: NET='$NET' not found" >&2; exit 1; }
+    net_args=(option.EvalFile="$(readlink -f "$NET")")
+    echo "net: $NET"
+fi
+
 "$FASTCHESS" \
     -engine cmd="$CANDIDATE" name=candidate \
     -engine cmd="$BASELINE" name=baseline \
     -each proto=uci "${limit_args[@]}" option.Hash="$HASH" option.Threads=1 \
+    "${net_args[@]}" \
     -openings file="$BOOK" format=epd order=random \
     -repeat -games 2 -rounds "$ROUNDS" \
     -sprt elo0="$ELO0" elo1="$ELO1" alpha=0.05 beta=0.05 model=normalized \

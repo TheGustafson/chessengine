@@ -341,6 +341,13 @@ const NO_VICTIM: usize = 6;
 /// passant and quiet queen promotions have no piece on `to`, so they score a
 /// victim of 0 and use the [`NO_VICTIM`] slot.
 fn score_capture(board: &Board, hist: &Histories, m: Move) -> i32 {
+    score_capture_at(board, hist, m, 1)
+}
+
+/// `depth` only reaches the study-70 arm bench (qsearch/ProbCut are `<= 0`).
+#[cfg_attr(not(feature = "arm70"), allow(unused_variables))]
+#[inline]
+fn score_capture_at(board: &Board, hist: &Histories, m: Move, depth: Depth) -> i32 {
     let pc = board
         .piece_on(m.from())
         .expect("a capture move starts on a piece of the side to move");
@@ -357,6 +364,13 @@ fn score_capture(board: &Board, hist: &Histories, m: Move) -> i32 {
         // capture history cannot separate them.
         if a.lva != 0 {
             v -= pc.piece_type.value() / a.lva;
+        }
+        // Defended-destination penalty: MVV alone cannot tell RxN (free) from
+        // RxN (recaptured). `all_threats` is the enemy attack map, already
+        // filled and cached for the node by the eval.
+        let dc = a.def_cap + if depth <= 0 { a.def_cap_qs } else { 0 };
+        if dc != 0 && board.all_threats().contains(m.to()) {
+            v -= pc.piece_type.value() * dc / 16;
         }
     }
     v
@@ -1015,7 +1029,7 @@ impl MovePicker {
         #[cfg(feature = "policy")]
         let policy_weight = crate::policy::capture_weight();
         for (i, &m) in list.iter().enumerate() {
-            let value = score_capture(board, hist, m);
+            let value = score_capture_at(board, hist, m, self.depth);
             // Borrow `policy_scores` INSIDE the loop, not before it: binding it
             // outside holds an immutable borrow of `*self` across the whole
             // body, which collides with the `set_slot` below. Scoped here, NLL
