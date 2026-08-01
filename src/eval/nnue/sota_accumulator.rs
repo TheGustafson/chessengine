@@ -208,6 +208,35 @@ pub(crate) fn psqt_sub(psqt: &mut [i32; BUCKETS], table: &[i32], feature: usize)
 /// Fused parent→child PSQT fold: `dst = src ± rows`, mirroring the
 /// accumulators' `apply_*_deltas_into` shape. No-op guard belongs to callers
 /// (`table` must be non-empty here).
+///
+/// # Perf study 63 — TWO arms built here, both MEASURED NEGATIVE. Do not redo them.
+///
+/// This site looks like the best remaining fold target in the engine and is
+/// not. It runs **4,893,314 times per 5 M nodes** over **11,150,925 rows**
+/// (`foldcount::hka_into`), and its two loops have runtime trip counts, so both
+/// of the moves that paid elsewhere were tried. Whole-frame `instructions:u`,
+/// node-identical (5,001,562) and eval-hash exact, `base` reproducible to
+/// 2 parts in 10⁸:
+///
+/// | arm | Δ instructions | Δ i/node | Δ `.text` |
+/// |---|---:|---:|---:|
+/// | hoist `as_chunks` out of the two loops | **−496** | −0.0001 | +32 B |
+/// | + compile-time row counts (`psqt_lanes::<NA, NS>`) | **+35,589,740** | **+7.12** | +1,376 B |
+///
+/// **(a) The hoist is a null.** `psqt_add`/`psqt_sub` each re-derive
+/// `table.as_chunks::<BUCKETS>()`, and perf study 8 hoisted exactly that out of
+/// the THREAT channel's event loop, with a comment saying so. It does not
+/// transfer: this fold is `#[inline(always)]` with at most two iterations per
+/// list, so LLVM already CSEs the shift across the inlined calls. The threat
+/// loop is long and unbounded; that is the difference, not the channel.
+///
+/// **(b) Const-generic row counts are 7.12 i/node WORSE**, the same idiom that
+/// is worth −21 to −42 i/node in the i8 kernels one module over. There the
+/// loops run eight times per call (once per tile) over up to 16 rows; here they
+/// run once over at most two, so the straight-line form buys nothing and pays
+/// for copying the indices into `[usize; NA]`. Study 58's banner, third
+/// confirmation: *a loop-control instruction count is not a prize, it is an
+/// estimate of what LLVM would charge you for taking the loop away from it.*
 #[inline(always)]
 pub(crate) fn psqt_fold(
     dst: &mut [i32; BUCKETS],
