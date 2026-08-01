@@ -1,0 +1,109 @@
+147840 samples in symbol (26.33% of engine ops), 712 lines
+
+=== HOTTEST 64-BYTE CODE LINES
+  %sym     off  source
+ 2.81% +0x00380  atomic.rs:3904               <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 1.78% +0x00440  uint_macros.rs:2621          <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 1.30% +0x00000  mod.rs:2308                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 1.26% +0x00fc0  bitboard.rs:?                <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 1.08% +0x07f40  option.rs:764                <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.94% +0x00100  history.rs:886               <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.93% +0x00680  mod.rs:2605                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.84% +0x00780  mod.rs:2808                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.76% +0x07480  board.rs:289                 store <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.76% +0x01080  cuckoo.rs:68                 <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.74% +0x02240  bitboard.rs:62               <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.74% +0x007c0  mod.rs:2815                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.74% +0x006c0  mod.rs:2609                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.73% +0x00140  history.rs:886               <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.73% +0x00800  history.rs:98                <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.72% +0x073c0  uint_macros.rs:178           <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.72% +0x00540  mod.rs:?                     <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.71% +0x06240  board.rs:?                   <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.70% +0x062c0  mod.rs:4600                  reduction <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.70% +0x00480  atomic.rs:3904               <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.69% +0x06300  board.rs:956                 <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.68% +0x00a00  mod.rs:3047                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.68% +0x06480  mod.rs:3638                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.68% +0x075c0  mod.rs:3910                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.68% +0x06140  board.rs:942                 <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.65% +0x06280  mod.rs:4599                  <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.64% +0x07440  board.rs:287                 <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.63% +0x00900  mod.rs:2963                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.61% +0x008c0  int_macros.rs:3648           <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.60% +0x061c0  option.rs:966                <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.60% +0x06200  board.rs:1107                <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.59% +0x06100  board.rs:956                 <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.57% +0x00740  mod.rs:2794                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.57% +0x014c0  mod.rs:3396                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.57% +0x00200  history.rs:554               <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.56% +0x07340  board.rs:1231                <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.55% +0x07a00  mod.rs:4055                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.54% +0x06c80  mod.rs:?                     <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.54% +0x064c0  mod.rs:3657                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+ 0.53% +0x00040  mod.rs:2327                  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+
+=== SOURCE-LINE ROLLUP (ops by innermost file:line)
+  %sym   bytes  file:line
+ 4.63%    2496  mod.rs:?
+ 4.11%     256  atomic.rs:3904
+ 3.05%    1792  board.rs:?
+ 2.03%    1024  movepick.rs:?
+ 1.88%     704  history.rs:98
+ 1.78%      64  uint_macros.rs:2621
+ 1.72%     640  movepick.rs:812
+ 1.67%     128  history.rs:886
+ 1.36%     192  bitboard.rs:?
+ 1.33%     256  board.rs:956
+ 1.30%      64  mod.rs:2308
+ 1.09%     256  option.rs:764
+ 1.05%     128  mod.rs:2605
+ 1.03%     256  mod.rs:3396
+ 1.03%     320  int_macros.rs:3648
+ 1.02%     256  bitboard.rs:187
+ 1.02%     192  uint_macros.rs:178
+ 1.00%     320  moves.rs:110
+ 1.00%     448  board.rs:942
+ 0.99%     576  moves.rs:66
+ 0.95%     128  cuckoo.rs:68
+ 0.86%     192  cmp.rs:?
+ 0.85%     128  board.rs:947
+ 0.84%      64  mod.rs:2808
+ 0.81%     320  attacks.rs:503
+ 0.78%     128  mod.rs:4055
+ 0.77%     128  bitboard.rs:62
+ 0.76%      64  board.rs:289
+ 0.74%      64  mod.rs:2815
+ 0.74%      64  mod.rs:2609
+ 0.70%      64  mod.rs:4600
+ 0.70%     128  option.rs:966
+ 0.68%      64  mod.rs:3047
+ 0.68%      64  mod.rs:3638
+ 0.68%      64  mod.rs:3910
+ 0.65%      64  mod.rs:4599
+ 0.64%      64  board.rs:287
+ 0.63%      64  mod.rs:2963
+ 0.60%      64  board.rs:1107
+ 0.58%     256  history.rs:707
+
+=== NEVER-SAMPLED RUNS >= 2 LINES, with source
+  +0x09000   832 B  mod.rs:?                     <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x093c0   832 B  once.rs:226                  <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x055c0   704 B  movegen.rs:517               <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x04a40   576 B  board.rs:1892                make_move_with<chessengine::search::TtPrefetch> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x058c0   448 B  movepick.rs:1463             <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x0b040   448 B  mod.rs:?                     <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x04dc0   384 B  option.rs:1161               <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x099c0   384 B  movepick.rs:?                next_move <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x080c0   256 B  option.rs:764                <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x00c00   192 B  psqt.rs:213                  psqt_eval <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x03e00   192 B  once.rs:226                  <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x04300   192 B  once.rs:225                  <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x04500   192 B  sota_context.rs:?            evaluate <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x00ac0   128 B  option.rs:2775               <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x00d40   128 B  psqt.rs:212                  psqt_eval <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x03a40   128 B  board.rs:1401                gives_check_by <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x04600   128 B  sota_context.rs:655          evaluate <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x046c0   128 B  movepick.rs:?                <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x08a80   128 B  moves.rs:66                  <chessengine::search::Worker>::search::<chessengine::search::NonPv> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+  +0x08d40   128 B  board.rs:1854                make_move_with<chessengine::search::TtPrefetchDirty> <- <chessengine::search::Worker>::search::<chessengine::search::NonPv>

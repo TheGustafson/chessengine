@@ -710,6 +710,10 @@ impl MovePicker {
     // becoming single-call-site, which let LLVM's last-call-to-static bonus
     // inline it.  `search::<NT>` duplicates every search-body call site, so
     // that bonus never applies here; this forces the same inline directly.
+    // Perf study 67 §3: 307 bytes of `search::<NonPv>` for 0.1 % of its ops —
+    // ProbCut runs at a small minority of nodes and PGO inlined the whole
+    // constructor anyway.
+    #[cfg_attr(feature = "icold67", inline(never))]
     pub fn new_probcut(board: &Board, tt_move: Move, threshold: Value) -> Self {
         let usable = tt_move.is_ok() && board.pseudo_legal(tt_move) && board.capture_stage(tt_move);
         MovePicker::with_base(

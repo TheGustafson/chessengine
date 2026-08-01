@@ -1,0 +1,44 @@
+9280 instructions, 43688 bytes
+
+symbol 45565 B, 147840 sampled ops (26.33% of engine)
+  bytes     %B   %ops  outermost inlined callee
+   9390  20.6%  29.1%  (search's own code)
+   5467  12.0%  15.2%  do_move
+   4786  10.5%   6.1%  next_move
+   2894   6.4%   3.5%  update_all_stats
+   2679   5.9%   0.2%  make_move_with<chessengine::search::TtPrefetch>
+   2605   5.7%   1.8%  evaluate
+   1609   3.5%   3.1%  legal
+   1424   3.1%   1.2%  new
+   1223   2.7%   2.3%  see_ge
+    803   1.8%   1.1%  upcoming_repetition
+    776   1.7%   2.8%  <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+    674   1.5%   0.7%  update_quiet_histories
+    596   1.3%   0.7%  write
+    503   1.1%   5.3%  probe
+    495   1.1%   0.2%  check_time
+    485   1.1%   0.6%  capture_stage
+    441   1.0%   0.0%  gives_check
+    411   0.9%   1.7%  update_continuation_histories
+    400   0.9%   0.1%  unmake_move
+    393   0.9%   1.8%  undo_move
+    368   0.8%   1.3%  stat_score
+    332   0.7%   0.3%  value_from_tt
+    328   0.7%   0.7%  {closure#2}<chessengine::search::NonPv>
+    307   0.7%   0.1%  new_probcut
+    288   0.6%   0.0%  last_l2_for
+    287   0.6%   1.8%  correction_value
+    284   0.6%   0.0%  make_null_move
+    237   0.5%   0.0%  is_shuffling
+    235   0.5%   0.2%  capture_value
+    225   0.5%   0.1%  ord_weight
+    201   0.4%   0.9%  gives_check_by
+    173   0.4%   0.2%  update<8192>
+    148   0.3%   0.8%  ne<chessengine::moves::Move, chessengine::moves::Move>
+    130   0.3%   0.2%  correction_bonus
+    125   0.3%   0.5%  update<7183>
+    125   0.3%   1.1%  reduction
+    124   0.3%   0.1%  nmp_allnode_probe
+     94   0.2%   0.1%  key
+     90   0.2%   0.0%  reward_prior_capture
+     88   0.2%   0.0%  unmake_null_move

@@ -485,7 +485,12 @@ impl SotaContext {
     }
 
     /// Evaluate `board` through the incrementally maintained SOTA accumulators.
-    #[inline(always)]
+    // Perf study 67 §3: inlined, this wrapper (NOT the kernels, which are their
+    // own symbols) is 2,605 bytes of `search::<NonPv>` for 1.8 % of its ops —
+    // 3.2× its average bytes per op — and it is inlined a second time into
+    // `qsearch::<NonPv>`. It is called at most once per node.
+    #[cfg_attr(not(feature = "icold67"), inline(always))]
+    #[cfg_attr(feature = "icold67", inline(never))]
     pub fn evaluate(&mut self, board: &Board, ply: usize) -> Value {
         // The production search-stack oracle: catch stale sibling entries,
         // missed king refreshes, and FullThreats delta drift at the first node

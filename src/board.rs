@@ -2163,6 +2163,10 @@ impl Board {
     /// `plies_from_null` reset to 0 (which isolates repetition scans across
     /// the null boundary), check bookkeeping rebuilt for the new side.
     /// `rule50` and `game_ply` are deliberately unchanged (SF behavior).
+    // Perf study 67 §3: 284 bytes of `search::<NonPv>` for 0.0 % of its
+    // dispatched ops. NMP fires at a minority of nodes and both halves of the
+    // null are pure fetch weight in the node's hot span.
+    #[cfg_attr(feature = "icold67", inline(never))]
     pub fn make_null_move(&mut self) {
         debug_assert!(self.checkers().is_empty(), "make_null_move while in check");
         // Same shape as `make_move_with` step 1: archive the parent, then
@@ -2186,6 +2190,8 @@ impl Board {
     }
 
     /// Undo the last [`Board::make_null_move`]: pop the state, flip back.
+    // Perf study 67 §3, same reason as `make_null_move`.
+    #[cfg_attr(feature = "icold67", inline(never))]
     pub fn unmake_null_move(&mut self) {
         debug_assert!(
             self.checkers().is_empty(),
