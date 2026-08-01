@@ -96,17 +96,14 @@ def save_pair(host, arch, out: Path, name: str) -> None:
     ck.write_quant(out / f"{name}-quant.bin", host, arch)
 
 
-def main(cfg_path: str, resume_sb: int = 0) -> int:
-    import jax
-
-    spec = json.loads(Path(cfg_path).read_text())
-    # D47U arch overrides: spec-driven head width / output-skip so a head
-    # rebuild rides the standard driver (config keys arch_l2 / arch_out_skip).
-    # The mapping lives in ArchSpec so re-export tools cannot derive a
-    # different arch from the same run json (perf study 30).
-    arch = ArchSpec.from_run_spec(spec)
-    start_sb = resume_sb + 1 if resume_sb else 1
-    cfg = dataclasses.replace(
+def build_cfg(spec: dict, start_sb: int) -> TrainConfig:
+    """The TrainConfig a run json describes — ONE definition, for the same
+    reason ArchSpec.from_run_spec exists. Every field is listed EXPLICITLY
+    (a spec key with no line here is silently dropped, which is how D48Y2
+    trained the old target while its config claimed the new one), so any tool
+    that wants to reason about a run — the alpha=0 null, in particular — must
+    be able to get the identical object rather than re-deriving it."""
+    return dataclasses.replace(
         TrainConfig(),
         distill_alpha=float(spec.get("distill_alpha", 0.0)),
         dis_lambda=float(spec.get("dis_lambda", 0.0)),
@@ -139,6 +136,13 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         qat_l1_scale=float(spec.get("qat_l1_scale", 0.0)),
         teacher_frame_offset=float(spec.get("teacher_frame_offset", 0.0)),
         teacher_frame_scale=float(spec.get("teacher_frame_scale", 0.0)),
+        # SF-net teacher: [[k, p], ...] aligned with the mix, same positional
+        # contract as per_corpus_target. Dropping this line silently trains
+        # the WRONG teacher frame while the config claims the right one —
+        # exactly the class of bug that sank D48Y2.
+        teacher_kp=(tuple((float(k), float(p))
+                          for k, p in spec["teacher_kp"])
+                    if spec.get("teacher_kp") else None),
         per_tensor_clip=bool(spec.get("per_tensor_clip", False)),
         no_bias_decay=bool(spec.get("no_bias_decay", False)),
         grad_clip_norm=float(spec.get("grad_clip_norm", 0.0)),
@@ -148,6 +152,19 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
         warmup_superbatches=spec.get("warmup_superbatches", 0.0),
         ema_decay=spec.get("ema_decay", 0.0),
         start_superbatch=start_sb)
+
+
+def main(cfg_path: str, resume_sb: int = 0) -> int:
+    import jax
+
+    spec = json.loads(Path(cfg_path).read_text())
+    # D47U arch overrides: spec-driven head width / output-skip so a head
+    # rebuild rides the standard driver (config keys arch_l2 / arch_out_skip).
+    # The mapping lives in ArchSpec so re-export tools cannot derive a
+    # different arch from the same run json (perf study 30).
+    arch = ArchSpec.from_run_spec(spec)
+    start_sb = resume_sb + 1 if resume_sb else 1
+    cfg = build_cfg(spec, start_sb)
     global HELDOUT_TARGET
     if spec.get("heldout_target"):
         HELDOUT_TARGET = (float(spec["heldout_target"][0]),
@@ -199,12 +216,26 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
 
     teacher = None
     if spec.get("teacher_warm"):
+        # `teacher_arch` lets the teacher be a DIFFERENT architecture from the
+        # student — which is the whole point once the teacher is Stockfish's
+        # own net (1024/32/32 with their dual tail) rather than a previous
+        # ARCHON leg. Absent => the historical full() teacher, unchanged.
+        # teacher_arch is merged LAST and wins: SF's checkpoint has no
+        # factoriser tensor, so `factorize` must be able to go back to False.
         t_arch = dataclasses.replace(
-            ArchSpec.full(), factorize=True, psqt=True)
+            ArchSpec.full(),
+            **{"factorize": True, "psqt": True, **spec.get("teacher_arch", {})})
         t_params = ck.load_warm(ROOT / spec["teacher_warm"], t_arch)
         teacher = (t_params, t_arch)
         print(f"[pump {net_id}] teacher loaded: {spec['teacher_warm']} "
-              f"(alpha {cfg.distill_alpha})", flush=True)
+              f"(alpha {cfg.distill_alpha}, hl={t_arch.hl} l2={t_arch.l2} "
+              f"l3={t_arch.l3} dual_tail={t_arch.dual_tail} "
+              f"sf_act={t_arch.sf_act})", flush=True)
+        if cfg.teacher_kp is not None and len(cfg.teacher_kp) != len(spec["mix"]):
+            print(f"[pump {net_id}] ABORT: teacher_kp has "
+                  f"{len(cfg.teacher_kp)} entries for {len(spec['mix'])} "
+                  f"corpora", flush=True)
+            return 2
 
     mix = [(BulletBin(str(ROOT / p)), w) for p, w in spec["mix"]]
     # Loader parallelism. Trimmed 5/8 -> 4/4 during the 2026-07-25 OOM loop

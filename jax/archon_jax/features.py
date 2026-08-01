@@ -33,6 +33,9 @@ from .spec import (
     GEOMETRIC_CLASSES,
     POLICY_VOCAB,
     OUTPUT_BUCKETS_LAYOUT,
+    SF_BUCKETS,
+    PIECE_VALUES,
+    MATERIAL_PAWN_WEIGHT,
 )
 
 U64 = np.uint64
@@ -565,7 +568,8 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
               threat_remap: np.ndarray | None = None,
               threat_code2d: np.ndarray | None = None,
               threat_region: str = "",
-              bucket_regions: tuple[str, ...] = ()) -> dict:
+              bucket_regions: tuple[str, ...] = (),
+              sf_bucket: bool = False) -> dict:
     """records -> the dense/sparse training tensors, bullet-mapper-parity.
 
     Returns dict with:
@@ -604,6 +608,29 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
         "hk_stm": hk[:, 0], "hk_ntm": hk[:, 1],
         "bucket": bucket.astype(np.int32),
     }
+    if sf_bucket:
+        # SF-net teacher (sf-teacher-blend-2026-08-01). Two columns the
+        # STUDENT never uses, both properties of Stockfish rather than of us:
+        #
+        #  t_bucket -- their layer stack index, `(pieces-1)/4`
+        #  (eca43a97:src/nnue/nnue_architecture.h). It is NOT our partition
+        #  and there is no relabelling that makes it one: our bucket 0 spans
+        #  popcounts 0-8, which is their buckets 0, 1 AND 2. Handing the
+        #  teacher our index would silently evaluate most positions on the
+        #  wrong stack.
+        #
+        #  material -- SF's `evaluate()` blend numerator (evaluate.cpp:80-81).
+        #  Their SEARCH scales the raw net by (77871+material)/77871 before
+        #  any label is written, so a label carries the factor and
+        #  `evaluate_raw` does not; the teacher->label conversion is a
+        #  function of it (data.py's teacher_kp).
+        out["t_bucket"] = np.minimum((dec.piece_count - 1) // 4,
+                                     SF_BUCKETS - 1).astype(np.int32)
+        npm = np.zeros(len(recs), np.int64)
+        np.add.at(npm, dec.row, PIECE_VALUES[dec.pt])
+        pawns = np.zeros(len(recs), np.int64)
+        np.add.at(pawns, dec.row, (dec.pt == 0).astype(np.int64))
+        out["material"] = (MATERIAL_PAWN_WEIGHT * pawns + npm).astype(np.float32)
     if threats:
         assert threat_remap is None or threat_code2d is None, \
             "threat_remap and threat_code2d are mutually exclusive"

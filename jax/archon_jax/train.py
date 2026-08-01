@@ -181,8 +181,25 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
         The teacher shares the batch's sparse indices — its FT gather is the
         same cost class as the student's; total step ~2x, paid only on
         distill legs (D47V)."""
-        tv, tp, _ = forward(t_params, t_arch, batch, ft_impl)
-        if t_frame is not None:
+        t_batch = batch
+        if "t_bucket" in batch:
+            # An SF net's output buckets are (pieces-1)/4, not ours, and the
+            # two are NOT the same partition — our bucket 0 spans popcounts
+            # 0-8, which is their buckets 0, 1 and 2. Handing the teacher our
+            # index would evaluate most positions on the wrong layer stack.
+            t_batch = {**batch, "bucket": batch["t_bucket"]}
+        tv, tp, _ = forward(t_params, t_arch, t_batch, ft_impl)
+        if "teacher_mult" in batch:
+            # SF-net teacher: raw internal units -> our label frame -> the
+            # SAME per-corpus draw-aware transform the label went through
+            # (features.py map_batch). Note the transform reduces to the plain
+            # sigmoid when t_off == 0, so one expression covers both.
+            cp = tv * batch["teacher_mult"]
+            off, scl = batch["t_off"], batch["t_scl"]
+            pw = jax.nn.sigmoid((cp - off) / scl)
+            pl = jax.nn.sigmoid((-cp - off) / scl)
+            tv = 0.5 * (1.0 + pw - pl)
+        elif t_frame is not None:
             # interp on the raw logit — see the frame-LUT construction above
             tv = jnp.interp(tv, t_frame[0], t_frame[1])
         else:

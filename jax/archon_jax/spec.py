@@ -116,6 +116,19 @@ RECORD_DTYPE = np.dtype([
 ])
 assert RECORD_DTYPE.itemsize == 32
 
+# ---------------------------------------------------------------------------
+# Stockfish-side constants, needed only when SF's own net is the live teacher
+# (sf-teacher-blend-2026-08-01). Kept here so the trainer, the converter and
+# the calibration tool cannot drift apart on them.
+# ---------------------------------------------------------------------------
+SF_BUCKETS = 8               # their layer stacks; index = (pieces-1)/4
+# `material` in SF's evaluate() blend: 534*count<PAWN>() + non_pawn_material().
+# Piece values are ARCHON's transcription of eca43a97 (types.rs:636-644);
+# index by PieceType 0=P 1=N 2=B 3=R 4=Q 5=K.
+PIECE_VALUES = np.array([0, 781, 825, 1276, 2538, 0], dtype=np.int64)
+MATERIAL_PAWN_WEIGHT = 534   # eval/params.rs:20
+EVAL_BLEND_BASE = 77871      # eval/params.rs:27 — v*(BASE+material)/BASE
+
 
 def clip_map_for_arch(arch) -> dict[str, float]:
     """Per-tensor weight clip DERIVED FROM EACH TENSOR'S EXPORT ENCODING (v1.5).
@@ -234,6 +247,21 @@ class ArchSpec:
     #   l3w (l3,   B)    -> (2*l2 + 2*l3, B)
     # False = today's single-activation tail, byte-for-byte.
     dual_tail: bool = False
+    # SF-net TEACHER only (sf-teacher-blend-2026-08-01): the exact float
+    # analogue of SF's integer dual activation, which `dual_tail` deliberately
+    # does NOT reproduce (it is "shape only" — see above). Two differences,
+    # both load-bearing when the goal is to REPRODUCE their net rather than to
+    # borrow its topology:
+    #   * SF squares the UNCLIPPED pre-activation: `(x*x) >> 21` has no lower
+    #     clamp, so a NEGATIVE unit contributes POSITIVELY to the sqr lane,
+    #     where our SqrCReLU sends it to 0. Ignoring this is not a rounding
+    #     difference, it changes the function.
+    #   * the sqr lane's gain is 127/128, not 1: at the normalisation that
+    #     makes the clipped lane `clamp(x,0,1)` (divide by 2^(WSB+1)*127), the
+    #     square lands on `min(x^2 * 127/128, 1)`.
+    # Derivation in docs/research/sf-teacher-blend-2026-08-01.md §2.
+    # Requires dual_tail; False everywhere else, so no trained net moves.
+    sf_act: bool = False
     # Recode POC (learned-feature-code study §6.1, 2026-07-30): the threat
     # embedding's ROW COUNT. 0 = the identity code (THREAT_DIMS rows, every
     # net before the study). When a run trains a re-coded threat channel,
@@ -424,6 +452,22 @@ class TrainConfig:
     # the 2026-07-26 D47V 1.378× output-scale gotcha.
     teacher_frame_offset: float = 0.0
     teacher_frame_scale: float = 0.0
+    # SF-NET TEACHER frame (sf-teacher-blend-2026-08-01). The two scalars above
+    # cannot express it and no scalar can: an SF net emits raw internal units,
+    # and the measured conversion into our label frame is
+    #     label_frame = k_i * (1 + material/77871)^p_i * teacher_raw
+    # per corpus AND per position. Over the (corpus x material) grid the
+    # multiplier runs 0.319-0.604 (1.90x); the weight-averaged constant 0.4182
+    # is wrong by up to +45%, and uho (25% of the mix) is off -20% at low
+    # material and +19% at high BY THE SAME CONSTANT. So this is a list of
+    # (k, p), indexed POSITIONALLY against `mix` exactly like
+    # per_corpus_target (verified against the data, not assumed — that study
+    # §3, 11/12 corpora reproduce their own slot to <=1.6%).
+    # None = no SF teacher, and every code path it touches stays inert.
+    teacher_kp: tuple | None = None
+    # The teacher's ArchSpec kwargs (tools/nnue/sf_to_archon_warm.py
+    # --dump-arch). Empty = the historical ArchSpec.full() teacher.
+    teacher_arch: tuple = ()
     # --- D49 (2026-07-29). All default to the historical behaviour, so an
     # untouched config trains bit-identically to before.
     # Loss: SF applies the offset two-sigmoid to BOTH sides; D48Y2 did the
