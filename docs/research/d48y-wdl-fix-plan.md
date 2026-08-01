@@ -13035,3 +13035,57 @@ config file.
 
 **D49:** sb1211, heldout ema **0.010539** — still falling (0.010564 → 0.010539),
 185k pos/s, four services active, 7.5 GB free, 146 GB disk. **Study 63** working.
+
+## Tick — 2026-07-31 20:46, study 63 found TWO DEFECTS IN MY PANEL TOOL — and I had been blaming the box
+
+Study 63 is mid-panel and has already committed a fix to `tools/wallclock_panel.py`
+titled *"the wall-clock arbiter was comparing a tmpfs binary against two NVMe
+ones."* Its evidence is a **400-round** PGO panel where the byte-identical null
+read **+0.646% at p < 1e-4** — in **every rotation phase and every quarter**, with
+the three position medians inside 0.25% of each other. **Not position, not drift.
+Systematic instrument bias.**
+
+| defect | mechanism |
+|---|---|
+| **1. null copy on tmpfs** | `tempfile.mkdtemp()` lands in `/tmp` (tmpfs here) while base and arm sit on NVMe. Executing an ELF out of tmpfs ≠ out of the ext4 page cache. Copy now lands beside the base binary. |
+| **2. runs not pinned** | every counter panel in the 45–62 chain pins to one physical core; the wall-clock panel did not. Per-round sd **3.58% unpinned vs 0.98–1.13% pinned**. `--cpu` now defaults to core 2. |
+
+**Both were mine.** I wrote that tool this afternoon and smoke-tested it — and the
+smoke test passed, because a *broken* instrument that refuses is
+indistinguishable from a *working* instrument on a noisy box.
+
+### What this does to the numbers I published — worked through, not waved at
+
+**Defect 1 biases the NULL only, not the arm.** The null compares
+copy(tmpfs) against base(NVMe) — asymmetric. The arm compares arm(NVMe) against
+base(NVMe) — **symmetric, so unbiased**. **Defect 2 is variance, not bias**: it
+widens both bars and moves neither centre.
+
+**So the +3.14 game-relevant Elo for studies 61–62 stands on its centre**
+(arm −1.879%, 29/40, p=0.0064), measured with an instrument noisier than it needed
+to be. That is the honest position, and it is *not* a get-out — it happens to be
+what the mechanism implies, and I would be recording a retraction here if the
+asymmetry had touched the arm.
+
+### The sharper consequence, which does land on me
+
+**A biased-high null makes the licence `|null| < |arm|/2` HARDER to pass. The tool
+has been issuing FALSE REFUSALS.** Study 62's panel that "refused twice, with the
+byte-identical null moving further than the arm" — which I recorded as *"the
+difference a quiet box makes"* — was plausibly **my tool's own asymmetry, not the
+box at all.**
+
+**And I had been building on that misreading.** I wrote a load-detector this very
+afternoon on the premise that null failures meant contention, and told study 63's
+brief that panels refusing under load was "correct behaviour, not a bug." Part of
+it was a bug — in the harness, put there by me.
+
+**Study 63's own lesson is the one to keep:** *"the null is not a formality, it is
+the only part of the harness that can fail loudly, and when it fails the answer is
+to FIX THE INSTRUMENT, not to re-run hoping for a quieter box."* I did the second
+thing repeatedly today.
+
+The fix is on its branch and will merge with its report; I am not cherry-picking
+it mid-study.
+
+**D49:** sb1218, heldout ema **0.010539**, 187k pos/s, four services active.
