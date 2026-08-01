@@ -14541,3 +14541,46 @@ The brief is grounded in checked facts rather than remembered ones:
   since stale docs still carry the old ones.
 - 1280 accumulator stays (owner ruling); measure against an in-binary null so box
   load cancels, as study 65 did.
+
+---
+
+## 2026-08-01 02:47 — the frame curve REPRODUCES POINT-FOR-POINT under the new margins
+
+**D49:** sb1375, 187.8k pos/s, heldout ema 0.010463.
+
+**BEFORE/AFTER, same nets, same positions, same 25k node budget — only the 154
+search constants differ (eca43a97 -> ebcea3ef, and the AFTER side is a fresh PGO
+binary):**
+
+| pack scale | slope vs SF | BEFORE | AFTER | delta |
+|---:|---:|---:|---:|---:|
+| 1585 (parity) | 0.995 | -18.08 +/- 10.79 | **-19.71 +/- 11.48** (n=1500) | -1.6 |
+| 1068 | 0.672 | -8.57 +/- 10.57 | **-8.54 +/- 16.7** (n=529) | **+0.03** |
+| 756 | 0.477 | +3.24 +/- 10.65 | pending | — |
+| 535 | 0.339 | not run | pending | — |
+
+**The curve reproduces point-for-point.** The 1068 arm lands within **0.03 Elo**
+of its old value on an entirely different binary with 154 refreshed constants
+including razoring 465/300 -> 483/318 and the whole RFP / LMR / singular /
+qsearch / update_all_stats family.
+
+**What this settles:** the frame effect is **NOT** an artifact of stale
+constants, and my original theory does not get rescued by the refresh. Matching
+Stockfish's internal eval frame costs ~20 Elo whether the margins are 2026-07-06
+vintage or 2026-07-16 vintage. It is a property of OUR EVAL against SF-shaped
+margins.
+
+**What is still NOT known: the mechanism.** Depth is already refuted as the
+explanation (13.209 vs 13.204 ply, identical). Note the two facts together are
+genuinely odd — **identical depth, ~20 Elo apart** — so whatever the frame is
+doing, it changes WHICH nodes get pruned, not how deep the search reaches. I am
+not naming a cause without measuring one.
+
+**Standing caveat, unchanged:** every arm is at FIXED 25k NODES. A frame that
+shifts pruning aggressiveness trades differently against a real clock, and
+[[nodestime-not-a-real-clock-proxy]] is the receipt (+52.6 fixed-node vs -31.4
+real-clock). **No frame decision ships without a real-TC confirmation.**
+
+**Study 66** is alive and committing as it goes (`fc992b02`, an intra-fold
+census of redundancy and address spread; zero uncommitted files) — the discipline
+study 20 failed at.
