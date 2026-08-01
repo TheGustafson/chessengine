@@ -17672,3 +17672,33 @@ instrument: four counters fail their byte-identical null, **node counts fail a
 jitter null at +18.3 %**, census statistics (±0.11–0.16 pp) are the reliable
 metric, and a <5 Elo removal is not cheaply provable at ±10 bars — with the
 one-match A/B design named as the way to resolve it.
+
+---
+
+## 2026-08-01 15:18 — teacher: per-corpus frame WIRED, gates running. Three agents on the box.
+
+**`352fe1e2 sf-teacher: wire the PER-CORPUS (k,p) frame, and the gate that caught
+my own instrument`** — so it did NOT take the scalar fallback I offered; it wired
+the real per-corpus, material-dependent conversion. **And its own gate caught an
+instrument error**, which is the behaviour these gates exist for.
+
+**The trainer processes I saw are the ALPHA=0 BIT-IDENTITY GATE**, not the probe
+— `cyc.log` still ends at sb1693 from the run stopped at 14:52. Verified rather
+than assumed: the `pump_train` pids are transient and no new training lines
+appear. That gate is the cheap null that proves the blend is inert when switched
+off, before anything is claimed with it switched on.
+
+**Three agents now share the box** — teacher build, study 71 (TT-less), and the
+Fable search-simplification study. Memory swung **3320 → 2992 → 5024 MB** in 30 s
+under six concurrent builds; **zero kernel OOM since 15:00**. The trainer is
+stopped so its 3.5 GB is not in play, which is the only reason six builds fit.
+
+**Contingency restated with the new arrival:** if `MemAvailable` drops below
+2500 MB, stand down in this order — **study 71 first** (discretionary, arms are
+checkpointed and resumable), **then the simplification study** (plan-only, no
+running experiment to lose), **never the teacher build** (the owner escalated it
+explicitly and it is minutes from launching).
+
+**Standing note on the directive:** D49 is deliberately stopped and the GPU held
+for the teacher probe. That is the one live deviation from "keep the training
+going", it is intentional, and it ends the moment the probe launches.
