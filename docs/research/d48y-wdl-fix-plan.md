@@ -16586,3 +16586,40 @@ boundary behaviour, so the games are the readout for all three, as intended.
 
 **Live:** cycle 2 sb1575 → 1600; sb1570 screen in flight; memory 6703 MB; all
 units green.
+
+---
+
+## 2026-08-01 10:32 — ★ CYCLE 1 RESULT: +9.27 ± 11.04 vs the +3.47 anchor. Positive, NOT significant.
+
+| checkpoint | Elo vs canonical | n |
+|---|---:|---:|
+| **anchor sb1540** | **+3.47 ± 11.22** | 1500 |
+| **cycle 1 sb1570** | **+9.27 ± 11.04** | 1500 |
+| **difference** | **+5.80** | combined bar **±15.7** |
+
+**One jump→anneal cycle (5× LR, annealed to 0 over 30 sb) moved D49 from +3.47 to
++9.27 against canonical.** The two screens are independent so their bars add:
+**+5.80 ± 15.7 does not clear zero.** Encouraging, not established.
+
+**Why this cannot be called a win yet, in the terms this session has been paying
+for all night:** a single 1500-game screen has a ±11 bar, and the *measured*
+point-to-point swing between adjacent D49 checkpoints is **13 Elo** (+1.85 at
+sb1430 vs +15.06 at sb1410) — larger than the effect being claimed. **+9.27 is
+comfortably inside the ordinary spread of this series.** I reported "+15.06, D49
+has overtaken canonical" off exactly this kind of single draw at 04:32 and had to
+walk it back when ten screens pooled to +8.41 ± 3.89.
+
+**What would settle it, in order of cost:**
+1. **Cycles 2 and 3** — if each adds ~+6, three cycles compound to ~+17 over the
+   anchor and the trend itself becomes the evidence. Running now (cycle 2 at
+   sb1581).
+2. **A direct A/B**: cycle-3 checkpoint vs the sb1540 **anchor**, one screen, no
+   added bars — the same design that gave the undertraining number **+30.31 ±
+   11.0** cleanly.
+3. 5880 games (±5) on the winner.
+
+**Cycle 2 is behaving like cycle 1**: heldout ema rose again at the second jump
+(sb1580 = 0.010462), the same excursion-then-anneal shape. sb1600 checkpoint due
+in ~45 min.
+
+**Memory 5892 MB, all units green, no OOM since the owner's 08:15 npm build.**
