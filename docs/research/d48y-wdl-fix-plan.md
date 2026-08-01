@@ -13522,3 +13522,40 @@ contention-immune *in their result*, but study 64 may be timing binaries, and it
 brief already requires it to void anything that loses quiet. That is its call.
 
 **D49:** sb1262, four services active + `xmatch` waiting.
+
+## Tick — 2026-08-01 00:3x, OWNER RULING: the big accumulator stays
+
+**"I'm gonna stick with the big accumulator. Tho I might one day make L1 bigger."**
+
+**L1 = 1280 stands, and may grow.** The 1280→1024 candidate from the SF
+architecture comparison is **closed as a decision, not as a finding** — the
+measurement stands (FT working set 1.250× ↔ speed 1.263×), the trade is simply not
+the one being taken. **Not to be re-raised.**
+
+### What the ruling implies, stated once
+
+- **The memory constraint is now permanent and will get worse, not better.** Every
+  speed conclusion of the last two days follows from being capacity-bound: IPC
+  1.595, ≥47% stall, study 61's no-fitted-parameter cache model, instruction cuts
+  converting at ~zero. A wider L1 deepens all of it.
+- **That RAISES the value of traffic-reduction work**, which is exactly what study
+  64 is already commissioned on — whole evaluations avoided, folds not performed,
+  `at_full` carried forward instead of replayed. Work not done is the only lever
+  left that a wider accumulator does not blunt.
+- **L2 is a separate dial and remains open.** `fc_0` is L1×L2 = 163,840
+  parameters, ~0.15% of the net, and lives in cache regardless. Doubling L2 16→32
+  costs almost nothing in traffic at any L1 — so if it ever buys accuracy, the
+  speed objection is weak. Recorded as available, not proposed.
+- **One small independent item the comparison surfaced:** we ship the HalfKA half
+  as **i16 and quantise to i8 at load** (57.7 MB of the file) while SF ships i8
+  directly. **This does not affect the runtime working set** — both are i8 after
+  load — but it is ~5% of frame as startup cost and 57.7 MB of file. Unrelated to
+  the accumulator decision.
+
+**Profile note:** tried to price `fc_0` directly and could not — `forward_into` is
+**12.20%** of shipped instructions but its internals are fully inlined, so
+`l1_dot` has no symbol. Study 58's `--features split58` is the re-runnable way to
+decompose it. Not pursued, since the decision it would have informed is now made.
+
+**D49:** sb1264, four services active, `xmatch` armed and waiting for sb1270
+(~13 min). **Study 64** working.
