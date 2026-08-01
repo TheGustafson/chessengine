@@ -14255,3 +14255,39 @@ correct call, flagged here.
 **STRENGTH TESTING IS OWED AND NOT RUN.** A -17.2% node change is functional by
 definition. Per the user's standing instruction the frame screen re-runs on top
 of this (`frame_rerun.sh`), and tonight's frame arms become the BEFORE half.
+
+---
+
+## 2026-08-01 01:05 — PARITY IS FINAL AND LOSES. The frame curve is MONOTONIC, against the theory.
+
+**D49:** sb1327, 185.2k pos/s, heldout ema 0.010474.
+
+**Frame arms, D49 sb1300 vs canonical, 25k fixed nodes, eca43a97 tunables:**
+
+| pack scale | slope vs SF internal | Elo vs canonical | n |
+|---:|---:|---:|---:|
+| **756** (shipped) | 0.477 | **+3.24 +/- 10.65** | 1500 FINAL |
+| 1068 | 0.672 | -4.22 +/- 13.4 | 823, running |
+| **1585 (PARITY)** | **0.995** | **-18.08 +/- 10.79** | **1500 FINAL** |
+
+Parity vs shipped: **21.32 Elo apart against a combined 95% bar of +/-15.16** —
+outside the bar, both arms at full n=1500. **The frame theory is wrong in SIGN.**
+Our margins ARE Stockfish's raw internal constants, and matching Stockfish's eval
+frame makes us ~21 Elo WORSE. The relationship is monotonic: further from parity
+is better.
+
+**PRE-REGISTERED, written before the result (`d49f535.service` queued):** if the
+trend is real, **scale 535 (slope 0.339) beats +3.24**. If it turns DOWN instead,
+756 is a genuine interior optimum and the monotonic reading is wrong. Recording
+the prediction first so the outcome cannot be narrated either way after the fact.
+
+**What is NOT concluded:** the mechanism. The depth hypothesis is already refuted
+(13.209 vs 13.204 ply, identical). I am not substituting a second story. Note
+also that every arm here is at FIXED 25k NODES; a frame that changes pruning
+aggressiveness trades nodes against tree shape differently at real TC, and
+[[nodestime-not-a-real-clock-proxy]] is the standing receipt for that class of
+error (+52.6 at fixed nodes vs -31.4 on the real clock). **Any frame decision
+needs a real-TC confirmation before it ships.**
+
+**And all of it re-runs under the new tunables** (user instruction): these arms
+are the BEFORE half. `gatetune.service` still running on `tunables-on-main`.
