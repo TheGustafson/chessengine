@@ -16091,3 +16091,52 @@ jitter-immune**: an inert ±1 tie-break moves the **wl50 d13 total +18.3 %** —
 **that is the set the NNUE gate pins**. Its first screen read three "findings" off
 that noise. It rebuilt on census statistics (±0.15 pp null) and a paired sign test
 (505 ± 6). **Correcting my own brief for the second study running.**
+
+---
+
+## 2026-08-01 08:32 — ★ THE UNDERTRAINING NUMBER: +30.31 ± 11.0 for 1000 superbatches
+
+**Stopped `d49len` at owner's call ("good enough").** Final tally over the games
+that completed:
+
+| | |
+|---|---:|
+| **D49 sb1500 vs D49 sb500** | **+30.31 ± 11.0 Elo** |
+| n | **1218 games** |
+| W / L / D | 407 / 301 / 510 |
+| score | 54.35 % |
+
+(fastchess's own last periodic print, at n=1000: **+33.11 ± 12.84**.)
+
+**2.75σ — significant.** Same recipe, same data, same frame (stdev 603.0 vs
+596.7 against canonical's 610), **the ONLY difference is 1000 superbatches of
+training.**
+
+### Undertraining is established, on three independent legs
+
+1. **The owner's control:** D49 was BEHIND D48X at equal length (~520). So the
+   recipe is not what wins — it is *worse* at equal length.
+2. **The run's own trajectory:** sb400 **−21.24** → sb1340–1480 pooled
+   **+8.41 ± 3.89** (15000 games). ~30 Elo climbed with recipe fixed.
+3. **This direct A/B:** **+30.31 ± 11.0**, sb1500 over sb500.
+
+**Leg 3 quantifies what legs 1 and 2 imply, and the three agree numerically:**
+if sb1500 − sb500 = +30 and sb1500 − canonical = +8.41, then sb500 ≈ **−22**
+vs canonical — against a directly measured **sb400 = −21.24**. Three
+measurements, one number.
+
+**THE ACTIONABLE FORM: the previous generation was trained ~3× too short.**
+D48X was promoted at **sb520**; this says ~1000 more superbatches were worth
+~30 Elo that we simply never collected. **That is the single largest measured Elo
+number of this session** — larger than every microarchitectural win of the past
+week combined, and it cost only the decision to keep training.
+
+**Caveat kept honest:** measured at 25k FIXED NODES. The gain is in eval quality,
+which fixed-node testing measures well (it is not a speed effect), so this
+transfers more safely than a speed result would — but a real-TC confirmation is
+still owed before it governs a release.
+
+**Box handed to `d49retest`** — the tunables test the owner prioritised. Cleared
+study 70's ORPHANED `fastchess` first: its service was stopped but the child
+survived, the same supervisor/child gap seen at 08:20. `fastchess: 0`, 6714 MB
+free, two PGO builds then 1500 NNUE games.
