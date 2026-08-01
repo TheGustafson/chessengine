@@ -133,7 +133,7 @@ impl<'a> NnueContext<'a> {
     /// Return the already-incremental accumulator pair in side-to-move order
     /// for a frozen classic policy head. Computing a missing child folds only
     /// its recorded dirty moves; it never refreshes the transformer.
-    #[cfg(any(feature = "policy", feature = "search-control"))]
+    #[cfg(feature = "search-control")]
     pub fn policy_accumulators(
         &mut self,
         board: &Board,

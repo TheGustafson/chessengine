@@ -344,24 +344,10 @@ fn activate_ft(
     activate(out, pst, threat, scale, stm as usize, threat_shift);
 }
 
-/// Float view of the quantized shared D40 trunk for the optional policy head.
-/// The trainer's pairwise CReLU produces values in `[0, 1]`; the runtime FT
-/// stores the same product after `>> FT_SHIFT`, so undo that scale here.  This
-/// deliberately shares [`activate_ft`] with eval to prevent the two consumers
-/// from drifting on perspective order, threat scaling, or clamp semantics.
-#[cfg(feature = "policy")]
-pub fn policy_trunk(
-    pst: &[[i16; L1]; 2],
-    threat: &[[i16; L1]; 2],
-    scale: &[u8; L1],
-    stm: Color,
-    threat_shift: u32,
-) -> [f32; L1] {
-    let mut quantized = [0u8; L1];
-    activate_ft(pst, threat, scale, stm, threat_shift, &mut quantized);
-    let scale = (1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT) as f32;
-    quantized.map(|value| f32::from(value) * scale)
-}
+// `policy_trunk` (the float view of the quantized trunk for the D41 policy
+// head) was deleted 2026-08-01 with the `policy` feature (simplification plan
+// tier 0, item 0.10); a future head that needs the trunk view re-derives it
+// through `activate_ft`, which is the shared, drift-proof entry.
 
 /// Convert the independently quantized threat accumulator to the HalfKA scale
 /// before summing. This is `round(pst + threat · FT_QUANT/threat_quant)` in

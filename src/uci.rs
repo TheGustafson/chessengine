@@ -54,8 +54,6 @@ use crate::search::{SearchInfo, UciSink};
 use crate::threads::ThreadPool;
 use crate::timeman::Limits;
 use crate::tt::{MAX_HASH_MB, MIN_HASH_MB, TranspositionTable};
-#[cfg(feature = "policy")]
-use crate::types::Square;
 use crate::types::{
     Color, PieceType, VALUE_INFINITE, VALUE_MATE, VALUE_ZERO, Value, is_mate, is_mated,
 };
@@ -102,8 +100,6 @@ pub fn run() {
                 println!("{name}\t{value}");
             }
         }
-        #[cfg(feature = "policy")]
-        Some("policy-eval") => cmd_policy_eval_argv(&args[1..]),
         Some("nnue-testnet") => cmd_nnue_testnet_argv(&args[1..]),
         // `d`: board diagram + FEN + key + checkers (design/12 §3.15).
         // Outside a UCI session the "current" position is the start
@@ -123,70 +119,6 @@ pub fn run() {
             let out = SharedOut::new(io::stdout());
             uci_loop(stdin.lock(), &out);
         }
-    }
-}
-
-/// `chessengine policy-eval <eval.cenn> <head.cpol>` reads `FEN|uci moves`
-/// lines and prints one tab-separated policy score per move. This explicit
-/// research oracle fails loudly on either artifact instead of the UCI
-/// experiment's intentionally optional/fallback environment loading.
-#[cfg(feature = "policy")]
-fn cmd_policy_eval_argv(args: &[String]) {
-    let (Some(eval_path), Some(policy_path)) = (args.first(), args.get(1)) else {
-        exit_usage(format_args!(
-            "usage: chessengine policy-eval <eval.cenn> <head.cpol> < lines 'FEN|e2e4 ...'"
-        ));
-    };
-    if let Err(error) = nnue::set_eval_file(eval_path) {
-        exit_usage(format_args!("policy-eval: eval net: {error}"));
-    }
-    let policy = crate::policy::PolicyNet::load(policy_path)
-        .unwrap_or_else(|error| exit_usage(format_args!("policy-eval: policy net: {error}")));
-    let mut classic_ctx = if policy.uses_classic_accumulator() {
-        Some(nnue::NnueContext::new(nnue::active_net().unwrap_or_else(
-            || {
-                exit_usage(format_args!(
-                    "policy-eval: classic policy requires a CENN-v1 eval net"
-                ))
-            },
-        )))
-    } else {
-        None
-    };
-    let stdin = io::stdin();
-    let mut out = io::stdout().lock();
-    for line in stdin.lock().lines() {
-        let line =
-            line.unwrap_or_else(|error| exit_usage(format_args!("policy-eval: stdin: {error}")));
-        let Some((fen, moves)) = line.split_once('|') else {
-            exit_usage(format_args!("policy-eval: expected FEN|moves"));
-        };
-        let board = Board::from_fen(fen.trim())
-            .unwrap_or_else(|error| exit_usage(format_args!("policy-eval: invalid FEN: {error}")));
-        let scores = if let Some(ctx) = classic_ctx.as_mut() {
-            ctx.refresh_root(&board);
-            let (stm, ntm, activation) = ctx.policy_accumulators(&board, 0);
-            policy.scores_from_classic(stm, ntm, activation, board.side_to_move())
-        } else {
-            policy.scores(&board)
-        }
-        .unwrap_or_else(|| exit_usage(format_args!("policy-eval: policy/eval trunks mismatch")));
-        let mut first = true;
-        for text in moves.split_whitespace() {
-            if text.len() < 4 {
-                exit_usage(format_args!("policy-eval: invalid move '{text}'"));
-            }
-            let from = Square::from_str(&text[..2])
-                .unwrap_or_else(|_| exit_usage(format_args!("policy-eval: invalid move '{text}'")));
-            let to = Square::from_str(&text[2..4])
-                .unwrap_or_else(|_| exit_usage(format_args!("policy-eval: invalid move '{text}'")));
-            if !first {
-                let _ = write!(out, "\t");
-            }
-            first = false;
-            let _ = write!(out, "{:.9}", scores.move_score(from, to));
-        }
-        let _ = writeln!(out);
     }
 }
 

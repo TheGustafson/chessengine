@@ -80,8 +80,6 @@ pub mod moves;
 #[cfg(feature = "datagen")]
 pub mod obs;
 pub mod perft;
-#[cfg(feature = "policy")]
-pub mod policy;
 pub mod search;
 #[cfg(feature = "search-control")]
 pub mod search_control;

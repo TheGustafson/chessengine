@@ -22,7 +22,7 @@ step "cargo clippy --all-targets -- -D warnings"
 cargo clippy --all-targets -- -D warnings
 
 # THE FEATURE MATRIX. The step above compiles DEFAULT features only, which
-# leaves roughly a third of src/ — everything behind sota/datagen/policy/
+# leaves roughly a third of src/ — everything behind sota/datagen/
 # search-control/tune — never compiled, never linted, never type-checked by
 # this gate. That is precisely the code the match and training binaries run:
 # the NNUE head and SIMD kernels, the observation store, the SPSA tunables.
@@ -45,7 +45,6 @@ if [ "${CHECK_FEATURE_MATRIX:-1}" != "0" ]; then
         "sota,arch-hka2048" \
         "sota,tune" \
         "datagen" \
-        "policy" \
         "search-control" \
         "sota,arch-d48x,search-stats" \
         "sota,arch-d48x,pgonull69" \

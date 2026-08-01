@@ -562,22 +562,11 @@ pub struct MovePicker {
     /// depths 1-3 the flag is false and both stages take the old full scan,
     /// which is what keeps shallow nodes bit-identical.
     sorted_covers: bool,
-    /// Experiment (design/17 Thrust II): the shared learned move-prior, blended
-    /// into quiet ordering when `POLICY_NET` is set. `None` ⇒ pure history stack
-    /// (the default build never compiles this in). Set once per node by the
-    /// search via [`set_policy_net`](MovePicker::set_policy_net); the forward is
-    /// run lazily in [`init_quiets`](MovePicker::init_quiets), so nodes that cut
-    /// off before generating quiets pay nothing.
-    #[cfg(feature = "policy")]
-    policy_net: Option<std::sync::Arc<crate::policy::PolicyNet>>,
-    /// Lazily computed once per node and shared by capture/quiet scoring when
-    /// the capture-policy experiment is enabled.
-    #[cfg(feature = "policy")]
-    policy_scores: Option<crate::policy::PolicyScores>,
-    /// P-ORD: the deployed D47 head's quiet-move prior for this node, set by
-    /// the search when `CPL_ORD_W != 0` and the node's L2 activation was
-    /// available at construction. `None` ⇒ pure history stack (the default —
-    /// the env knob ships OFF, so ordering is bit-identical unless opted in).
+    /// The quiet-ordering seam for a learned policy head: a per-node prior the
+    /// search MAY attach via [`set_quiet_prior`](MovePicker::set_quiet_prior).
+    /// `None` ⇒ pure history stack (the default; nothing sets it in production
+    /// since the D47/D41 plumbing was deleted 2026-08-01 — the seam stays for
+    /// the future specialised-head layer).
     #[cfg(feature = "sota")]
     quiet_prior: Option<crate::eval::nnue::policy_head::QuietPrior>,
     /// Perf study #2 option C: UNINITIALISED buffer — the old
@@ -821,10 +810,6 @@ impl MovePicker {
             end_generated: 0,
             bad_quiet_start: 0,
             sorted_covers: false,
-            #[cfg(feature = "policy")]
-            policy_net: None,
-            #[cfg(feature = "policy")]
-            policy_scores: None,
             #[cfg(feature = "sota")]
             quiet_prior: None,
             buf: [core::mem::MaybeUninit::uninit(); MAX_MOVES],
@@ -835,22 +820,8 @@ impl MovePicker {
         }
     }
 
-    /// Attach the shared policy net for this node (design/17 Thrust II). Called
-    /// by the search right after construction; a no-op cost when `None`. The
-    /// forward is deferred to [`init_quiets`](MovePicker::init_quiets).
-    #[cfg(feature = "policy")]
-    #[inline]
-    pub fn set_policy_net(&mut self, net: Option<std::sync::Arc<crate::policy::PolicyNet>>) {
-        self.policy_net = net;
-    }
-
-    #[cfg(feature = "policy")]
-    #[inline]
-    pub fn set_policy_scores(&mut self, scores: Option<crate::policy::PolicyScores>) {
-        self.policy_scores = scores;
-    }
-
-    /// Attach the D47 trained-head quiet prior for this node (P-ORD).
+    /// Attach a learned quiet-move prior for this node — the policy-head seam
+    /// into quiet ordering (blended in `init_quiets` when set).
     #[cfg(feature = "sota")]
     #[inline]
     pub fn set_quiet_prior(&mut self, prior: crate::eval::nnue::policy_head::QuietPrior) {
@@ -1061,32 +1032,9 @@ impl MovePicker {
         let mut list = MoveList::new();
         generate_captures(board, &mut list);
         let n = list.len();
-        #[cfg(feature = "policy")]
-        if crate::policy::captures_enabled()
-            && crate::policy::enabled_at(self.depth, self.ply)
-            && self.policy_scores.is_none()
-        {
-            self.policy_scores = self.policy_net.as_ref().and_then(|net| net.scores(board));
-        }
-        #[cfg(feature = "policy")]
-        let policy_weight = crate::policy::capture_weight();
         let recapture = recapture_map(board, self.depth);
         for (i, &m) in list.iter().enumerate() {
             let value = score_capture(board, hist, m, recapture);
-            // Borrow `policy_scores` INSIDE the loop, not before it: binding it
-            // outside holds an immutable borrow of `*self` across the whole
-            // body, which collides with the `set_slot` below. Scoped here, NLL
-            // ends the borrow at the end of the expression — the same shape the
-            // `quiet_prior` read in `score_quiets` uses.
-            #[cfg(feature = "policy")]
-            let value = value
-                + self
-                    .policy_scores
-                    .as_ref()
-                    .map(|scores| {
-                        (policy_weight as f32 * scores.move_score(m.from(), m.to())) as i32
-                    })
-                    .unwrap_or(0);
             self.set_slot(i, ExtMove::new(m, value));
         }
         // Captures occupy `[0, n)`; nothing has been swapped into the
@@ -1245,16 +1193,6 @@ impl MovePicker {
             fan
         });
 
-        // Experiment (design/17 Thrust II): one policy forward per node, reused
-        // by every quiet below. Owned (borrows `self.policy_net` only for the
-        // `map`), so the mutable `self.buf[..]` writes in the loop stay clean.
-        #[cfg(feature = "policy")]
-        if crate::policy::enabled_at(self.depth, self.ply) && self.policy_scores.is_none() {
-            self.policy_scores = self.policy_net.as_ref().and_then(|net| net.scores(board));
-        }
-        #[cfg(feature = "policy")]
-        let policy_weight = crate::policy::quiet_weight();
-
         // One `st()` for all ~30 scored quiets (perf study 13 §4.4) instead of
         // one per quiet: `pt` varies per move, so the query cannot be hoisted
         // at the call site.
@@ -1360,7 +1298,7 @@ impl MovePicker {
         // below. A `macro_rules!` rather than a closure or a method because
         // the body both reads `self.quiet_prior` and calls `self.set_slot`:
         // any binding that holds a borrow of `*self` across the body collides
-        // with the store (the note on the `policy` arm below says so), and a
+        // with the store, and a
         // free function would need fifteen parameters. Expanding the body
         // twice costs nothing in the shipped binary — exactly one of the two
         // loops is compiled.
@@ -1494,11 +1432,6 @@ impl MovePicker {
                     crate::census70::note_quiet(
                         (!a.qsee_guard || all_threats.contains(m.to())) && !board.see_ge(m, 0),
                     );
-                }
-
-                #[cfg(feature = "policy")]
-                if let Some(ps) = &self.policy_scores {
-                    value += (policy_weight as f32 * ps.move_score(m.from(), m.to())) as i32;
                 }
 
                 #[cfg(feature = "sota")]

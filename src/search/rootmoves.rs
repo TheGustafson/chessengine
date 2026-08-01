@@ -45,9 +45,6 @@ pub struct RootMove {
     pub sel_depth: i32,
     /// Nodes spent under this root move (a time-management input).
     pub effort: u64,
-    /// Cached learned-policy tie-breaker. Zero in normal builds/runs, so the
-    /// established stable root ordering is unchanged unless explicitly set.
-    pub policy_score: i32,
     // tb_rank / tb_score: added with Syzygy support later.
 }
 
@@ -66,7 +63,6 @@ impl RootMove {
             score_upperbound: false,
             sel_depth: 0,
             effort: 0,
-            policy_score: 0,
         }
     }
 
@@ -84,8 +80,8 @@ impl RootMove {
     /// Descending sort key: `(score, previous_score)`. Moves unsearched
     /// this iteration tie on `score` and fall back to last iteration's
     /// score, then (via stable sort) to last iteration's order.
-    pub fn sort_key(&self) -> (Value, Value, i32) {
-        (self.score, self.previous_score, self.policy_score)
+    pub fn sort_key(&self) -> (Value, Value) {
+        (self.score, self.previous_score)
     }
 
     /// EMA update after a root child search returns `value`
@@ -180,7 +176,6 @@ mod tests {
         assert!(!r.score_is_bound());
         assert_eq!(r.sel_depth, 0);
         assert_eq!(r.effort, 0);
-        assert_eq!(r.policy_score, 0);
     }
 
     // --- EMA formulas (design/07 §5: init/update match §3.4) ---
@@ -244,20 +239,6 @@ mod tests {
         assert!(front_move(&moves[0]) == Move::normal(Square::E1, Square::F1));
         assert!(front_move(&moves[1]) == Move::normal(Square::C1, Square::D1));
         assert!(front_move(&moves[2]) == Move::normal(Square::A1, Square::B1));
-    }
-
-    #[test]
-    fn policy_score_breaks_only_otherwise_equal_root_ties() {
-        let mut moves = vec![rm(0, 1), rm(2, 3), rm(4, 5)];
-        moves[0].policy_score = 10;
-        moves[1].policy_score = 30;
-        moves[2].policy_score = 20;
-        sort_descending(&mut moves);
-        assert_eq!(front_move(&moves[0]), Move::normal(Square::C1, Square::D1));
-
-        moves[2].score = 1;
-        sort_descending(&mut moves);
-        assert_eq!(front_move(&moves[0]), Move::normal(Square::A1, Square::B1));
     }
 
     // --- build_root_moves (design/07 §3.4, design/12 §3.6) ---

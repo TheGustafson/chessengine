@@ -1179,38 +1179,8 @@ pub struct Worker {
     /// at node exit. `new_search()` decays it each `go`; `ucinewgame` clears
     /// it (uci.rs). ~20 MiB behind a `Box` so it never transits the stack.
     pub histories: Box<Histories>,
-    /// Per-search snapshot of the D47 policy head (perf study 13 §4.1).
-    ///
-    /// The two hot call sites used to reach for
-    /// [`crate::eval::nnue::active_policy_head`] directly, which takes a
-    /// **process-wide `RwLock` read lock** — two atomic read-modify-writes and
-    /// a poison check — at every interior node with no TT move **at depth >= 3**,
-    /// and once more per node whenever `CPL_ORD_W` is set (it defaults to 0, so
-    /// the measured −4.8 i/n is the first site alone). Nets are
-    /// installed once per `go` (`refresh_eval_net`), never mid-search, so the
-    /// value is a per-search constant; [`SotaContext`] already snapshots the
-    /// same handle at net-set time, and this is that pattern applied to the
-    /// search. `None` (the production case, no `.cpol` sidecar) collapses both
-    /// sites to one predictable `test`/`jne`.
-    ///
-    /// [`SotaContext`]: crate::eval::nnue::sota_context::SotaContext
-    #[cfg(feature = "sota")]
-    policy_head: Option<&'static crate::eval::nnue::policy_head::PolicyHead>,
-    /// Perf study 68 — the same snapshot, extended to the two knobs that
-    /// GUARD that handle. `ord_weight()` and `ord_min_depth()` are
-    /// `LazyLock`s over environment variables, i.e. process constants, and
-    /// `ord_weight() != 0.0` is the FIRST test at the P-ORD site — so the
-    /// shipped build performed a `Once`-state acquire load, a compare, a
-    /// branch and an `f32` load at **every interior main-search node** to
-    /// re-learn that `CPL_ORD_W` is unset. A `LazyLock` deref cannot be
-    /// hoisted out of a recursive function: it reads an atomic. Snapshotted
-    /// per `go`, the whole site is one `ucomiss` against a register.
-    #[cfg(feature = "sota")]
-    ord_weight: f32,
-    #[cfg(feature = "sota")]
-    ord_min_depth: i32,
-    /// Ditto for the `ARCHON_NMP_ALLNODE` A/B gate (a `OnceLock<bool>` read
-    /// at every node that reaches the null-move block).
+    /// Per-`go` snapshot of the `ARCHON_NMP_ALLNODE` A/B gate (a
+    /// `OnceLock<bool>` read at every node that reaches the null-move block).
     nmp_allnode: bool,
     /// Poll-cadence bitmask for [`Worker::check_time`] (design/12 §3.8;
     /// Reckless bundle D31): the real clock/limit check runs when `nodes &
@@ -1247,12 +1217,6 @@ pub struct Worker {
     /// `Minimal` report mode (design/12 §3.13): suppress per-iteration `info`
     /// lines. Installed by `setup`; main worker only.
     minimal: bool,
-
-    /// Experiment (design/17 Thrust II): the shared learned move-prior, cloned
-    /// into each node's [`MovePicker`]. `None` unless `POLICY_NET` is set; the
-    /// default build does not compile the field.
-    #[cfg(feature = "policy")]
-    policy_net: Option<Arc<crate::policy::PolicyNet>>,
 
     /// Main-worker-only, bounded observational LMR telemetry. It is compiled
     /// only for search-control experiments and has no authority over search.
@@ -1331,12 +1295,6 @@ impl Worker {
             tm_best_previous_average_score: VALUE_INFINITE,
             eval_ctx: EvalContext::new(),
             histories: Histories::new(),
-            #[cfg(feature = "sota")]
-            policy_head: None,
-            #[cfg(feature = "sota")]
-            ord_weight: 0.0,
-            #[cfg(feature = "sota")]
-            ord_min_depth: 1,
             nmp_allnode: false,
             check_time_mask: params::CHECK_TIME_CALLS as u64 - 1,
             thread_idx: 0,
@@ -1346,8 +1304,6 @@ impl Worker {
             output: None,
             options: Options::new(),
             minimal: false,
-            #[cfg(feature = "policy")]
-            policy_net: crate::policy::shared_from_env(),
             #[cfg(feature = "search-control")]
             search_trace: None,
             #[cfg(feature = "search-control")]
@@ -1502,12 +1458,6 @@ impl Worker {
         #[cfg(feature = "sota")]
         self.eval_ctx
             .set_protected_halfka_net(crate::eval::nnue::active_protected_halfka_net());
-        // Perf study 13 §4.1: snapshot the policy head here, with the nets, so
-        // the per-node sites never take the process-wide `RwLock`.
-        #[cfg(feature = "sota")]
-        {
-            self.policy_head = crate::eval::nnue::active_policy_head();
-        }
     }
 
     /// Lazily create the in-search observation recorder (design/16 §3.5.5) when
@@ -1897,15 +1847,10 @@ impl Worker {
         self.counters.nodes.store(0, Ordering::Relaxed);
         self.counters.best_move_changes.store(0, Ordering::Relaxed);
         self.nmp_min_ply = 0;
-        // Perf study 68: the process-constant env probes, read ONCE per `go`
-        // here rather than once per node at their use sites. `iterative_deepening`
+        // Perf study 68: the process-constant env probe, read ONCE per `go`
+        // here rather than once per node at its use site. `iterative_deepening`
         // is the one entry both the pool path and the direct bench/test path go
         // through, which is why the reset above lives here too.
-        #[cfg(feature = "sota")]
-        {
-            self.ord_weight = crate::eval::nnue::policy_head::ord_weight();
-            self.ord_min_depth = crate::eval::nnue::policy_head::ord_min_depth();
-        }
         self.nmp_allnode = crate::search::nmp_allnode_probe();
         self.check_time_mask = self.compute_check_time_mask();
         self.last_best_move_pv.clear();
@@ -1960,32 +1905,7 @@ impl Worker {
         if self.root_moves.is_empty() {
             return; // mate/stalemate at the root: nothing to search
         }
-        // Refresh before the optional root-policy consumer. Frozen-classic
-        // heads reuse this protected accumulator and have no board-refresh
-        // trunk of their own.
         self.eval_ctx.refresh_root(&self.board);
-        #[cfg(feature = "policy")]
-        if crate::policy::root_order_enabled() {
-            let scores = self.policy_net.as_ref().and_then(|net| {
-                if net.uses_classic_accumulator() {
-                    self.eval_ctx
-                        .classic_policy_accumulators(&self.board, 0)
-                        .and_then(|(stm, ntm, activation)| {
-                            net.scores_from_classic(stm, ntm, activation, self.board.side_to_move())
-                        })
-                } else {
-                    net.scores(&self.board)
-                }
-            });
-            if let Some(scores) = scores {
-                for root_move in &mut self.root_moves {
-                    let mv = root_move.pv[0];
-                    root_move.policy_score =
-                        (scores.move_score(mv.from(), mv.to()) * 1024.0) as i32;
-                }
-                sort_descending(&mut self.root_moves);
-            }
-        }
         // Per-`go` history refresh (design/09 §3.4): decay the butterfly
         // history toward zero so recent searches dominate, and refill the
         // low-ply history. Correction/capture/continuation tables persist
@@ -3398,33 +3318,16 @@ impl Worker {
             self.stack[cur - 5].cont_hist,
             self.stack[cur - 6].cont_hist,
         ];
-        // D47 policy ordering (v1): when the TT offers no move, fill the slot
-        // with the policy-argmax — legal by construction; the picker treats it
-        // exactly like a TT move (pseudo-legality re-checked there). The
-        // Zobrist-stamped accessor guarantees the activation belongs to THIS
-        // node (a cheap-path/skipped eval yields None — correct, not stale).
-        // Depth-gated to keep movegen+dot off the shallow tree. Without a
-        // .cpol sidecar `active_policy_head()` is None => bit-identical.
-        #[cfg(feature = "sota")]
-        let picker_tt_move = if tt_data.mv == Move::NULL
-            && depth >= 3
-            && let Some(head) = self.policy_head
-            && let Some(l2) = self.eval_ctx.last_l2_for(&self.board)
-        {
-            head.best_move(&self.board, l2).unwrap_or(Move::NULL)
-        } else {
-            tt_data.mv
-        };
-        #[cfg(not(feature = "sota"))]
-        let picker_tt_move = tt_data.mv;
         // Perf study 71's null for the deficit itself: order the node as if the
         // TT had offered nothing, while every pruning/reduction/extension gate
         // still reads `tt_data.mv`.
+        #[cfg(not(feature = "arm70"))]
+        let picker_tt_move = tt_data.mv;
         #[cfg(feature = "arm70")]
         let picker_tt_move = if crate::arm70::arm().hide_tt {
             Move::NULL
         } else {
-            picker_tt_move
+            tt_data.mv
         };
         #[cfg(feature = "foldcount")]
         if fresh_eval {
@@ -3432,38 +3335,14 @@ impl Worker {
                 crate::eval::nnue::foldcount::Sc::MainFreshMoveLoop,
             );
         }
+        // `MovePicker::set_quiet_prior` is the seam a future policy head plugs
+        // into for quiet ordering (one call here). The D47 `.cpol` sidecar
+        // plumbing that used to feed it (per-`go` policy_head snapshot, the
+        // no-TT-move argmax fill, CPL_ORD_W/CPL_ORD_MIN_DEPTH) and the D41
+        // `policy`-feature machinery were deleted 2026-08-01 (simplification
+        // tier 0, items 0.9/0.10): no `.cpol` exists in production and the D41
+        // policy era was ditched. Git keeps both prototypes.
         let mut mp = MovePicker::new(&self.board, picker_tt_move, depth, ply, cont_hist);
-        // P-ORD: attach the trained head's quiet-move prior. The activation is
-        // copied NOW — the Zobrist-stamped stash dies at the first child eval,
-        // long before QuietInit. `CPL_ORD_W` unset/0 ⇒ never constructed ⇒
-        // ordering bit-identical.
-        #[cfg(feature = "sota")]
-        if self.ord_weight != 0.0
-            && depth >= self.ord_min_depth
-            && let Some(head) = self.policy_head
-            && let Some(l2) = self.eval_ctx.last_l2_for(&self.board)
-        {
-            mp.set_quiet_prior(head.quiet_prior(&self.board, l2, self.ord_weight));
-        }
-        #[cfg(feature = "policy")]
-        {
-            mp.set_policy_net(self.policy_net.clone());
-            if crate::policy::enabled_at(depth, ply) {
-                if let Some(net) = self
-                    .policy_net
-                    .as_ref()
-                    .filter(|net| net.uses_classic_accumulator())
-                {
-                    let scores = self
-                        .eval_ctx
-                        .classic_policy_accumulators(&self.board, ply)
-                        .and_then(|(stm, ntm, activation)| {
-                            net.scores_from_classic(stm, ntm, activation, self.board.side_to_move())
-                        });
-                    mp.set_policy_scores(scores);
-                }
-            }
-        }
 
         // Perf study 70's census: node kind, and whether the picker got a
         // usable TT move to order on (the constructor's branchless skip
