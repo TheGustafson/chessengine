@@ -15377,3 +15377,21 @@ Both landed wins are the SAME defect class — work that ships and is discarded 
 and neither is visible in `Bench:` (both node-identical). The engine's headline
 fingerprint cannot see the only two speed wins of the night; the wall-clock and
 instruction panels are what found them.
+
+**Reclaimed study 68's worktree `target/` (4.1 GB) — free 144 -> 148 GB.**
+
+**And the first attempt SKIPPED it on a self-match false positive.** I ran
+`pgrep -f "$D"` where `$D` was the worktree path — which appeared in my own
+command line, so **the pgrep matched its own caller** and reported the worktree
+busy. Re-checked with the documented guard (exclude `shell-snapshots`, `$$`,
+`$PPID`) and the only hit was a process that had already exited.
+
+This is exactly the failure mode the `pkill -f` rule exists for
+([[pkill-matches-your-own-shell]]), and it is worth recording that it bites the
+DETECTION path too, not just the kill path: here it cost a skipped cleanup, but
+the identical mistake in a kill would have killed the caller. **The guard is
+mandatory for any `pgrep -f` whose pattern can appear in the command that types
+it.**
+
+Study 69's worktree verified intact afterwards; all 27 worktree registrations
+survive.
