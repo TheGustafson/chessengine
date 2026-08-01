@@ -16762,3 +16762,33 @@ idea is not working — which is why the `d49c3` A/B against the anchor is armed
 regardless of what any single screen says.
 
 Memory 6881 MB, all units green, no OOM.
+
+---
+
+## 2026-08-01 11:32 — committed the trainer change; it was sitting UNCOMMITTED on the wrong branch
+
+**Cycle 3 at sb1606** (6 of 30), 194.4k pos/s. Memory 7033 MB. Cycle 2's sb1600
+screen still in flight.
+
+**Caught my own version of the study-20 failure.** The `export_every` edits to
+`jax/archon_jax/spec.py` and `jax/tools/pump_train.py` were **uncommitted, in the
+primary checkout, which sits on `repr-gap-study`** — and **not on main at all**
+(`git grep -c export_every` on main returned 0). A live training run was
+depending on a change that existed only as a dirty working tree on a feature
+branch. That is exactly the shape that left main not compiling once tonight.
+
+**Diffed before moving, rather than copying blind:** main's versions differed
+from the primary's by *only* my edit (4 lines in `spec.py`, 9 in
+`pump_train.py`), so the copy could not clobber anything. Both files re-parsed on
+main before committing. Landed as **`a7a9133f`** with the five-screen measurement
+in the commit body, so the constant's justification travels with the code.
+
+**The cycle configs are NOT committed and should not be** — `tools/nnue/runs` is
+gitignored as run artifacts. Recorded here instead: `export_every=1000000` +
+`superbatches=1630` on `d49_lrcycle3_1280.json`.
+
+**A general point worth keeping:** I have been committing handoff prose to main
+via `mainwt` all session while *code* edits landed in the primary checkout on a
+different branch. Those two habits are individually fine and together they
+silently split the work. Any source edit made in the primary checkout needs the
+same "which branch am I on" check that the handoff file got at 23:48.
