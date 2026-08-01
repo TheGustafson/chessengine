@@ -13263,3 +13263,59 @@ for studies 52–56**, measured by a different script that never touched the
 default net.
 
 **D49:** sb1245+, four services active, heldout ema still the run's lowest.
+
+## Tick — 2026-07-31 22:4x, all three valid panels are MUTUALLY INCONSISTENT. The instrument is not fit to price this programme.
+
+The 52–58 re-run finished: **ARM −3.107%, 35/40, p=0.0000, LICENSED, +5.46 derived
+Elo** — but flagged **NOT QUIET (10.9% → 28.8%)**, with mid-run drift only −1.34%
+(pinning protecting the measurement while system load tripled).
+
+**Every panel run with a valid net, together:**
+
+| panel | wall-clock | sign | p | licence | Elo | flags |
+|---|---:|---:|---:|---|---:|---|
+| 52–56 (`wc40.py`) | −1.020% | 29/40 | 0.0064 | LICENSED | **+1.77** | quiet-ish |
+| **52–58** (re-run) | **−3.107%** | 35/40 | 0.0000 | LICENSED | **+5.46** | NOT QUIET |
+| **61–62** (re-run) | **+0.141%** | 17/40 | 0.4296 | **REFUSED** | — | NOT QUIET |
+
+**These do not agree, and the disagreement is structural, not marginal:**
+
+- **52–56 and 52–58 overlap in content** yet differ **3×** (−1.020% vs −3.107%).
+  Adding studies 57 and 58 cannot triple the effect — 57 contributed −0.523% of
+  instructions and 58 −0.520%, on a base where 52–56 was already −2.686%.
+- **61–62 landed −217 shipped i/n and shows nothing at all**, while 52–58 —
+  a comparable instruction delta — shows −3.107% at p=0.0000.
+
+**The conclusion I am drawing is about the instrument, not the engine: the
+wall-clock panel is not yet reliable enough to price this programme.** Two of the
+three runs fired the quiet check; the one that did not is the oldest and used a
+different script. I am not going to pick whichever of +1.77, +5.46 or nothing
+suits the story.
+
+**What I am NOT claiming**, explicitly, because each is tempting:
+- not "the redirect worked" (61–62 shows nothing),
+- not "the redirect failed" (its panel was REFUSED, i.e. inconclusive),
+- not "+5.46 Elo" (flagged not-quiet, and 3× a same-content measurement).
+
+**What survives, and it is not nothing:**
+
+| claim | basis |
+|---|---|
+| **−669.2 i/n (−10.587%) on the gate build** | `instructions:u`, 0.000 null, load-robust, **rebuilt and re-measured by me at every merge** |
+| shipped native+PGO deltas | same counter, same discipline |
+| every gate, pin, node-identity | reproduced from source |
+| study 63's kill of the three rungs | explicit net, repaired instrument, CI excluding the prediction at 2.88 se |
+
+**The honest summary of the day's perf work:** the instruction reductions are
+real and verified; **their conversion to time is unmeasured**, and today's attempt
+to measure it produced three incompatible answers on an instrument that has had
+**four defects found in it in one day** — two by study 63, two by me.
+
+**Next step is instrument work, not more panels:** the box needs to be genuinely
+idle (the trainer alone is ~10% and the quiet check trips at 15%), and the
+threshold needs re-deriving now that runs are pinned — **pinning makes a
+system-wide load check over-conservative**, which is visible here as a panel with
+28.8% system load but only 1.34% drift on the pinned binary.
+
+**D49:** sb1246, heldout ema **0.010503** — still the run's lowest and still
+falling. Four services active, 6.8 GB free.
