@@ -16016,3 +16016,40 @@ tunable re-test the owner just prioritised.
 
 Final: one `fastchess` (the length test), 4515 MB available, trainer healthy,
 `d49retest` and `d49len` both alive.
+
+---
+
+## 2026-08-01 08:20 — the undertraining number, interim: sb1500 beats sb500 by +26.33 ± 13.3
+
+**D49:** sb1524, 187.1k pos/s. Memory recovered to 5784 MB after the external OOM.
+All eight units green.
+
+**`d49len` at n=833 of 1500 — INTERIM, not a verdict:**
+
+| arm | | |
+|---|---:|---:|
+| D49 **sb1500** vs D49 **sb500** | **+26.33 ± 13.3** | 53.78 % |
+
+Same recipe, same data, same frame (stdev 603.0 vs 596.7, canonical 610), **only
+1000 superbatches of training separate them.**
+
+**Flagged as interim deliberately — but this one differs in KIND from the two
+interims that misled me tonight.** Those were *near-zero* readings I quoted as
+precise (−8.54 became −3.01; −6.77 became −1.39). This is a **large effect at
+~2σ**; the risk of it collapsing to zero is far lower than the risk was of a
+small one moving. Final at n=1500 in ~15 min regardless.
+
+**INDEPENDENT CROSS-CHECK, and it agrees.** If sb1500 − sb500 ≈ +26 and
+sb1500 − canonical = **+8.41 ± 3.89** (15000 games), then sb500 should sit near
+**−18 vs canonical**. Directly measured earlier in this run: **sb400 = −21.24 ±
+5.67**. Two independent measurements land in the same place, and both match the
+owner's recollection that D49 was behind D48X at 520.
+
+**So the undertraining claim now has three legs**: the owner's control (behind at
+equal length), the run's own trajectory (−21 → +8 across sb400→1480), and a
+direct same-recipe A/B (this arm). **The recipe is not what improved; the
+training length is.**
+
+**`d49retest` is correctly parked**, waiting for `d49len` to release the box
+before it builds either binary — the sequencing that stops a third match from
+recreating the 1568 MB squeeze.
