@@ -324,8 +324,24 @@ OOM killer, and both were self-inflicted:
 - `tools/oomlast.sh` sets `oom_score_adj=1000` **by design**, to make the
   trainer the last thing the kernel picks. That is the standing rule and it
   worked: the trainer lived, the match died. On a memory-tight box the lever is
-  therefore **concurrency, not a cgroup cap** — run 3 is at 2, using ~1/3 the
-  resident set of run 1's 6.
+  therefore **concurrency, not a cgroup cap**.
+
+`tools/perf70/chain70.sh` is the fix, running as the detached `--user` unit
+`s70-chain`: short segments (125 rounds each) that each write their own
+`sprt.out`, with a `free -m` wait before each so it backs off while the trainer
+is hungry instead of competing with it. A kill now costs at most one segment —
+and in practice less than that, because **fastchess prints `Ptnml(0-2)` every
+`ratinginterval`**, so `pool_sprt.py` reads the last one and a killed segment
+still contributes everything up to its final interval. That property is what
+made run 1's 991 pairs recoverable at all, and it is verified live: pooling the
+two dead runs with the *in-progress* segment gives 1,071 pairs / 2,142 games /
+**+7.14 ± 8.89 Elo, LOS 94.24 %**.
+
+Read the running total with:
+
+```
+tools/perf70/pool_sprt.py engines/runs/s70-*/sprt.out
+```
 
 `tools/sprt.sh` had to be fixed first: it passed **no `EvalFile`**, and an
 empty `EvalFile` silently evaluates PSQT — every SPRT run through that script
