@@ -15039,3 +15039,44 @@ within-symbol share re-derived, no conclusion changed), and three claims written
 from plausibility are now measured or flagged as non-evidence.
 
 `gate67` verifying. New instruments in `tools/perf67/` (12 scripts).
+
+---
+
+## 2026-08-01 05:08 — study 67 MERGED; the standing cost model rewritten; study 68 commissioned
+
+**D49:** sb1437, 188.6k pos/s, heldout ema **0.010445** — another run low.
+
+**Study 67 merged (`e9c99aca`)**, gate verified BY ME: `Bench: 486897`, eval hash
+`2e1ede95…79c4`, d13 `1743308`, **all three pins UNMOVED** — the correct
+signature for a pure dead-work removal, since deleting an unused `to_string()`
+cannot change the search tree.
+
+**REWROTE THE STANDING COST-MODEL MEMORY, because it was directing studies at a
+CLOSED route.** It said *"aim new studies at cache/memory locality... the three
+accumulator-fold kernels is the place to start."* Study 66 closed exactly that by
+construction (miss-parallel, MSHR-limited). It now records the **two-halves**
+model:
+
+- **EVAL side = DATA-bound**, locality routes closed with mechanisms.
+- **SEARCH side = FRONTEND-bound**, 120.3 KB of hot code against a 32 KB L1i.
+
+plus **function size is not the icache cost**, the **3.48 cycles/L1i-fill**
+pre-registration budget, and the **dead-work-that-ships** class (`qtrace`) as a
+thing to hunt. Second memory rewritten tonight for the same reason: **a memory
+written mid-investigation records a hypothesis, and the games or the next study
+can invalidate it.**
+
+**PERF STUDY 68 COMMISSIONED — the frontend wall**, which nothing has ever
+attacked. Handed the four measured constants, both closed routes WITH their
+mechanisms (so it cannot rebuild outlining-by-size), the 3.48 cycles/fill budget
+it must pre-register against, and study 67's 12 tools with instructions to reuse
+rather than rebuild them.
+
+Four directions, in the brief's order: **code LAYOUT** (executed lines
+contiguous, after measuring what PGO already achieved); **the op cache** at
+40.5 % decoder delivery, driven by 32-byte-window density and currently
+unmeasured; **branch mispredicts**, where the search side owns 64.7 % at a
+~15-cycle penalty and nothing has attacked them directly; and **a sweep for more
+dead-work-that-ships** — cfg'd-out or no-op sinks with expensive argument
+expressions, `format!`/`to_string`/`Vec` on discarded paths. That last class is
+pure profit and was worth 2.33 % of search time in a single instance.
