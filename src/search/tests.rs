@@ -1989,7 +1989,10 @@ fn qsearch_fail_high_softening_blends_toward_beta() {
     let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
     assert_eq!(w.nodes, 1);
     let w_beta = params::QS_FAILHIGH_BETA_W();
-    assert_eq!(v, ((1024 - w_beta) * -static_eval(&after) + w_beta * beta) / 1024);
+    assert_eq!(
+        v,
+        ((1024 - w_beta) * -static_eval(&after) + w_beta * beta) / 1024
+    );
 }
 
 #[test]
