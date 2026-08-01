@@ -14291,3 +14291,39 @@ needs a real-TC confirmation before it ships.**
 
 **And all of it re-runs under the new tunables** (user instruction): these arms
 are the BEFORE half. `gatetune.service` still running on `tunables-on-main`.
+
+---
+
+## 2026-08-01 01:17 — the frame curve is COMPLETE and monotonic; gate failed on ENVIRONMENT, not code
+
+**D49:** sb1333, 185.3k pos/s, heldout ema **0.010468** — a new run low.
+
+**FRAME CURVE, all three arms now FINAL at n=1500** (D49 sb1300 vs canonical,
+25k fixed nodes, eca43a97 tunables):
+
+| pack scale | slope vs SF internal | Elo vs canonical |
+|---:|---:|---:|
+| **756** (shipped) | 0.477 | **+3.24 +/- 10.65** |
+| 1068 | 0.672 | **-8.57 +/- 10.57** |
+| 1585 (parity) | 0.995 | **-18.08 +/- 10.79** |
+
+**Perfectly monotonic across the whole range, and every step is the WRONG
+direction for the frame theory.** Parity vs shipped is 21.3 Elo apart on a
+combined bar of +/-15.2. Matching Stockfish's internal eval frame — the frame our
+transcribed margins were literally tuned in — costs ~21 Elo. `d49f535` is testing
+the pre-registered downward extension (535, slope 0.339).
+
+**`gatetune` FAILED, and the cause was MY environment, not the code:**
+`FAIL: CHECK_NNUE_GATE=1 but the net is missing: engines/canonical/net.cenn`.
+I ran it in `chessengine-mainwt`, whose `engines/` is GITIGNORED and therefore
+empty — the nets live only in the primary checkout. This is the same trap that
+bit earlier in the session when a worktree prune left `engines/bin/` empty.
+Everything before the net check passed (full test suite, clippy, perft).
+
+**Fixed durably:** `chessengine-mainwt/engines/canonical` is now a symlink to
+`/home/nick/projects/chessengine/engines/canonical`, so any future gate run from
+the main worktree resolves the canonical pair. Re-running as `gatetune2`.
+
+**Note for whoever gates next:** a `CHECK_NNUE_GATE=1` run from a fresh worktree
+will fail this way every time until that symlink exists. It is not a code
+regression and should not be diagnosed as one.
