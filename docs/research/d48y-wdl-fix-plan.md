@@ -12918,3 +12918,38 @@ data pipeline** losing a core to the panel. It resolves when study 63 finishes.
 the run's lowest. Four services active, 7.4 GB free, 146 GB disk.
 **Study 63** has committed "PRE-REGISTER the wall-clock design before running a
 single round" — the discipline asked for.
+
+## Tick — 2026-07-31 20:02, panel tool now detects a loaded box (the null cannot)
+
+I have been writing "check the box is quiet before and after each panel, and void
+anything that loses it" into briefs by hand. **Put it in the tool.**
+
+`tools/wallclock_panel.py` now samples system-wide non-idle CPU (`/proc/stat`,
+1 s window) **before the first round and after the last** — sampled while it is
+*not* benching, so anything it sees is somebody else's work — prints both, and
+fires a loud **VOID-AND-RERUN** warning above `QUIET_THRESHOLD = 0.15`.
+
+**Smoke-tested live, and it produced its own receipt.** Run against the real PGO
+pair while study 63 was panelling:
+
+| same binary pair | reading |
+|---|---|
+| quiet box, 40 rounds | **−1.879%** |
+| loaded box (16.2% → 17.7% busy), 6 rounds | **−4.951%** |
+
+**The loaded reading is 2.6× the true value, and it LICENSED** — the
+byte-identical null looked perfectly clean at **+0.081%**.
+
+**That is the point, and it is worth stating precisely:** interleaving the null
+within each round makes a panel robust to *steady* load, which is why the null
+stayed clean. It does **not** protect against load that inflates both arms
+multiplicatively — the null and the arm both slow down, the null still cancels,
+and the *ratio* is wrong anyway. **The null cannot detect this class of error.
+The load check can.**
+
+This closes a gap that has been live all session: several panels were run under
+load, and the only defence was me remembering to look at `ps`.
+
+**D49:** sb1197, 27 superbatches into the decay leg, heldout ema **0.010574** —
+the run's lowest, falling steadily. Four services active, 7.6 GB free.
+**Phase-lock test still not run** — needs ~40 new-leg superbatches, I have 27.
