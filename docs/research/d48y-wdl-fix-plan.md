@@ -13773,3 +13773,50 @@ PSQT-style silent failure.
 
 **D49:** sb1273, five services active, **sb1700 in ~15.4 h.** Memory recovered:
 avail 8164 MB, swap 3326/4095 (from full). 138 GB disk.
+
+## Tick — 2026-07-31 23:2x, study 65 commissioned: two deliverables of DIFFERENT KINDS
+
+Study 64 named two leftovers with a 20× size difference and opposite risk
+profiles. **The brief keeps them apart deliberately** — conflating them is the
+main way this study could go wrong.
+
+**1. LAND the narrow-row arm — bit-exact, gateable.** With L1 fixed by owner
+ruling, **narrowing the stored row is the only byte-cut left inside the 55.25% of
+L1-miss latency that is weight rows.** Study 64 priced it at **7.25% of row
+bytes** and did not build it. The design problem is named explicitly: **86.4% of
+threat *rows* fit 6 bits but only 53.06% of *folds* do** — a fold is only cheap if
+*every* row in it is narrow, so the per-fold rate is what pays.
+
+**2. MEASURE the eval-elision ceiling — land nothing.** **61.41% of all 2,163,490
+fresh evaluations feed one threshold comparison and nothing else**, at leaves, so
+eliding one removes its whole fold: **≈45% of engine latency at the free-predictor
+ceiling.** It is **FUNCTIONAL** — both consumers read the eval in a blend, and a
+predictor must answer *before* the fold, from its own cheap state.
+
+The brief asks for the **empirical ceiling**: for each of the 1.33 M eliding
+nodes, which cheap pre-fold signals exist (PSQT-only, parent eval + move delta,
+SEE, TT remnant) and **how often would each answer the comparison correctly** —
+plus the accuracy distribution and **the break-even cost of being wrong**, since a
+95%-accurate predictor still pays a full fold on the other 5% plus its own cost.
+**Deliverable is a measured ceiling and a pre-registered strength-test protocol,
+not an implementation** — a functional change needs games, and games are the
+owner's call.
+
+**"The predictor is impossible" is pre-emptively excluded as a finding**, with the
+instruction to measure a second signal if the first is inaccurate.
+
+**Box discipline is front-loaded given tonight's OOM:** the brief states that the
+kernel killed the trainer at 22:53, that everything from this harness inherits
+`oom_score_adj=200`, that `oomshield` now holds disposables at 900, and that
+**`free -m | grep Swap` must be checked too** — swap exhaustion was the earlier
+warning and did not show in the available number until nearly too late. It is told
+the trainer is 15 h from its endpoint and to stop building if memory tightens,
+**as study 64 correctly did.**
+
+**One correction carried forward:** study 64's rejection of my SF write-up is
+recorded *as rejected*, with the mechanism — it read the checkout (Stockfish 18,
+`L2Big`/`L3Big`, `FC_0_OUTPUTS + 1`) instead of the pinned `eca43a97`. The brief
+tells study 65 to read `git show eca43a97:…` for any constant, never the working
+tree.
+
+**D49:** sb1273+, five services active, 8.7 GB avail. **sb1700 in ~15.4 h.**
