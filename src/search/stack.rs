@@ -62,7 +62,6 @@ pub const fn ss(ply: usize) -> usize {
 /// ~10 KB (asserted below).
 #[derive(Clone, Copy)]
 pub struct Stack {
-    pub ply: i32,
     /// [`Move::NULL`] when none (D2).
     pub current_move: Move,
     /// Singular-search exclusion (doc 10 writes).
@@ -81,8 +80,6 @@ pub struct Stack {
     /// LMR reduction applied to the child, in 1024ths of a ply (doc 10
     /// writes, the child reads it back).
     pub reduction: i32,
-    /// "On last iteration's PV path" (doc 10 gates).
-    pub follow_pv: bool,
     /// Continuation-history key; see [`ContHistId`].
     pub cont_hist: ContHistId,
 }
@@ -95,7 +92,6 @@ const _: () = assert!(STACK_SIZE == 256);
 impl Default for Stack {
     fn default() -> Self {
         Stack {
-            ply: 0,
             current_move: Move::NULL,
             excluded_move: Move::NULL,
             static_eval: VALUE_NONE,
@@ -106,16 +102,16 @@ impl Default for Stack {
             tt_hit: false,
             cutoff_cnt: 0,
             reduction: 0,
-            follow_pv: false,
             cont_hist: ContHistId::SENTINEL,
         }
     }
 }
 
 /// Reset a worker's stack at the top of `iterative_deepening`
-/// (design/07 §3.2.4): default-fill everything, install the inert
+/// (design/07 §3.2.4): default-fill everything, and install the inert
 /// continuation-history sentinel and "no eval" in the padding slots below
-/// the root, and stamp each in-tree slot with its own ply.
+/// the root. (Search code receives `ply` as an argument everywhere; the
+/// stack slot does not carry a copy.)
 ///
 /// A single 10 KB fill per `go` — cheap, and never done inside the tree.
 pub fn init_stack(stack: &mut [Stack; STACK_SIZE]) {
@@ -126,9 +122,6 @@ pub fn init_stack(stack: &mut [Stack; STACK_SIZE]) {
     for slot in &mut stack[..SS_OFFSET] {
         slot.cont_hist = ContHistId::SENTINEL;
         slot.static_eval = VALUE_NONE;
-    }
-    for ply in 0..=MAX_PLY + 2 {
-        stack[ss(ply)].ply = ply as i32;
     }
 }
 
@@ -229,11 +222,10 @@ mod tests {
     }
 
     #[test]
-    fn init_stack_pads_below_root_and_stamps_plies() {
+    fn init_stack_pads_below_root() {
         let mut stack = new_stack();
         // Dirty everything first so init provably resets it.
         for slot in stack.iter_mut() {
-            slot.ply = -99;
             slot.static_eval = 123;
             slot.current_move = move_for(5);
             slot.tt_pv = true;
@@ -244,10 +236,6 @@ mod tests {
         for slot in &stack[..SS_OFFSET] {
             assert!(slot.cont_hist == ContHistId::SENTINEL);
             assert_eq!(slot.static_eval, VALUE_NONE);
-        }
-        // Every in-tree slot's ply field matches its index (design/07 §5).
-        for ply in 0..=MAX_PLY + 2 {
-            assert_eq!(stack[ss(ply)].ply, ply as i32);
         }
         // Default-fill state: no stale moves or flags anywhere.
         for slot in stack.iter() {

@@ -373,25 +373,6 @@ crate::tunables! {
     pub RAZOR_BASE: Value = 465;
     /// Depth-quadratic term of the razoring margin (`* depth^2`).
     pub RAZOR_DEPTH_MULT: Value = 300;
-    /// **Eval-uncertainty coupling for razoring** — margin widens by
-    /// `|correction_value| / RAZOR_CORR_DIV`. Effectively OFF at the default
-    /// (the term floors to 0), so the shipped engine is unchanged.
-    ///
-    /// A deliberate deviation from Stockfish, which has no such term.
-    /// Reasoning: the eval-frame study established that what a margin must
-    /// track is the eval's ERROR, not its magnitude
-    /// (`eval-frame-scale-model-2026-07-27.md` §11.3), and correction history
-    /// is a per-position estimate of exactly that error. RFP, singular and
-    /// LMR already couple to it; razoring does not — despite being the most
-    /// destructive gate in the engine, since it replaces an entire node with
-    /// a qsearch value and nothing downstream corrects it.
-    ///
-    /// Under the node-level/move-level hypothesis (`SCREENING.md` §10) that
-    /// is precisely backwards: the gate with the largest cost-of-being-wrong
-    /// should be the MOST reluctant where the eval is historically
-    /// unreliable. Smaller divisor = stronger coupling = razor less often in
-    /// positions our eval has been getting wrong.
-    pub RAZOR_CORR_DIV: i32 = 1_000_000_000;
 
     // --- Reverse futility pruning (design/10 §3.4; node step N10) ---
     //
@@ -467,15 +448,6 @@ crate::tunables! {
     /// Flat base of the NMP static-eval bar (dominates at shallow depth, so the
     /// bar sits well above beta there).
     pub NMP_EVAL_BASE: Value = 374;
-    /// **Eval-uncertainty coupling for the null-move bar** — the bar rises by
-    /// `|correction_value| / NMP_CORR_DIV`, so NMP fires less readily where
-    /// our eval has been unreliable. Effectively OFF at the default.
-    ///
-    /// Same reasoning as [`RAZOR_CORR_DIV`], and NMP is the other node-level
-    /// gate with no correction coupling. NMP's whole premise is that the
-    /// static eval is trustworthy enough to skip a move — which is exactly
-    /// the assumption correction history measures.
-    pub NMP_CORR_DIV: i32 = 1_000_000_000;
     /// Base of the null-move dynamic reduction `R = NMP_R_BASE + depth /
     /// NMP_R_DEPTH_DIV` (in whole plies — this reduction is applied directly to
     /// depth, not in the 1024ths the LMR table uses).
@@ -533,25 +505,6 @@ crate::tunables! {
     pub RED_UNIT: i32 = 1024;
     /// Flat rebase added to every finalized reduction (§3.7).
     pub RED_FLAT: i32 = 714;
-    /// Reduction rebate (in 1024ths of a ply) for a move that GIVES CHECK.
-    ///
-    /// **Status: UNVALIDATED. Default 0 — leave it there unless a game result
-    /// says otherwise.** Stockfish has no check term in its LMR accretion, so
-    /// this is an ARCHON experiment, not a parity fix.
-    ///
-    /// It was proposed on 2026-07-28 from a trace of one loss, and every
-    /// supporting argument for it has since been withdrawn:
-    /// * "checking moves are never extended" was an artifact — singular
-    ///   extension applies only to the ttMove, and fires on 8 of 33 eligible
-    ///   candidates, which is normal;
-    /// * "the futility gates hide the mate" held only at FIXED DEPTH; at equal
-    ///   nodes base and every arm find it at 100k;
-    /// * the corpus metric it later "won" on (nodes to stop playing the
-    ///   blunder) was shown to reward noise — setting this to **−512**, i.e.
-    ///   reducing checks MORE, clears the same null band.
-    ///
-    /// Keep the knob, distrust the story. See `searchopt/LEDGER.md`.
-    pub RED_GIVES_CHECK: i32 = 0;
 
     /// Draw contempt: how much worse than equality a draw is judged, from the
     /// ROOT side's point of view (our internal units).
@@ -1590,37 +1543,16 @@ crate::tunables! {
 
     // --- SF-parity structural toggles (2026-07-27 D33 reference-fidelity pass) ---
     //
-    // Four mechanisms where our transcription structurally deviates from SF
-    // `eca43a97`, found by side-by-side reading (not by constant diffing —
-    // none of these is visible to a constants screen). Each is a 0/1 toggle,
-    // OFF by default so the engine is bit-identical to the pre-toggle tree;
-    // 1 = the SF-parity behavior. Screen each with tools/screen.py, SPRT the
-    // survivors, then fold the winner into the default and delete the toggle.
+    // Four mechanisms where our transcription structurally deviated from SF
+    // `eca43a97`, found by side-by-side reading. Each was wired as a 0/1
+    // toggle, OFF by default, to be screened and folded in or deleted.
+    // RESOLVED 2026-08-01 (tier 0 of the simplification plan): QS_UPREP and
+    // RED_TTPV_TTMISS_REBATE both MEASURED WORSE ON (2026-07-27, net-live,
+    // n=1600 paired: +0.47/+0.20/+0.23 cp at +0.6% nodes; +0.44/+0.30/+0.34 cp
+    // at +5.3% nodes) — toggles deleted, divergence-from-SF comments left at
+    // the use sites. FOLLOW_PV_MODE never won a measurement since P9 —
+    // deleted with the whole followPV apparatus.
 
-    /// `followPV` tracking (SF search.cpp:752-755): mark nodes on the previous
-    /// iteration's PV path. The two consumers (IIR's exemption, the quiet-
-    /// pruning PV-path exemption at `!follow_pv || !PV`) have been reading a
-    /// never-assigned `false` since P9 item 9 was parked — with the flag dead,
-    /// we IIR-reduce and quiet-prune the very path the last iteration proved.
-    /// 0 = flag stays false everywhere (today's behavior); 1 = SF parity.
-    pub FOLLOW_PV_MODE: i32 = 0;
-    /// Upcoming-repetition alpha raise at QSEARCH entry (SF search.cpp:1606).
-    /// We run it in `search` only; SF runs it in both, so every qsearch node
-    /// below the horizon that could force a repetition draw while losing
-    /// forfeits the cutoff. 0 = search only (today); 1 = SF parity.
-    /// MEASURED 2026-07-27 (net-live, n=1600 paired): +0.47/+0.20/+0.23 cp
-    /// WORSE by tier at +0.6% nodes — parity does not pay here; left off.
-    pub QS_UPREP: i32 = 0;
-    /// The ttPv reduction rebate's tt-value term on a TT MISS (SF
-    /// search.cpp:1292 `(ttData.value > alpha) * 838`): SF's miss sentinel
-    /// VALUE_NONE (32002) passes `> alpha` unconditionally, so SF grants the
-    /// rebate at every PV-flagged TT-miss node. Our `is_valid` guard was added
-    /// as ProbCut-idiom hygiene but makes us search ~0.8 ply SHALLOWER than SF
-    /// exactly where the TT has no answer. 0 = require a real value (today);
-    /// 1 = SF parity (grant on miss).
-    /// MEASURED 2026-07-27 (net-live, n=1600 paired): +0.44/+0.30/+0.34 cp
-    /// WORSE by tier at +5.3% nodes — parity does not pay here; left off.
-    pub RED_TTPV_TTMISS_REBATE: i32 = 0;
     // PROBCUT_IN_VERIF was here briefly (2026-07-27) and was DELETED the same
     // day: inside a verification `probcut_beta ≈ tt_value - margin +
     // PROBCUT_BETA_BASE` and margin ≪ base at any practical depth, so the

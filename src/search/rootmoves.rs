@@ -30,8 +30,6 @@ pub struct RootMove {
     /// `pv[0]` is the root move itself; extended from `pv_table[1]` when
     /// the move's score is set.
     pub pv: Vec<Move>,
-    /// Last completed iteration's PV (snapshotted by the ID loop).
-    pub previous_pv: Vec<Move>,
     /// `-VALUE_INFINITE` when unsearched this iteration.
     pub score: Value,
     /// Last completed iteration's score.
@@ -44,9 +42,6 @@ pub struct RootMove {
     pub mean_squared_score: i64,
     pub score_lowerbound: bool,
     pub score_upperbound: bool,
-    /// Whether last iteration searched this move to an exact score
-    /// (i.e. it was one of the MultiPV lines).
-    pub previous_score_exact: bool,
     pub sel_depth: i32,
     /// Nodes spent under this root move (a time-management input).
     pub effort: u64,
@@ -62,7 +57,6 @@ impl RootMove {
     pub fn new(m: Move) -> Self {
         RootMove {
             pv: vec![m],
-            previous_pv: Vec::new(),
             score: SCORE_UNSET,
             previous_score: SCORE_UNSET,
             uci_score: SCORE_UNSET,
@@ -70,7 +64,6 @@ impl RootMove {
             mean_squared_score: MSS_UNSET,
             score_lowerbound: false,
             score_upperbound: false,
-            previous_score_exact: false,
             sel_depth: 0,
             effort: 0,
             policy_score: 0,
@@ -176,7 +169,6 @@ mod tests {
         let m = Move::normal(Square::E2, Square::E4);
         let r = RootMove::new(m);
         assert!(r.pv.len() == 1 && r.pv[0] == m);
-        assert!(r.previous_pv.is_empty());
         assert_eq!(r.score, -VALUE_INFINITE);
         assert_eq!(r.previous_score, -VALUE_INFINITE);
         assert_eq!(r.uci_score, -VALUE_INFINITE);
@@ -186,7 +178,6 @@ mod tests {
             -(VALUE_INFINITE as i64 * VALUE_INFINITE as i64)
         );
         assert!(!r.score_is_bound());
-        assert!(!r.previous_score_exact);
         assert_eq!(r.sel_depth, 0);
         assert_eq!(r.effort, 0);
         assert_eq!(r.policy_score, 0);

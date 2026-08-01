@@ -3539,7 +3539,6 @@ fn go_depth_full_window_on(fen: &str, depth: Depth, tt: &TranspositionTable) -> 
         w.root_depth = d;
         for rm in w.root_moves.iter_mut() {
             rm.previous_score = rm.score;
-            rm.previous_pv.clone_from(&rm.pv);
         }
         w.sel_depth = 0;
         w.root_delta = 2 * VALUE_INFINITE;
