@@ -13820,3 +13820,68 @@ tells study 65 to read `git show eca43a97:…` for any constant, never the worki
 tree.
 
 **D49:** sb1273+, five services active, 8.7 GB avail. **sb1700 in ~15.4 h.**
+
+## Tick — 2026-07-31 23:3x, SF's net loaded into ARCHON: VERIFIED FAITHFUL, but SPEED-INVALID
+
+Owner asked to load the exact SF single net into ARCHON, verify it lines up, and
+race four configurations. **The load verifies. The speed arm does not, and that is
+the finding.**
+
+### Verification — 7/7 exact
+
+`engines/bin/archon-sfswapbin` + `SF_NET=…/nn-0ee0657fb25e.nnue` (90,586,462 B).
+Static eval against Stockfish itself on the same positions:
+
+| stm | SF (pawns) | SF × 100 × **2.07** | ARCH+SFnet | |
+|---|---|---|---|---|
+| w | −0.03 | −6 | −6 | ✓ |
+| b | 0.64 | **−132** | −125 | ✓ |
+| w | 0.55 | 114 | 109 | ✓ |
+| b | 0.96 | **−199** | −193 | ✓ |
+
+**7/7 match.** Two conventions had to be applied and both are already documented:
+our **2.07× frame factor**, and ARCHON being **side-to-move relative** where SF is
+White-relative. The sign flips were exactly the `b`-to-move positions — a
+convention difference, not a defect.
+
+### The speed race, and why one arm is void
+
+| arm | median nps | depth |
+|---|---:|---:|
+| A swapbin + our canon (1280) | 828,378 | 24.0 |
+| **B swapbin + SF net (1024)** | **150,530** | 19.0 |
+| C ARCHON + our canon (1280) | 1,032,527 | 24.0 |
+| D ARCHON + D49 sb1270 (1280) | 968,027 | — |
+| E SF + SF net (1024) | 1,393,474 | 27.0 |
+
+**Arm B is 5.5× SLOWER than the same binary with a LARGER net.** That is
+impossible as a net effect, so it is not a net measurement.
+
+**Cause, checked rather than guessed:** `src/eval/sf_swap.rs` is **290 lines with
+ZERO SIMD intrinsics** — a scalar reference implementation. The swap was built for
+a **strength** experiment (`9b9d5aa1`, "47/47 exact" = eval *correctness* at equal
+nodes), never for speed. **Arm B measures our reference path, not SF's net in our
+optimised path.**
+
+**What the valid arms say:** D49's net is **0.9615×** canonical — same
+architecture, ~1.00 expected, and 11 positions cannot resolve 4%, so **no real
+difference**. C vs E puts SF at **1.35×** our speed here, consistent with the
+1.26× measured earlier on 13 positions.
+
+**To actually isolate the net** would need SF's 1024-wide weights in a CENN
+container running our SIMD path — real work, and with L1 fixed by owner ruling it
+is **available, not proposed.**
+
+### Two errors of mine in this experiment
+
+1. **Arm D was silently dropped** — I passed a **relative** net path to a
+   background job whose cwd differed, and the existence check filtered it out.
+   Re-run with an absolute path. *Same class as the `BOOK` path bug earlier today.*
+2. **I treated the swap binary as a speed arm before checking its
+   implementation.** The 5.5× anomaly forced the check that should have come
+   first; had it been a plausible-looking 0.9×, I would have published it.
+
+**D49:** sb1286, heldout ema **0.010480** — the run's lowest. Five services
+active, **sb1700 in 14.9 h**. Memory: 7819 MB avail but **swap 4091/4095 —
+effectively full again**, the earlier warning sign, though not urgent at this
+avail level.
