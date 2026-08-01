@@ -863,6 +863,23 @@ fn add_column<W: Copy + Into<i16>>(acc: &mut [i16; ACC], weights: &[W], index: u
     }
 }
 
+/// Perf study 65 — [`add_column`] for the FullThreats table, which may store a
+/// row in the packed 6-bit form. The from-scratch rebuild is 0.0196 calls/node,
+/// so this is a correctness path and not a speed one: it decodes lane by lane
+/// with the SAME scalar reference the SIMD kernel's tests are checked against.
+#[inline]
+fn add_threat_column(acc: &mut [i16; ACC], weights: &[i8], narrow: &[u64], index: usize) {
+    let base = index * ACC;
+    if super::sota_simd::is_narrow(narrow, base) {
+        let row = &weights[base..base + super::sota_simd::NARROW_BYTES];
+        for (j, a) in acc.iter_mut().enumerate() {
+            *a = a.wrapping_add(super::sota_simd::unpack_narrow_lane(row, j));
+        }
+    } else {
+        add_column(acc, weights, index);
+    }
+}
+
 /// Build the HalfKA accumulator for `perspective` from scratch: seed with the FT
 /// bias, then add the weight column of every active HalfKA feature (§12.2).
 /// `halfka_weights` is feature-major (`[HALFKA_DIMS · ACC]` i16), `ft_bias` is
@@ -899,7 +916,7 @@ pub fn refresh_pst(
 #[cfg(test)]
 pub fn refresh_threat(threat_weights: &[i8], board: &Board, perspective: Color) -> [i16; ACC] {
     let mut acc = [0i16; ACC];
-    refresh_threat_into(&mut acc, threat_weights, board, perspective, None);
+    refresh_threat_into(&mut acc, threat_weights, &[], board, perspective, None);
     acc
 }
 
@@ -918,6 +935,7 @@ pub fn refresh_threat(threat_weights: &[i8], board: &Board, perspective: Color) 
 pub fn refresh_threat_into(
     dst: &mut [i16; ACC],
     threat_weights: &[i8],
+    threat_narrow: &[u64],
     board: &Board,
     perspective: Color,
     remap: Option<&ThreatRemap>,
@@ -925,6 +943,7 @@ pub fn refresh_threat_into(
     refresh_threat_into_at(
         dst,
         threat_weights,
+        threat_narrow,
         &ThreatPosition::from_board(board),
         perspective,
         remap,
@@ -937,6 +956,8 @@ pub fn refresh_threat_into(
 pub(super) fn refresh_threat_into_at(
     dst: &mut [i16; ACC],
     threat_weights: &[i8],
+    // Perf study 65's narrow-plane bitmap; empty ⇒ every row is 8-bit.
+    threat_narrow: &[u64],
     pos: &ThreatPosition,
     perspective: Color,
     remap: Option<&ThreatRemap>,
@@ -970,13 +991,13 @@ pub(super) fn refresh_threat_into_at(
         let mut rows = 0usize;
         for_each_threat_at(pos, perspective, remap, |idx| {
             rows += 1;
-            add_column(dst, threat_weights, idx);
+            add_threat_column(dst, threat_weights, threat_narrow, idx);
         });
         super::foldcount::THR_REFRESH.hit(rows);
     }
     #[cfg(not(feature = "foldcount"))]
     for_each_threat_at(pos, perspective, remap, |idx| {
-        add_column(dst, threat_weights, idx)
+        add_threat_column(dst, threat_weights, threat_narrow, idx)
     });
 }
 
@@ -986,6 +1007,7 @@ pub fn refresh_both(
     halfka_weights: &[i8],
     ft_bias: &[i16],
     threat_weights: &[i8],
+    threat_narrow: &[u64],
     board: &Board,
     threat_remap: Option<&ThreatRemap>,
 ) -> ([[i16; ACC]; 2], [[i16; ACC]; 2]) {
@@ -997,7 +1019,14 @@ pub fn refresh_both(
     let pos = ThreatPosition::from_board(board);
     for (i, &persp) in Color::ALL.iter().enumerate() {
         pst[i] = refresh_pst(halfka_weights, ft_bias, board, persp);
-        refresh_threat_into_at(&mut threat[i], threat_weights, &pos, persp, threat_remap);
+        refresh_threat_into_at(
+            &mut threat[i],
+            threat_weights,
+            threat_narrow,
+            &pos,
+            persp,
+            threat_remap,
+        );
     }
     (pst, threat)
 }
@@ -1304,8 +1333,8 @@ mod tests {
         let (hw, bias) = ones_halfka();
         let tw = vec![2i8; THREAT_DIMS * ACC];
 
-        let a = refresh_both(&hw, &bias, &tw, &board, None);
-        let b = refresh_both(&hw, &bias, &tw, &board, None);
+        let a = refresh_both(&hw, &bias, &tw, &[], &board, None);
+        let b = refresh_both(&hw, &bias, &tw, &[], &board, None);
         assert_eq!(a, b, "deterministic");
 
         let (pst, threat) = &a;
@@ -1323,7 +1352,7 @@ mod tests {
         let board = Board::from_fen(crate::fen::START_FEN).unwrap();
         let (hw, bias) = ones_halfka();
         let tw = vec![0i8; THREAT_DIMS * ACC];
-        let (pst, threat) = refresh_both(&hw, &bias, &tw, &board, None);
+        let (pst, threat) = refresh_both(&hw, &bias, &tw, &[], &board, None);
 
         let head = SotaHead {
             l1_weights: vec![1i8; BUCKETS * L2 * L1].into(),

@@ -474,6 +474,7 @@ impl<'a> HalfkaContext<'a> {
             HKA_WEIGHTS_RS.call_once(|| {
                 super::foldcount::rowstats("hka_weights", weights, super::sota_head::L1);
                 super::foldcount::rowwidth_init(0, weights, super::sota_head::L1);
+                super::foldcount::lanestats("hka_weights", weights, super::sota_head::L1);
             });
         }
         #[allow(unused_mut)]

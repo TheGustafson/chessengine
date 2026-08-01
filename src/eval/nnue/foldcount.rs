@@ -203,6 +203,52 @@ pub fn rowwidth_init(ch: usize, weights: &[i8], acc: usize) {
     );
 }
 
+/// Perf study 65 — the per-LANE magnitude census, which prices the ONE
+/// narrow-row layout that needs no per-row dispatch at all.
+///
+/// A two-plane per-row scheme cuts bytes on the rows that are narrow and pays a
+/// permutation table plus a branch for it. The alternative is to cut the same
+/// bytes on **every** row by splitting the accumulator's LANES: if lane `j`
+/// satisfies `|w[r][j]| <= 31` for every row `r`, that lane can be stored in 6
+/// bits for all rows at once. A fixed lane permutation is free — the loader can
+/// apply it to the feature transformer, the FT bias and the head's L1/skip
+/// weights once, and nothing downstream can tell.
+///
+/// So the question is: how many of the 1280 lanes are narrow *across the whole
+/// table*? `LANEMAX` answers it, and it also reports the count over the rows the
+/// search actually FOLDS, which is the same question for a scheme willing to
+/// carry an exception plane for the rest.
+pub fn lanestats(name: &'static str, weights: &[i8], acc: usize) {
+    let mut all = vec![0u8; acc];
+    // The same, over the rows that are NOT already 8-bit — i.e. what a
+    // lane-split layout could reach if the 0.78 % of rows with an 8-bit peak
+    // kept a per-row exception plane.
+    let mut sans8 = vec![0u8; acc];
+    for row in weights.chunks_exact(acc) {
+        let peak = row
+            .iter()
+            .map(|&w| i16::from(w).unsigned_abs())
+            .max()
+            .unwrap_or(0);
+        for (j, &w) in row.iter().enumerate() {
+            let m = i16::from(w).unsigned_abs().min(255) as u8;
+            if m > all[j] {
+                all[j] = m;
+            }
+            if peak <= 63 && m > sans8[j] {
+                sans8[j] = m;
+            }
+        }
+    }
+    if let Ok(mut g) = LANESTATS.lock() {
+        g.push((name, all, sans8));
+    }
+}
+
+#[allow(clippy::type_complexity)]
+static LANESTATS: std::sync::Mutex<Vec<(&'static str, Vec<u8>, Vec<u8>)>> =
+    std::sync::Mutex::new(Vec::new());
+
 /// Static row structure of a weight table: how many rows are entirely zero,
 /// and the distribution of nonzero lanes per row in 16 buckets of `acc/16`.
 pub fn rowstats(name: &'static str, weights: &[i8], acc: usize) {
@@ -555,6 +601,334 @@ pub fn note_search(which: Sc) {
     SEARCH[which as usize].fetch_add(1, Relaxed);
 }
 
+// ---------------------------------------------------------------------------
+// Perf study 65 — the EVAL-ELISION predictor census.
+// ---------------------------------------------------------------------------
+
+/// Study 64 §1.1 measured that **61.41 % of every fresh NNUE forward pass is
+/// consumed by one one-sided threshold comparison** — reverse futility pruning
+/// (`eval − margin >= beta`) or the qsearch stand pat (`best_value >= beta`) —
+/// and by nothing else. Those nodes are leaves, so an evaluation not computed
+/// there takes its whole fold with it: ≈ 45 % of the engine's L1-miss latency
+/// at the free-predictor ceiling.
+///
+/// The ceiling is free only if something *cheap* can answer the comparison. That
+/// is an empirical question about a joint distribution and nobody had measured
+/// it, because every counter in this module is charged at fold or eval time,
+/// i.e. after the value exists. These counters are charged **at the comparison**
+/// and carry both the true answer and each candidate predictor's answer, so the
+/// full ROC of every candidate falls out of one engine run.
+///
+/// ## What is recorded
+///
+/// For each node in the eliding population, in **corrected-static-eval units**
+/// (the units the comparison itself is in):
+///
+/// * `slack = value − threshold`. `slack >= 0` ⇔ the node elides.
+/// * for each candidate `i`, `pslack_i = pred_i − threshold`, cross-tabbed
+///   against `slack >= 0`. Sweeping a safety band `b` over
+///   `pslack_i >= b` then reads the **whole ROC** off one table: correct elides
+///   are the `slack >= 0` column, wrong elides the `slack < 0` one.
+/// * for each candidate, the residual `pred_i − value`, which is what sizes the
+///   band.
+///
+/// The `const0` candidate is the **null**: a constant predictor. Any candidate
+/// that does not beat it is measuring the base rate, not a signal (CLAUDE.md
+/// rule 1 — null first, and the null is inside the instrument so it cannot be
+/// skipped).
+pub const PRED_N: usize = 11;
+/// Candidate names, in call-site order.
+pub const PRED_NAMES: [&str; PRED_N] = [
+    // The same head over the HalfKA channel alone (threat accumulator zeroed).
+    // Not a cheap predictor in the free-ceiling sense — it still folds 44 % of
+    // the rows and runs the whole head — but it is the ONE candidate that
+    // measures how much of the value the threat channel carries, and it is the
+    // shape of the cheap tier this engine is already wired for.
+    "hkaonly",
+    // The head's own PSQT term with the net output zeroed — i.e. what a fold
+    // that touched only the 32-byte PSQ1 rows (1/40th of a weight row) could
+    // produce. Already in the net's own output frame: `forward_into` ADDS it to
+    // `(l3 · network_scale) as i32`, so no rescale is needed.
+    "psqtonly",
+    // The hand-crafted tapered PSQT eval that ships as the no-net fallback.
+    // Touches no accumulator at all: ~32 table reads.
+    "hcpsqt",
+    // The same, doubled. `hcpsqt` is in CLASSIC centipawns (~100/pawn) while
+    // this engine's search frame is ~2.07× Stockfish's printed cp, so the raw
+    // form is systematically half-scale and a threshold sweep — which only ever
+    // shifts a predictor — cannot repair a SCALE error. Carrying both is how the
+    // census answers "is it the signal or the units?" without a second run.
+    "hcpsqt2", // The parent's corrected static eval, negated. Free.
+    "parent",  // The same side's eval two plies ago. Free.
+    "gparent",
+    // The parent's eval negated, corrected by the move's OWN delta in the
+    // hand-crafted score: `−parent + (hc_now − (−hc_parent))`.
+    "pardelta", // The mean of `parent` and `gparent`.
+    "pargp",
+    // The TT value at a node whose TT *eval* field was invalid (which is what
+    // made the evaluation fresh in the first place).
+    "ttval",
+    // NULL CONTROL — a constant. Any candidate that does not beat this one is
+    // reading the base rate.
+    "const0",
+    // SELF-TEST — the true value. Its ROC must be perfect at band 0 and its
+    // residual histogram a single bucket; anything else means the census is
+    // mis-wired, which is the failure a null cannot catch.
+    "truth",
+];
+
+/// Channels: 0 = main-search reverse futility, 1 = qsearch stand pat.
+pub const PRED_CH: usize = 2;
+pub const PRED_CH_NAMES: [&str; PRED_CH] = ["rfp", "qssp"];
+/// Histogram width: bucket 0 is `< −1024`, bucket 129 is `>= 1024`, and
+/// buckets 1..=128 are 16 units wide over `[−1024, 1024)`.
+pub const PRED_B: usize = 130;
+
+/// `[channel][candidate][elides?][bucket of pslack]`.
+#[allow(clippy::type_complexity)]
+static PRED_ROC: [[[[AtomicU64; PRED_B]; 2]; PRED_N]; PRED_CH] =
+    [const { [const { [const { [const { AtomicU64::new(0) }; PRED_B] }; 2] }; PRED_N] }; PRED_CH];
+/// `[channel][candidate][bucket of (pred − value)]`.
+static PRED_ERR: [[[AtomicU64; PRED_B]; PRED_N]; PRED_CH] =
+    [const { [const { [const { AtomicU64::new(0) }; PRED_B] }; PRED_N] }; PRED_CH];
+/// `[channel][candidate][coarse slack][coarse pslack]` — the JOINT, so the
+/// analysis can answer "when this candidate elides wrongly, HOW wrongly?"
+/// rather than only how often. A wrong elision one unit below the bar and one
+/// four hundred units below it are the same cell in the marginal and are not
+/// remotely the same defect.
+pub const PRED_C: usize = 12;
+#[allow(clippy::type_complexity)]
+static PRED_JOINT: [[[[AtomicU64; PRED_C]; PRED_C]; PRED_N]; PRED_CH] =
+    [const { [const { [const { [const { AtomicU64::new(0) }; PRED_C] }; PRED_C] }; PRED_N] };
+        PRED_CH];
+
+/// Coarse signed bucket: symmetric log-ish edges at ±{0,32,96,224,480,992}.
+#[inline]
+fn cbucket(v: i32) -> usize {
+    const EDGE: [i32; 5] = [32, 96, 224, 480, 992];
+    let neg = v < 0;
+    let a = v.unsigned_abs() as i32;
+    let mut k = 0;
+    while k < EDGE.len() && a >= EDGE[k] {
+        k += 1;
+    }
+    if neg { 5 - k } else { 6 + k }
+}
+
+/// The human-readable edges of [`cbucket`], for the analysis side.
+pub const PRED_C_NAMES: [&str; PRED_C] = [
+    "<=-992",
+    "-992..-480",
+    "-480..-224",
+    "-224..-96",
+    "-96..-32",
+    "-32..0",
+    "0..32",
+    "32..96",
+    "96..224",
+    "224..480",
+    "480..992",
+    ">=992",
+];
+/// `[channel][bucket of slack]` — the true margin distribution.
+static PRED_SLACK: [[AtomicU64; PRED_B]; PRED_CH] =
+    [const { [const { AtomicU64::new(0) }; PRED_B] }; PRED_CH];
+/// `[channel][candidate]` — nodes where the candidate had a value at all.
+static PRED_AVAIL: [[AtomicU64; PRED_N]; PRED_CH] =
+    [const { [const { AtomicU64::new(0) }; PRED_N] }; PRED_CH];
+/// `[channel]` — population size, and how many of it elides.
+static PRED_NODES: [AtomicU64; PRED_CH] = [const { AtomicU64::new(0) }; PRED_CH];
+static PRED_ELIDE: [AtomicU64; PRED_CH] = [const { AtomicU64::new(0) }; PRED_CH];
+
+/// Bucket a signed value: 0 = `< −1024`, 129 = `>= 1024`, else 16-wide.
+#[inline]
+fn pbucket(v: i32) -> usize {
+    if v < -1024 {
+        0
+    } else if v >= 1024 {
+        PRED_B - 1
+    } else {
+        (((v + 1024) >> 4) + 1) as usize
+    }
+}
+
+/// The inclusive lower edge of bucket `b`, for the analysis side.
+pub fn pbucket_lo(b: usize) -> i32 {
+    match b {
+        0 => i32::MIN,
+        129 => 1024,
+        _ => -1024 + ((b as i32) - 1) * 16,
+    }
+}
+
+/// The per-ply stash of the hand-crafted score, so `pardelta` can read the
+/// PARENT's. Written unconditionally at node entry; read at `ply − 1`. Plain
+/// `AtomicI32` indexed by search ply — the parent of a node at `ply` is the
+/// only writer of slot `ply − 1` on the live line, so no staleness is possible
+/// within one line.
+pub const PRED_PLY_MAX: usize = 256;
+static PRED_HC: [std::sync::atomic::AtomicI32; PRED_PLY_MAX] =
+    [const { std::sync::atomic::AtomicI32::new(0) }; PRED_PLY_MAX];
+
+/// Stash this node's hand-crafted score for its children.
+#[inline]
+pub fn stash_hc(ply: usize, v: i32) {
+    if ply < PRED_PLY_MAX {
+        PRED_HC[ply].store(v, Relaxed);
+    }
+}
+
+/// The parent's stashed hand-crafted score, if there is one.
+#[inline]
+pub fn parent_hc(ply: usize) -> Option<i32> {
+    (ply >= 1 && ply < PRED_PLY_MAX).then(|| PRED_HC[ply - 1].load(Relaxed))
+}
+
+/// The PSQT-only inner value of the most recent full SOTA forward — the head's
+/// `(psqt[stm][b] − psqt[ntm][b]) >> 8` term with the net output zeroed.
+///
+/// Carried in a module static rather than a `SotaContext` field on purpose:
+/// this is a study-65 instrument and a field would have to be threaded through
+/// three constructors and the `EvalContext` accessor wall for a value the
+/// shipped build must never see. `i32::MIN` is the "no fresh forward" sentinel,
+/// written by `eval::evaluate` before every call so a material-draw shortcut or
+/// a non-SOTA net cannot serve a stale one — the same freshness discipline
+/// `last_sigma` has, for the same reason.
+static PRED_PSQT_ONLY: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(i32::MIN);
+
+/// The same carrier for the HalfKA-only forward (the threat channel zeroed).
+static PRED_HKA_ONLY: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(i32::MIN);
+
+/// Invalidate both stashes (called before every `evaluate`).
+#[inline]
+pub fn clear_psqt_only() {
+    PRED_PSQT_ONLY.store(i32::MIN, Relaxed);
+    PRED_HKA_ONLY.store(i32::MIN, Relaxed);
+}
+
+/// Record this forward's PSQT-only inner value.
+#[inline]
+pub fn stash_psqt_only(v: i32) {
+    PRED_PSQT_ONLY.store(v, Relaxed);
+}
+
+/// Record this forward's HalfKA-only inner value.
+#[inline]
+pub fn stash_hka_only(v: i32) {
+    PRED_HKA_ONLY.store(v, Relaxed);
+}
+
+/// The most recent forward's PSQT-only inner value, if one is fresh.
+#[inline]
+pub fn last_psqt_only() -> Option<i32> {
+    match PRED_PSQT_ONLY.load(Relaxed) {
+        i32::MIN => None,
+        v => Some(v),
+    }
+}
+
+/// The most recent forward's HalfKA-only inner value, if one is fresh.
+#[inline]
+pub fn last_hka_only() -> Option<i32> {
+    match PRED_HKA_ONLY.load(Relaxed) {
+        i32::MIN => None,
+        v => Some(v),
+    }
+}
+
+/// Charge one elision-decision node.
+///
+/// `value` is the quantity the engine actually compares, `threshold` the bar it
+/// compares against, and `preds[i]` the candidate's answer for the SAME
+/// comparison (`None` = the candidate had nothing to say here).
+#[inline]
+pub fn note_pred(ch: usize, value: i32, threshold: i32, preds: &[Option<i32>; PRED_N]) {
+    let slack = value.saturating_sub(threshold);
+    let elide = usize::from(slack >= 0);
+    PRED_NODES[ch].fetch_add(1, Relaxed);
+    PRED_ELIDE[ch].fetch_add(elide as u64, Relaxed);
+    PRED_SLACK[ch][pbucket(slack)].fetch_add(1, Relaxed);
+    for (i, p) in preds.iter().enumerate() {
+        let Some(p) = *p else { continue };
+        let pslack = p.saturating_sub(threshold);
+        PRED_AVAIL[ch][i].fetch_add(1, Relaxed);
+        PRED_ROC[ch][i][elide][pbucket(pslack)].fetch_add(1, Relaxed);
+        PRED_ERR[ch][i][pbucket(p.saturating_sub(value))].fetch_add(1, Relaxed);
+        PRED_JOINT[ch][i][cbucket(slack)][cbucket(pslack)].fetch_add(1, Relaxed);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Perf study 65 — the per-FOLD weight-row WIDTH census.
+// ---------------------------------------------------------------------------
+
+/// Study 64 §6.1 priced the narrow-row route from the FOLDED-ROW width
+/// distribution (53.06 % of folded threat rows need ≤ 6 signed bits) and the
+/// study-65 brief then read that figure as a per-FOLD rate — *"a fold is only
+/// cheap if every row in it is narrow"*. Those are different questions and only
+/// the second one is open: with a **two-plane, per-ROW** layout each row is
+/// fetched from its own plane and a mixed fold costs nothing extra beyond the
+/// per-row dispatch; with a **whole-fold** dispatch, only folds whose every row
+/// is narrow convert. This census measures both, so the layout choice is made
+/// on the number that decides it.
+///
+/// Width classes, from the same `ceil(log2(m+1)) + 1` signed-bit rule
+/// `FOLDROWBITS` uses: `0` = ≤ 6 bits (960 B/row packed), `1` = 7 bits
+/// (1120 B), `2` = 8 bits (the 1280 B stored today).
+pub const FW_CLASSES: usize = 3;
+/// `[channel][class]` — folded rows by width class.
+static FW_ROWS: [[AtomicU64; FW_CLASSES]; ROWCH] =
+    [const { [const { AtomicU64::new(0) }; FW_CLASSES] }; ROWCH];
+/// `[channel][max class over the fold]` — folds by their WIDEST row.
+static FW_FOLDS: [[AtomicU64; FW_CLASSES]; ROWCH] =
+    [const { [const { AtomicU64::new(0) }; FW_CLASSES] }; ROWCH];
+/// `[channel][max class over the fold]` — rows living in such folds.
+static FW_FOLDROWS: [[AtomicU64; FW_CLASSES]; ROWCH] =
+    [const { [const { AtomicU64::new(0) }; FW_CLASSES] }; ROWCH];
+/// `[channel][rows in fold (capped)][max class]` — the mixing structure.
+const FW_LEN: usize = 16;
+static FW_SHAPE: [[[AtomicU64; FW_CLASSES]; FW_LEN]; ROWCH] =
+    [const { [const { [const { AtomicU64::new(0) }; FW_CLASSES] }; FW_LEN] }; ROWCH];
+
+/// The width class of one row, from the peak-magnitude table `rowwidth_init`
+/// built. Rows outside the table (impossible in practice) read as class 2.
+#[inline]
+fn width_class(ch: usize, feature: usize) -> usize {
+    let Some(peaks) = ROWMAXABS[ch].get() else {
+        return FW_CLASSES - 1;
+    };
+    match peaks.get(feature) {
+        // `m <= 31` ⇒ 6 signed bits; `m <= 63` ⇒ 7; else 8.
+        Some(&m) if m <= 31 => 0,
+        Some(&m) if m <= 63 => 1,
+        _ => 2,
+    }
+}
+
+/// Charge one fold's rows to the width census.
+#[inline]
+pub fn note_fold_width(ch: usize, adds: &[RowOffset], subs: &[RowOffset]) {
+    if ROWMAXABS[ch].get().is_none() {
+        return;
+    }
+    let mut worst = 0usize;
+    let mut n = 0usize;
+    for list in [adds, subs] {
+        for &r in list {
+            let c = width_class(ch, r.feature());
+            FW_ROWS[ch][c].fetch_add(1, Relaxed);
+            worst = worst.max(c);
+            n += 1;
+        }
+    }
+    if n == 0 {
+        return;
+    }
+    FW_FOLDS[ch][worst].fetch_add(1, Relaxed);
+    FW_FOLDROWS[ch][worst].fetch_add(n as u64, Relaxed);
+    FW_SHAPE[ch][n.min(FW_LEN - 1)][worst].fetch_add(1, Relaxed);
+}
+
 /// Learned-representation concept study, Tier-0: the MAKE-time locality
 /// census. Every counter above tallies at FOLD or EVAL time — i.e. after the
 /// deferral machinery has already discarded the plies that never needed an
@@ -867,6 +1241,119 @@ pub fn dump(nodes: u64) {
             ROWCLOCK[ch].load(Relaxed),
             hist.join(" ")
         );
+    }
+    // Perf study 65 — the per-FOLD width census (§ the narrow-row arm).
+    for ch in 0..ROWCH {
+        let rows: Vec<u64> = FW_ROWS[ch].iter().map(|c| c.load(Relaxed)).collect();
+        if rows.iter().sum::<u64>() == 0 {
+            continue;
+        }
+        let folds: Vec<u64> = FW_FOLDS[ch].iter().map(|c| c.load(Relaxed)).collect();
+        let frows: Vec<u64> = FW_FOLDROWS[ch].iter().map(|c| c.load(Relaxed)).collect();
+        let j = |v: &[u64]| {
+            v.iter()
+                .enumerate()
+                .map(|(i, n)| format!("{i}:{n}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        emit!(
+            "FOLDWIDTH {} rowsbyclass {} foldsbymax {} rowsbymax {}",
+            ROWCH_NAMES[ch],
+            j(&rows),
+            j(&folds),
+            j(&frows)
+        );
+        for n in 0..FW_LEN {
+            let row: Vec<u64> = FW_SHAPE[ch][n].iter().map(|c| c.load(Relaxed)).collect();
+            if row.iter().sum::<u64>() == 0 {
+                continue;
+            }
+            emit!("FOLDWIDTHSHAPE {} n={n} bymax {}", ROWCH_NAMES[ch], j(&row));
+        }
+    }
+    // Perf study 65 — the per-LANE magnitude census.
+    if let Ok(g) = LANESTATS.lock() {
+        for (name, all, sans8) in g.iter() {
+            let bins = |v: &[u8]| {
+                let le31 = v.iter().filter(|&&m| m <= 31).count();
+                let le63 = v.iter().filter(|&&m| m <= 63).count();
+                (le31, le63)
+            };
+            let (a31, a63) = bins(all);
+            let (s31, s63) = bins(sans8);
+            // Nonzero lanes only, so an all-zero column is not counted as a win
+            // it did not earn.
+            let anz = all.iter().filter(|&&m| m > 0).count();
+            emit!(
+                "LANEMAX {name} lanes={} nonzero={anz} all.le31={a31} all.le63={a63} \
+                 sans8.le31={s31} sans8.le63={s63}",
+                all.len()
+            );
+        }
+    }
+    // Perf study 65 — the eval-ELISION predictor census.
+    for ch in 0..PRED_CH {
+        let n = PRED_NODES[ch].load(Relaxed);
+        if n == 0 {
+            continue;
+        }
+        emit!(
+            "PREDNODES {} nodes={n} elide={}",
+            PRED_CH_NAMES[ch],
+            PRED_ELIDE[ch].load(Relaxed)
+        );
+        let occupied = |h: &[AtomicU64; PRED_B]| {
+            h.iter()
+                .enumerate()
+                .map(|(b, c)| (b, c.load(Relaxed)))
+                .filter(|&(_, c)| c > 0)
+                .map(|(b, c)| format!("{b}:{c}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        emit!(
+            "PREDSLACK {} {}",
+            PRED_CH_NAMES[ch],
+            occupied(&PRED_SLACK[ch])
+        );
+        for (i, name) in PRED_NAMES.iter().enumerate() {
+            emit!(
+                "PREDAVAIL {} {name} avail={}",
+                PRED_CH_NAMES[ch],
+                PRED_AVAIL[ch][i].load(Relaxed)
+            );
+            for e in 0..2 {
+                emit!(
+                    "PREDROC {} {name} elide={e} {}",
+                    PRED_CH_NAMES[ch],
+                    occupied(&PRED_ROC[ch][i][e])
+                );
+            }
+            emit!(
+                "PREDERR {} {name} {}",
+                PRED_CH_NAMES[ch],
+                occupied(&PRED_ERR[ch][i])
+            );
+            for s in 0..PRED_C {
+                let row: Vec<u64> = PRED_JOINT[ch][i][s]
+                    .iter()
+                    .map(|c| c.load(Relaxed))
+                    .collect();
+                if row.iter().sum::<u64>() == 0 {
+                    continue;
+                }
+                emit!(
+                    "PREDJOINT {} {name} s={s} {}",
+                    PRED_CH_NAMES[ch],
+                    row.iter()
+                        .enumerate()
+                        .map(|(p, n)| format!("{p}:{n}"))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                );
+            }
+        }
     }
     if let Ok(g) = ROWSTATS.lock() {
         for (name, total, zero, hist) in g.iter() {

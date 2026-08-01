@@ -231,6 +231,7 @@ impl SotaContext {
                 large.threat_psqt(),
                 large.threat_remap.as_deref(),
             )
+            .with_narrow(&large.threat_narrow)
         });
         SotaContext {
             net,
@@ -240,7 +241,8 @@ impl SotaContext {
                 &net.threat_weights,
                 net.threat_psqt(),
                 net.threat_remap.as_deref(),
-            ),
+            )
+            .with_narrow(&net.threat_narrow),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -308,7 +310,8 @@ impl SotaContext {
                 &net.threat_weights,
                 net.threat_psqt(),
                 net.threat_remap.as_deref(),
-            ),
+            )
+            .with_narrow(&net.threat_narrow),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -349,7 +352,8 @@ impl SotaContext {
                 &net.threat_weights,
                 net.threat_psqt(),
                 net.threat_remap.as_deref(),
-            ),
+            )
+            .with_narrow(&net.threat_narrow),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -366,11 +370,14 @@ impl SotaContext {
                 &largenet.ft_bias,
                 largenet.halfka_psqt(),
             )),
-            largenet_threats: Some(ThreatContext::new(
-                &largenet.threat_weights,
-                largenet.threat_psqt(),
-                largenet.threat_remap.as_deref(),
-            )),
+            largenet_threats: Some(
+                ThreatContext::new(
+                    &largenet.threat_weights,
+                    largenet.threat_psqt(),
+                    largenet.threat_remap.as_deref(),
+                )
+                .with_narrow(&largenet.threat_narrow),
+            ),
             largenet_sigma_gate: sigma_gate,
             tiers_armed: false, // recomputed by `with_tier_flag`
         }
@@ -588,6 +595,37 @@ impl SotaContext {
         }
         self.last_sigma = sigma;
         self.last_wdl = wdl;
+        // Perf study 65 — two candidates for the eval-elision census.
+        //
+        // `psqt_only`: `forward_into` computes
+        // `value = (l3 · network_scale) + psqtterm`, so this is exactly that
+        // value with the net output zeroed — what a fold that touched only the
+        // 32-byte PSQ1 rows (1/40th of a weight row) could produce.
+        //
+        // `hka_only`: the same head over the HalfKA channel alone, with the
+        // threat accumulator and its PSQT pair zeroed. That is the fold this
+        // engine would run if it kept a HalfKA-only cheap tier — the shape of
+        // Stockfish's small net, and the reason `smallnet_*` is already wired
+        // here. It is deliberately NOT a claim about a net trained that way;
+        // it bounds how much of the value the threat channel carries.
+        #[cfg(feature = "foldcount")]
+        {
+            let b = super::sota_head::output_bucket(piece_count);
+            let s = stm as usize;
+            super::foldcount::stash_psqt_only((psqt[s][b] - psqt[s ^ 1][b]) >> 8);
+            let hka_psqt = combine_psqt(halfka_psqt, &super::sota_head::ZERO_PSQT);
+            let mut tier_l1 = [0.0f32; super::sota_head::L2];
+            let (hka_value, _, _) = self.net.head.forward_into(
+                pst,
+                &ZERO_THREAT,
+                stm,
+                piece_count,
+                &hka_psqt,
+                &mut self.head_scratch,
+                &mut tier_l1,
+            );
+            super::foldcount::stash_hka_only(hka_value);
+        }
 
         // T-shirt gate LARGE tier: on a CRITICAL position — one the medium net is
         // least sure about (its EXP-UNC-1 σ̂ ≥ largenet_sigma_gate) — escalate to
@@ -647,6 +685,7 @@ impl SotaContext {
             &self.net.halfka_weights,
             &self.net.ft_bias,
             &self.net.threat_weights,
+            &self.net.threat_narrow,
             board,
             self.net.threat_remap.as_deref(),
         );

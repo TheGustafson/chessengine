@@ -41,6 +41,7 @@ if [ "${CHECK_FEATURE_MATRIX:-1}" != "0" ]; then
         "sota,arch-d47v" \
         "sota,arch-d48w" \
         "sota,arch-d48x" \
+        "sota,arch-d48x,narrow65" \
         "sota,arch-hka2048" \
         "sota,tune" \
         "datagen" \

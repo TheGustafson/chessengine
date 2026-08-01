@@ -36,6 +36,7 @@ fn cenn_v2_round_trip_and_evaluate() {
         halfka_weights,
         ft_bias,
         threat_weights,
+        threat_narrow: Vec::new(),
         threat_rows: THREAT_DIMS,
         threat_remap: None,
         psqt_weights: Vec::new().into(),
@@ -61,6 +62,16 @@ fn cenn_v2_round_trip_and_evaluate() {
     let bytes = sota_loader::serialize(&net);
     assert_eq!(&bytes[0..4], b"CEN2");
     let loaded = sota_loader::load_v2_bytes(&bytes).expect("valid net loads");
+    // Perf study 65: under `narrow65` the LOADED threat table is packed in
+    // place, so it is deliberately not byte-identical to the source one. The
+    // invariant that still has to hold — and the one every net-surgery tool
+    // depends on — is that serialising the loaded net reproduces the FILE.
+    assert_eq!(
+        bytes,
+        sota_loader::serialize(&loaded),
+        "serialize o load must be the identity on bytes"
+    );
+    #[cfg(not(feature = "narrow65"))]
     assert_eq!(net, loaded);
 
     // Evaluate startpos — must produce a finite value.
