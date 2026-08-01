@@ -17171,3 +17171,63 @@ Result in ~25 min. `d49abpri` restores the matcher automatically afterwards.
 beat the point they started from at all. The four separate-screen readings give
 +3.02 ± 12.58 — a bar wide enough to contain both "worth +6" and "worth nothing".
 This single match halves that bar by removing the anchor's independent error.
+
+---
+
+## 2026-08-01 13:20 — ★ TEACHER CALIBRATION COMPLETE. It caught a 2.45× error before it reached training.
+
+**The headline is a number I would have shipped.** My derived **≈1.023** holds
+for **no corpus**; the true conversion is **0.32–0.60**. Using it would have
+scaled every teacher target **~2.45× too large** — and a wrong distillation
+target is invisible in the loss for many superbatches. **This is precisely the
+failure the regression was commissioned to catch, and it caught it.**
+
+**Root cause, verified by me independently:** `sf-eval` is wired to
+`evaluate_raw()` (`src/uci.rs:100`), not `evaluate()` — so it prints Stockfish's
+**raw internal NNUE units**. The 0.538 / `FRAME = 0.5126` factor lives in
+`evaluate()`. My own one-position check agreed exactly: `sf-eval` −1286 vs
+Stockfish's `NNUE evaluation -1286 (side to move, internal units)`. Agent
+confirmed 36/36.
+
+**The corrected replacement ALSO fails.** `1/SFBINPACK_SCORE_DIV` (divisors
+1.49–2.25, recovered per pack from `ledger/data.jsonl` + `stage5_data_chain.sh`)
+is wrong by **17–34 % on nine of twelve**. The recorded divisors **order** the
+corpora correctly and **price** them wrongly.
+
+### Deliverables (branch `agent-a93f7f3c53481113a`, 6 commits)
+
+1. **The table** — `docs/research/sf-teacher-calibration-2026-08-01.md` + `.json`:
+   twelve `(k, p)` pairs for
+   **`label_frame_teacher = k·(1 + material/77871)^p · teacher_raw`**, with
+   slope/intercept/R²/sign-agreement/n and **measured** bars (1.96×SE over three
+   independent iid runs; 0.1–5.9 % on `k`).
+2. **The mapping** — `mix[i] ↔ per_corpus_target[i]` is **positional**, verified
+   two ways: consumer code (`data.py:151/176-182/187-189`, no name lookup) **and**
+   an independent MLE refit where **11/12 reproduce their stored `(a,b)` to
+   ≤1.6 %**. Slot 11 is a documented deliberate duplicate of slot 0.
+
+### Why per-corpus AND material are both required — quantified, not asserted
+
+**A single constant is wrong by up to +45 %**, and the conversion spans **1.90×**
+over the (corpus × material) grid. **`uho` alone is 25 % of the mix and is
+mispriced −20 % at low material and +19 % at high material by the same
+constant** — so **no better global scalar exists**. That settles the design
+question rather than arguing it.
+
+**`to_cp` was a red herring** (`p_a` varies ±0.9 %). The real law is SF's
+`evaluate()` blend, whose exponent is **not 1 for any corpus** (−1.57 to +2.25),
+with the **sign splitting cleanly by labelling provenance** — SF self-play
+positive, Leela-derived negative. **Mechanism not established; flagged open.**
+
+**Controls:** permuted-teacher null collapses every slope to **|≤0.026|** (real
+0.32–0.83), R²→0.000, sign→0.46–0.52; decoder round-trips **4800/4800**
+byte-exact; sign agreement 0.989–0.997 at |eval|>100 on every corpus.
+
+**It retracted its own retraction.** Mid-study it claimed contiguous-window
+sampling had broken its error bars; re-tested properly that used the wrong test
+(comparing one noisy estimate to another's interval, when the difference carries
+√2 the SE). Window vs iid is indistinguishable. It kept the iid sampler on
+principle and **said so in the doc rather than letting the stronger claim stand**.
+
+**Live:** A/B at game 676/1500; D49 continuation at sb1650 (heldout ema
+0.010457); memory 5376 MB.
