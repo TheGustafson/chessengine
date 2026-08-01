@@ -13995,3 +13995,29 @@ linearly would be exactly the chained-inference error the rules forbid.
 frame (1068). That is what the experiment is for. If parity wins, the whole
 lineage — including the canonical net — should be rescaled, and the SPSA
 campaign rerun in the corrected frame.
+
+---
+
+## 2026-08-01 00:40 — tick: sb1300 baseline at n=873, frame arms queued
+
+**D49:** sb1306, 182.2k pos/s, all services green (`d49xml` correctly inactive —
+`d49frame` re-arms it when the frame experiment finishes).
+
+**sb1300 @ scale 756 (the HANDICAPPED frame): -1.6 +/- 13.0, n=873**
+(W272/L276/D325, 49.77%). Consistent with sb1270's -2.08 +/- 11.32. This is the
+baseline the two frame arms must beat, and it is deliberately the WORST of the
+three frames — slope 0.477 vs canonical's 0.674.
+
+Match rate fell to ~26 games/min (from 60) under study 65's build contention;
+fixed-node so the RESULT is unaffected, only wall time. ETA ~01:02, then 1068,
+then 1585.
+
+**Deliberately did NOT commission a second study this tick.** Box carries the
+trainer (3.4 GB), a 1500-game match, and study 65's rustc; avail 6852 MB. A
+fourth concurrent build is precisely how the trainer got oom-killed at 22:53.
+Next brief is staged to fire when 65 lands.
+
+**Study 65:** alive, still compiling the `narrow65` arm (~45 min in), 13
+uncommitted files, no commit since `77cc4813`. Watch item: the standing rule is
+COMMIT TEST FIXES AS THEY GO — study 20 died leaving them uncommitted and main
+did not compile.
