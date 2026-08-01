@@ -81,11 +81,45 @@ elo0=−3 elo1=+1 α=β=0.05. Box rules: no builds while `d49train` is active;
 
 | stage | content | status |
 |---|---|---|
-| Basket A | offense term (D30), RFP threat coupling, step-12 dither + `child_pv_fresh` | prepared; patch on `simplify-basket-a` after tier-0 verification |
-| Stage 3 | singular double/triple margin collapse → one margin, ext ∈ {1,2} (−10 knobs) | queued behind basket A |
-| Basket B | eval-diff nudge, conthist pruning, TT-cutoff hardening trio, NMP verification (bisect restores NMP-verify FIRST — zugzwang) | queued |
+| Basket A | offense term (D30), RFP threat coupling, step-12 dither + `child_pv_fresh` | **COMMITTED** — `e5567d2a` on `simplify-basket-a` (−3 tunables, 222); cargo test green; two brittle fixed-depth fixtures re-scoped per their own precedent (drift band 30→40 cp, warm-TT depth 5→6). Baseline PGO `engines/bin/archon-simp-base` built from the verified tip and d13-verified (2045128). **Autonomous pipeline armed** (unit `simp-basket-a`, log `~/.cache/archon-simplify/basket_a.log`): waits out the owner's 27-hour d49 SF-teacher run (build freeze), then builds+pins the candidate (eval hash MUST stay `2e1ede95…` or it aborts), PGO-builds `archon-simp-a` with a PGO/non-PGO d13 identity check, waits for the box's fastchess to clear, stops `d49xml`, runs 16 × 125-round fn25k segments via `chain70.sh`, pools + GSPRT[−3, +1] verdicts via `pool_sprt.py` + `llr_pool.py`, restarts `d49xml`. The basket-A commit's `Bench:` trailer is OWED from that build window (amend or note in strength-log). |
+| Stage 3 | singular double/triple margin collapse → one margin, ext ∈ {1,2} | specified below; branch after basket A's verdict |
+| Basket B | eval-diff nudge, conthist pruning, TT-cutoff hardening trio, NMP verification | specified below; bisect restores NMP-verify FIRST (zugzwang) |
 
 > Results recorded here as each match pools.
+
+### Stage-3 patch spec (apply to a `simplify-singular` branch off the tier-0 tip)
+
+- Delete `singular_double_margin` / `singular_triple_margin` (mod.rs ~378/404)
+  and their knobs: SE_DOUBLE_{BASE,PV,NON_TTCAP,TMH_NUM,DEEP},
+  SE_TRIPLE_{BASE,PV,NON_TTCAP,TTPV,DEEP} (+ constified SE_DOUBLE_TMH_DEN).
+- One new knob `SE_EXT_MARGIN: Value = −160` (the dominant NonPV/non-ttcap
+  effective bar today: SE_DOUBLE_BASE −3 − SE_DOUBLE_NON_TTCAP 157; the census
+  says that bar passes 93 % of singular verdicts).
+  `extension = SE_EXT_BASE() + Depth::from(value < singular_beta − SE_EXT_MARGIN())`
+  — ext ∈ {1, 2}; `Gate::SeTriple` dies; `corr_adj` (SE_CORR_DIV, sole
+  consumer) dies with the margins.
+- 1.9 rides along: after the collapse `histories.tt_move`'s only read is gone
+  → delete the scalar + TMH_HIT/TMH_MISS write (mod.rs ~4418) +
+  MULTICUT_TMH_BASE/DEPTH write (~3775) + the Histories field. Net −14
+  tunables, +1.
+- Gates: endgame-weighted book alongside; `mate_in_3` tripwire (>2σ drop at
+  fixed nodes aborts, `tools/tactics.sh`).
+
+### Basket-B patch spec (apply to a `simplify-basket-b` branch)
+
+- 1.5 eval-diff nudge: the N8 block (mod.rs ~2840–2866) + EVALDIFF_* ×5.
+- 1.6 conthist pruning: `continuation_history_prunes` + call site (~3625) +
+  QHIST_PRUNE_MULT. The 3-plane `cont_history` sum STAYS (feeds
+  history-buys-lmr-depth).
+- 1.7 TT-cutoff hardening trio: `tt_verify_child` + call (~2758), the
+  wrong-direction penalize (~2804), the agree-depth gate term (~2707) +
+  TTCUT_{AGREE,VERIFY,PENALIZE}_DEPTH. KEEP TTCUT_BONUS_* / TTCUT_PARENT_*
+  (standard cutoff bonus/parent malus — not in the basket).
+- 1.8 NMP verification: the verification block (~3145–3160), NMP_VERIFY_DEPTH,
+  `nmp_min_ply` field/reads/resets, NMP_VERIFY_NUM (+ constified DEN).
+- On H0: bisect {1.5, 1.6} vs {1.7, 1.8}; if the second half fails, restore
+  1.8 first — zugzwang is the known catastrophic mode and NO ACCEPTABLE
+  BLUNDERS outranks knob count.
 
 ## 3. KEEP list (not touched, per plan §5)
 
@@ -96,6 +130,17 @@ futility + both SEE prunes, IIR, hindsight, fail-high softening, the staged
 movepick, qsearch discipline, the narrow stalemate scan, DRAW_CONTEMPT,
 `value_draw` dither. The July per-gate verdicts (razor-off, NMP-168) are
 STALE post-s600 and were not resurrected.
+
+## 3b. Tunable count ledger
+
+| point | count |
+|---|---|
+| plan's main-era census | 309 |
+| this branch's base (main + 70 + 71: +4 knobs) | 313 |
+| after tier 0 (−15 deleted) | 298 |
+| after 0b (−6 blend fold, −67 constified) | **225** |
+| after basket A (−3; games-gated, in flight) | 222 |
+| stage 3 (−14 +1) + basket B (−10ish) if they pass | **~199** |
 
 ## 4. Incidents and box notes
 
@@ -109,6 +154,13 @@ STALE post-s600 and were not resurrected.
 - The gate-census race (first base-gate run failed at FOLLOW_PV_MODE): I
   edited src while check.sh was building. Rule applied since: no gate runs
   concurrent with edits.
+- **The build freeze and the 27-hour run.** The coordinator's post-OOM rule
+  ("no cargo/rustc while `d49train` is active") was set during the
+  minutes-scale probe; at 16:52 the probe's completion triggered a 488-sb
+  (~27 h) continuation run, closing the build window for the session. Basket
+  A's cargo-test run overlapped that restart by minutes (no OOM; noted for
+  honesty). Everything build-shaped from then on is queued inside the
+  `simp-basket-a` unit behind a trainer-inactive poll.
 - `engines/canonical/net.cenn` dangles in worktrees; `data/` is symlinked to
   the main checkout's and every command uses the absolute net path.
 
