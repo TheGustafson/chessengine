@@ -385,6 +385,39 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   `QS_LATE_MOVE_LIMIT = 2` skips every non-checking non-recapture capture after
   the second, so demoting a capture far enough **deletes** it. Shipped at 56/16.
   Never pick an ordering constant off the ordering metric alone.
+- **★★ AND NODES ARE A PROXY TOO — THE SAME ARM, BOTH SIGNS (perf study 71,
+  2026-08-01).** The quiet SEE ordering penalty exists in two forms that differ
+  by ONE `.max(GOOD_QUIET_THRESHOLD() + 1)`. Unclamped it lets the demotion push
+  the quiet into the BAD pile, where late-move pruning can drop it: **−6.34 %
+  nodes, −3.13 % TOTAL instructions, and −5.35 ± 9.26 Elo over 1,948 games.**
+  Clamped it can only reorder: **−2.05 % nodes, +1.86 % total instructions, and
+  +10.44 ± 9.73 Elo over 1,764 games (LOS 98.2 %).** The version that wins every
+  cheap instrument is the version that loses. Mechanism: the move loop ALREADY
+  prunes losing quiets by SEE at `-QSEE_MULT · lmr_depth²` (SF parity), so the
+  unclamped demotion is a second, harsher, DEPTH-BLIND copy of an existing rule
+  — and SEE mis-prices pins, x-rays and sacrifices. **An ordering change that
+  can move a move across `GOOD_QUIET_THRESHOLD` is a pruning change; clamp it,
+  or test both.**
+- **★ THE TT-LESS DEFICIT IS 1.55× OVER-PRICED AS AN ORDERING TARGET (perf
+  study 71).** Study 70's 14.9 pp gap between `fhf(has ttMove)` = 0.9134 and
+  `fhf(no ttMove)` = 0.7632 assumes the two populations are comparable. Nulled
+  with `hidett=1` — hide the TT move from the MOVE PICKER only, every pruning /
+  reduction / extension gate still reading `tt_data.mv` — the same nodes cut
+  first **0.8175** of the time. So **9.6 pp is the TT move's ordering value and
+  5.4 pp is population**: nodes that own a TT move are ones the search has
+  already visited, and they are intrinsically easier. Only the 5.4 pp is
+  reachable by a better static orderer.
+- **THE FAIL-LOW MOVE IS NOT WORTH STORING, AND IIR ON UPPER ENTRIES LOSES 24
+  ELO (perf study 71).** Two doors closed with numbers. (a) 57.4 % of TT-less
+  NonPV entries HAVE an entry and no move, and half of those were written by a
+  main-search fail low — but storing that node's argmax move reads **−0.06 pp
+  of `fhf` and +2.3 % nodes** against its own pruning control, because at an
+  all-node the argmax is taken over LMR-reduced upper bounds of exactly the
+  moves the static ordering already ranked first. (b) The control itself —
+  making IIR, RFP's gate and the two LMR no-ttMove terms read NULL on an
+  UPPER-bound entry — is **−27.7 % nodes from IIR alone** and **−24.17 ± 15.11
+  Elo over 792 games**. SF's source says `(*Scaler) Making IIR more aggressive
+  scales poorly`; that is now measured on ARCHON.
 - **NEVER `pkill -f <pattern>`** (user instruction 2026-07-27, after it
   happened twice in one session). `pkill -f` matches every process's FULL
   command line — including the shell running the very command that typed the
