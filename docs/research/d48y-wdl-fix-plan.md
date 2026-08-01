@@ -16832,3 +16832,52 @@ was the series' ordinary spread.
 
 **Cycle 3 at sb1613** (13 of 30), 196.3k pos/s, no mid-cycle exports —
 `export_every` holding. Memory 7979 MB.
+
+---
+
+## 2026-08-01 12:05 — SF-NET TEACHER: the pipeline works, and the frame is MEASURED
+
+**Owner's design decision: blend, 60 % existing labels / 40 % SF-net teacher.**
+Rationale is forgetting — the labels carry search depth the static net does not,
+so a pure-teacher target would discard it.
+
+**The teacher pipeline is verified working.** Two dead ends cleared first:
+- `nnue-eval` **cannot** take a raw SF `.nnue` (`CENN bad magic`) — it wants a
+  CENN container.
+- The `sf_swap` **source is not on the current branch** (added in `9b9d5aa1`,
+  absent from `repr-gap-study`); only the binary survives. Read the interface out
+  of the commit rather than guessing.
+- **My own shell bug**: `SF_NET=… cmd "$SF_NET"` expands `$SF_NET` BEFORE the
+  assignment applies, so it passed an empty path. The variable must be set in a
+  separate statement.
+
+**Correct invocation: `archon-sfswapbin sf-eval <sf-net>`**, FENs on stdin —
+**50 evals for 50 positions**, confirmed.
+
+**MEASURED FRAME, teacher vs our canonical, same 50 positions:**
+
+| | stdev | mean |
+|---|---:|---:|
+| SF-net teacher (`sf-eval`) | **779.2** | −66.7 |
+| our canonical net | 610.3 | −39.1 |
+| **zero-intercept slope ours/teacher** | **0.7604** | |
+| sign agreement | **96.0 %** | |
+
+**So the teacher outputs ~1.31× our canonical's scale**, and the 96 % sign
+agreement says the stm/White convention is being handled correctly — a
+convention error would have shown up as ~50 %.
+
+**This is the number to calibrate the blend with, and it is MEASURED, not
+derived.** My earlier derivation from `SFBINPACK_SCORE_DIV` predicted the
+teacher and the stored labels would sit within ~2 % of each other; that
+prediction is about teacher-vs-LABELS, which is still untested — this is
+teacher-vs-OUR-NET. **Both must be checked before training**, and only the
+teacher-vs-labels one governs the 60/40 mix.
+
+**Next concrete step, unblocked and ~1 h:** run `sf-eval` over a slice of
+already-labelled positions, regress teacher output against the stored label with
+`tools/nnue/paired_label_calibration.py`, and confirm the slope lands near the
+derived ~1.02. If it does not, the blend would train toward a corrupted target
+and that must be found in the regression, not 12 superbatches later.
+
+**Cycle 3 at sb1620/1630**; GPU frees shortly, anchor A/B fires automatically.
