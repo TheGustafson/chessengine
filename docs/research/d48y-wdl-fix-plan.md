@@ -15131,3 +15131,56 @@ alongside it. Max 1500 games (+/-10 Elo), SPRT stops earlier if decisive.
 **Bench nps is +5.6 % (4.52M -> 4.77M) and that is NOT the claim** — it is
 suggestive at best, since the two binaries search different trees and nps mixes
 node composition with per-node speed. Games decide.
+
+---
+
+## 2026-08-01 05:32 — THE TUNABLE REFRESH LOSES 29 ELO. REVERTED (`d5f89245`).
+
+**D49:** sb1450, heldout ema 0.010447. All units green.
+
+**`sprt68` verdict — both sides PGO, 25k fixed nodes, UHO book, 1500 games:**
+
+| | |
+|---|---:|
+| **Elo** | **-29.49 +/- 14.88** |
+| nElo | -35.03 +/- 17.58 |
+| W / L / D | 523 / 650 / 327 (45.77 %) |
+| LLR | -2.30 of (-2.94, 2.94) |
+
+**Decisively negative at 2 sigma.**
+
+**The arm ISOLATES the tunables.** At FIXED nodes a speed fix earns nothing, so
+study 67's `qtrace` change — pure dead-work removal, node-identical, all three
+gate pins unmoved — contributes ~0. The 154 values are the sole functional
+difference.
+
+**Likely mechanism, and it is named in the commit range itself: the tip commit is
+"VVLTC parameters tweak" — Very Very Long Time Control.** Stockfish tunes at
+several time controls. We adopted a VVLTC-tuned set and tested at 25k fixed
+nodes, which is very short. **The values may be neutral or positive at long TC;
+they are not at ours.** That is a testable follow-up, not a conclusion.
+
+**THIS IS THE THIRD TIME TONIGHT A FAST INSTRUMENT POINTED THE WRONG WAY.**
+- `Bench:` -17.2 % looked like a big tree win; it is depth-6 PSQT and worth
+  **+0.21 %** at depth-13 NNUE, and **-29 Elo** in games.
+- Bench nps read **+5.6 %** for the candidate. Also not strength.
+- Earlier: a contaminated depth regex "confirmed" the frame story at 0.21 ply;
+  re-derived it was 0.005.
+
+Each time the arbiter was games and each time the cheap number disagreed. **The
+-17.2 % headline is now retired as a strength signal it was never entitled to
+be.**
+
+**REVERTED as `d5f89245`.** Kept: studies 66 and 67 IN FULL, including the
+`qtrace` fix, which is a real -2.33 % of search time that fixed-node testing
+structurally cannot reward but a real clock will. Pins return to
+`Bench: 587683` / d13 `1739588`; the eval hash never moved because the net never
+changed. `gaterev` verifying.
+
+**Process note:** the revert conflicted only on THIS handoff file (later entries
+touched it); every source file reverted cleanly and CLAUDE.md kept its separately
+committed hot-symbol list and closed-routes section. Resolved by taking HEAD's
+doc, so the record of the change survives the removal of the change.
+
+**Owner's call left open:** if the VVLTC hypothesis is worth testing, the restore
+is one `git revert d5f89245` plus a long-TC arm. The values are not lost.
