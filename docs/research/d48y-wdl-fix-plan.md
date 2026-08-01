@@ -16496,3 +16496,38 @@ excursion buys a better basin or merely costs 30 superbatches.
 
 [[loss-is-not-elo]] means a heldout recovery is not a success and a heldout
 failure is not a verdict. Both get reported; the screen arbitrates.
+
+---
+
+## 2026-08-01 09:47 — cycle 1 anneal is recovering the heldout excursion
+
+**Cycle 1 at sb1561 of 1570** (21 of 30), 185.0k pos/s. All units green,
+memory 5634 MB.
+
+**The jump→anneal shape is now visible in the heldout ema:**
+
+| point | ema |
+|---|---:|
+| pre-jump band sb1510–1530 | **0.010432 – 0.010440** |
+| sb1550, just after the 5× jump | **0.010468** (worse, as expected) |
+| sb1560, mid-anneal | **0.010447** (recovering) |
+
+The excursion peaked at +0.000028 over the pre-jump band and has given back
+three-quarters of it with **9 superbatches of anneal still to run**. LR is now
+heading into the last third of the ramp toward 0.
+
+**What would make this interesting vs merely break-even:** ema finishing at
+sb1570 **BELOW 0.010432** — the best the base run reached. Finishing inside the
+band means the excursion cost 30 superbatches and bought nothing; finishing above
+means it cost strength.
+
+**And the caveat that decides how much weight to put on it:** this is heldout,
+not Elo. The screen of cycle 1's sb1570 checkpoint against the **+3.47 ± 11.22
+anchor** is what arbitrates. `d49xml` will pick that export up automatically —
+verified it is running and screening, so no manual step is needed at the
+handover.
+
+**No new study commissioned:** the box is carrying the trainer plus a
+near-continuous matcher, and the per-node microarch surface is closed (65–69).
+The next real lever — a trained small-net eval tier, break-even 28.2 % coverage
+from study 65 — needs the GPU, which the LR cycles now hold through ~sb1630.
