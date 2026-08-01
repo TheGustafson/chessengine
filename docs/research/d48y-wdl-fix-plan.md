@@ -15849,3 +15849,47 @@ counts** wherever the question allows, because they are discrete, exact and
 immune to a busy box — and this box carries a GPU trainer plus a continuous match
 at all times. That is precisely why study 70 was pointed at nodes-per-move rather
 than another per-node microarch arm.
+
+---
+
+## 2026-08-01 07:55 — UNDERTRAINING: the owner supplied the fact that dissolves my confound
+
+**Owner: "D49 was behind d48 at 520."** That is the missing control, and it
+answers the objection I had just raised.
+
+I had said the +8.41 ± 3.89 could not be attributed to training LENGTH because
+D49 and D48X differ in recipe too. **But if D49 is BEHIND D48X at equal length
+and AHEAD at sb1500, the recipe is not what is winning — the recipe is WORSE at
+equal length.** The gain must then come from length. Confound dissolved by a
+control, not by argument.
+
+**Our own series confirms it:**
+
+| D49 checkpoint | Elo vs canonical |
+|---|---:|
+| sb400 | **−21.24 ± 5.67** |
+| sb700 | −4.14 ± 5.56 |
+| sb1060 | −9.50 ± 11.27 |
+| sb1270 | −2.08 ± 11.32 |
+| sb1300 | +3.24 ± 10.65 |
+| **sb1340–1480 pooled (15000 games)** | **+8.41 ± 3.89** |
+
+**~30 Elo climbed from sb400 to sb1480 with the recipe held FIXED.** That is the
+undertraining signal, and it is a far stronger claim than "we are ahead of
+canonical."
+
+**It also reframes the flat sb1340–1480 trend I reported at 07:18.** Flat at the
+END of a decayed-LR schedule is not evidence against undertraining — it is
+evidence that THIS run has now spent its budget. The gain lives in sb400→1300,
+where the LR was still meaningful.
+
+**LAUNCHED `d49len` — the clean isolation.** D49 **sb1500 vs sb500**, same
+recipe, same data, same everything, **only length differs**; sb500 is within 20
+superbatches of canonical's own sb520, so it doubles as a like-for-like
+comparison against the incumbent's training budget. Both packed at scale 1068,
+stdev **603.0** and **596.7** against canonical's 610 — frame-fair, so neither
+side is handicapped. 1500 games @ 25k fixed nodes, CONC=2 so it coexists with the
+matcher.
+
+**This measures directly what the D48X-vs-D49 comparison can only infer**, and it
+is the number that should govern how long the NEXT run trains.
