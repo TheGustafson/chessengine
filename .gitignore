@@ -130,6 +130,7 @@ bin60/
 docs/research/perf-artifacts-60/*.lock
 # perf study 61 — labelled arm binaries and the panel lock
 bin61/
+bin65/
 docs/research/perf-artifacts-61/*.lock
 docs/research/perf-artifacts-62/*.lock
 # perf study 62 scratch (binaries, panel logs, raw census runs)

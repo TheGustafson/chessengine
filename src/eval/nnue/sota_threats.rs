@@ -1162,6 +1162,7 @@ impl<'a> ThreatContext<'a> {
             THR_WEIGHTS_RS.call_once(|| {
                 super::foldcount::rowstats("thr_weights", weights, super::sota_head::L1);
                 super::foldcount::rowwidth_init(1, weights, super::sota_head::L1);
+                super::foldcount::lanestats("thr_weights", weights, super::sota_head::L1);
             });
         }
         #[allow(unused_mut)]

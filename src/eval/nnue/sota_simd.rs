@@ -643,6 +643,10 @@ pub(crate) fn apply_halfka_deltas_into(
             super::foldcount::note_row_fold(0, subs);
             super::foldcount::note_row_reuse(0, adds);
             super::foldcount::note_row_reuse(0, subs);
+            // Perf study 65 — the same census on the HalfKA side, so its
+            // 97.3 %-need-8-bits result is confirmed per FOLD and not only per
+            // row (study 51 §4.2 measured only the row distribution).
+            super::foldcount::note_fold_width(0, adds, subs);
         }
     }
     pin_rows_hka!(adds, subs);
@@ -715,6 +719,9 @@ pub(crate) fn apply_threat_deltas_into(
             super::foldcount::note_row_fold(1, subs);
             super::foldcount::note_row_reuse(1, adds);
             super::foldcount::note_row_reuse(1, subs);
+            // Perf study 65 — per-FOLD width, which is what decides whether a
+            // narrow-row layout dispatches per row or per fold.
+            super::foldcount::note_fold_width(1, adds, subs);
         }
     }
     // Perf study 39's placement arm: the same copies, issued from the fold
