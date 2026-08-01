@@ -16623,3 +16623,35 @@ walk it back when ten screens pooled to +8.41 ± 3.89.
 in ~45 min.
 
 **Memory 5892 MB, all units green, no OOM since the owner's 08:15 npm build.**
+
+---
+
+## 2026-08-01 10:47 — armed the DECISIVE A/B so the experiment ends with one bar, not two
+
+**Cycle 2 at sb1587 of 1600**, 181.5k pos/s. Matcher screening the mid-cycle
+sb1580. Memory 6103 MB, disk 141 GB, all units green.
+
+**The problem with how the experiment currently reads out.** Every per-export
+screen measures a checkpoint against **canonical**, so comparing a cycle to the
+anchor **adds two independent bars**: cycle 1's +9.27 ± 11.04 against the anchor's
++3.47 ± 11.22 gives **+5.80 ± 15.7**, which cannot clear zero no matter how real
+the effect is. Three cycles measured that way would still be arguing with ±15.7.
+
+**`d49ab` armed:** when all three cycles finish it packs the **cycle-3 sb1630**
+checkpoint at scale 1068 and screens it **DIRECTLY against the sb1540 anchor** —
+one match, **one bar (±10 at 1500 games)**, no addition. The anchor pack already
+exists and is verified (`d49-sb1540-1068.cenn`, 138,283,648 B).
+
+**This is the same design that produced the undertraining number cleanly**
+(sb1500 vs sb500 = **+30.31 ± 11.0**): put the two things being compared on
+opposite sides of one match rather than inferring the difference from two
+separate comparisons against a third party.
+
+Sequenced so it cannot cause harm: it waits for `d49lrc` to finish, then for
+`d49xml` to be idle, then for ≥3000 MB, and aborts if the cycle-3 checkpoint is
+missing rather than screening something stale.
+
+**What it will answer:** whether **three jump→anneal cycles beat the anchor they
+started from**. If the per-cycle ~+6 is real and compounds, this reads ~+17 ± 10
+and is decisive; if the cycles are noise, it reads ~0 ± 10 and the idea is
+closed at a cost of 90 superbatches.
