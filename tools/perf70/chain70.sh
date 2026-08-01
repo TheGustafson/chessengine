@@ -31,7 +31,20 @@ CONC=${CONCURRENCY:-2}
 NODES=${NODES:-25000}
 BOOK=${BOOK:-engines/books/UHO_Lichess_4852_v1.epd}
 
-for i in $(seq 1 "$SEGMENTS"); do
+# Never reuse a segment index. `tools/sprt.sh` pipes fastchess through `tee`,
+# which TRUNCATES -- so re-running the chain with the same tag silently
+# destroys the summary of every segment it re-enters. That is exactly what
+# happened on 2026-08-01: a relaunch clobbered a completed 250-game segment's
+# `sprt.out` (the PGN survived, because fastchess APPENDS to that). Start after
+# the highest index already on disk instead.
+first=1
+while [ -d "engines/runs/$(printf '%s-%03d' "$TAG" "$first")" ]; do
+    first=$((first + 1))
+done
+[ "$first" -gt 1 ] && printf 'resuming: %s-001..%03d already exist, starting at %03d\n' \
+    "$TAG" "$((first - 1))" "$first"
+
+for i in $(seq "$first" "$((first + SEGMENTS - 1))"); do
     # Wait for headroom. `available`, not `free`: reclaimable page cache is
     # not pressure, and this box always has a lot of it.
     for _ in $(seq 1 120); do
@@ -47,7 +60,12 @@ for i in $(seq 1 "$SEGMENTS"); do
         OUT="engines/runs/$seg" \
         ./tools/oomlast.sh bash tools/sprt.sh "$CAND" "$BASE" > /dev/null 2>&1
     if grep -q "Ptnml" "engines/runs/$seg/sprt.out" 2> /dev/null; then
-        printf '  ok: %s\n' "$(grep -m1 'Games:' "engines/runs/$seg/sprt.out")"
+        # The LAST `Games:` line, not the first. fastchess prints one per
+        # `ratinginterval`, so `grep -m1` reports the first 20 games and makes
+        # a completed 250-game segment look like a truncated one -- which is
+        # exactly the wrong way round for a script whose whole job is telling
+        # you whether a segment survived.
+        printf '  ok: %s\n' "$(grep 'Games:' "engines/runs/$seg/sprt.out" | tail -1)"
     else
         printf '  KILLED before its first report — segment lost\n'
     fi
