@@ -180,6 +180,111 @@ pub fn note_row_reuse(ch: usize, idx: &[RowOffset]) {
     }
 }
 
+/// Perf study 66 — the **intra-fold** census: redundancy and address spread.
+///
+/// Every census before this one is per-ROW or per-FOLD-LENGTH. Neither can
+/// answer the two questions a layout/ordering arm has to ask first:
+///
+/// 1. **Is any row in a fold redundant?** A feature that appears in BOTH the
+///    add and the sub list contributes `+w − w = 0` to every lane, so both
+///    rows could be dropped and the fold would be bit-identical (wrapping i16
+///    addition is commutative and associative, so the pair may be removed
+///    wherever it sits in the order). A feature that appears twice in the same
+///    list could be folded once with a `×2`. If either is common, it is a row
+///    cut with no layout change at all.
+/// 2. **How scattered are a fold's rows?** The kernel visits every row of the
+///    fold inside every tile, so within one tile the address stream is
+///    `nrows` short runs. If those runs are near each other the hardware
+///    streamer sees one region; if they are megabytes apart it sees `nrows`
+///    independent streams. `FOLDSPAN` buckets `log2(max_addr − min_addr)` over
+///    the fold's rows, and `FOLDADJ` counts row PAIRS that land within one
+///    4 KB page of each other.
+///
+/// Indexed by channel (`hka`, `thr`). Diagnostic build only; `O(n²)` in the
+/// fold's row count, which is ≤ 27 and modally 2.
+pub static FOLD_ROWS: [AtomicU64; ROWCH] = [const { AtomicU64::new(0) }; ROWCH];
+/// Rows removable because the same feature is in both the add and sub list.
+/// Counted as ROWS (i.e. 2 per cancelling pair), so it is directly comparable
+/// against `FOLD_ROWS`.
+pub static FOLD_CANCEL: [AtomicU64; ROWCH] = [const { AtomicU64::new(0) }; ROWCH];
+/// Rows removable because the same feature repeats inside one list.
+pub static FOLD_REPEAT: [AtomicU64; ROWCH] = [const { AtomicU64::new(0) }; ROWCH];
+/// `log2` of the byte span from the fold's lowest to its highest row base.
+pub static FOLD_SPAN: [[AtomicU64; 32]; ROWCH] =
+    [const { [const { AtomicU64::new(0) }; 32] }; ROWCH];
+/// Ordered row pairs (i, j), i < j in VISIT order, whose bases are within
+/// 4096 B of each other — the pairs a single hardware stream could cover.
+pub static FOLD_NEAR: [AtomicU64; ROWCH] = [const { AtomicU64::new(0) }; ROWCH];
+/// Row pairs, total — the denominator for [`FOLD_NEAR`].
+pub static FOLD_PAIRS: [AtomicU64; ROWCH] = [const { AtomicU64::new(0) }; ROWCH];
+/// Folds whose rows are already visited in ascending address order.
+pub static FOLD_SORTED: [AtomicU64; ROWCH] = [const { AtomicU64::new(0) }; ROWCH];
+/// Folds counted by [`note_fold_redundancy`].
+pub static FOLD_CALLS: [AtomicU64; ROWCH] = [const { AtomicU64::new(0) }; ROWCH];
+
+/// Hook: charge one fold's `(adds, subs)` to the study-66 intra-fold census.
+pub fn note_fold_redundancy(ch: usize, adds: &[RowOffset], subs: &[RowOffset]) {
+    FOLD_CALLS[ch].fetch_add(1, Relaxed);
+    let n = adds.len() + subs.len();
+    FOLD_ROWS[ch].fetch_add(n as u64, Relaxed);
+    if n == 0 {
+        return;
+    }
+    let mut cancel = 0u64;
+    for a in adds {
+        for s in subs {
+            if a.0 == s.0 {
+                cancel += 2;
+            }
+        }
+    }
+    FOLD_CANCEL[ch].fetch_add(cancel, Relaxed);
+    let mut repeat = 0u64;
+    for list in [adds, subs] {
+        for (i, x) in list.iter().enumerate() {
+            if list[..i].iter().any(|y| y.0 == x.0) {
+                repeat += 1;
+            }
+        }
+    }
+    FOLD_REPEAT[ch].fetch_add(repeat, Relaxed);
+
+    // Visit order is exactly adds-then-subs, which is what the kernel does.
+    let mut lo = usize::MAX;
+    let mut hi = 0usize;
+    let mut prev = 0usize;
+    let mut sorted = true;
+    let mut near = 0u64;
+    let mut pairs = 0u64;
+    let visit: Vec<usize> = adds.iter().chain(subs).map(|r| r.0).collect();
+    for (i, &b) in visit.iter().enumerate() {
+        lo = lo.min(b);
+        hi = hi.max(b);
+        if i > 0 && b < prev {
+            sorted = false;
+        }
+        prev = b;
+        for &c in &visit[..i] {
+            pairs += 1;
+            if b.abs_diff(c) < 4096 {
+                near += 1;
+            }
+        }
+    }
+    FOLD_NEAR[ch].fetch_add(near, Relaxed);
+    FOLD_PAIRS[ch].fetch_add(pairs, Relaxed);
+    if sorted {
+        FOLD_SORTED[ch].fetch_add(1, Relaxed);
+    }
+    let span = hi - lo;
+    let b = if span == 0 {
+        0
+    } else {
+        (span.ilog2() as usize + 1).min(31)
+    };
+    FOLD_SPAN[ch][b].fetch_add(1, Relaxed);
+}
+
 /// Build channel `ch`'s per-row peak-magnitude table and size its counters.
 pub fn rowwidth_init(ch: usize, weights: &[i8], acc: usize) {
     let peaks: Vec<u8> = weights
@@ -1271,6 +1376,30 @@ pub fn dump(nodes: u64) {
             }
             emit!("FOLDWIDTHSHAPE {} n={n} bymax {}", ROWCH_NAMES[ch], j(&row));
         }
+    }
+    // Perf study 66 — the intra-fold redundancy and address-spread census.
+    for ch in 0..ROWCH {
+        let calls = FOLD_CALLS[ch].load(Relaxed);
+        if calls == 0 {
+            continue;
+        }
+        let span: Vec<String> = FOLD_SPAN[ch]
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.load(Relaxed) != 0)
+            .map(|(b, c)| format!("{b}:{}", c.load(Relaxed)))
+            .collect();
+        emit!(
+            "FOLDREDUND {} calls={calls} rows={} cancel={} repeat={} near={} pairs={} sorted={} log2span {}",
+            ROWCH_NAMES[ch],
+            FOLD_ROWS[ch].load(Relaxed),
+            FOLD_CANCEL[ch].load(Relaxed),
+            FOLD_REPEAT[ch].load(Relaxed),
+            FOLD_NEAR[ch].load(Relaxed),
+            FOLD_PAIRS[ch].load(Relaxed),
+            FOLD_SORTED[ch].load(Relaxed),
+            span.join(" ")
+        );
     }
     // Perf study 65 — the per-LANE magnitude census.
     if let Ok(g) = LANESTATS.lock() {
