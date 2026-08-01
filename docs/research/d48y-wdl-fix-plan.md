@@ -16375,3 +16375,20 @@ which is very short.
 **Also this tick:** the tb bridge for the LR cycles is confirmed structurally
 sound — `tb_shim` uses `COMP.search()`, which matches the journald-prefixed lines
 (`match()` would not have). Cycle 1 at sb1542.
+
+**TUNABLES FINAL: −1.39 ± 10.43 over 1500 games**, W454 / L460 / D586 (49.80 %),
+LLR −0.30 well inside (−2.94, 2.94). **Definitively neutral at 25k fixed nodes.**
+The PSQT artifact said −29.49; the real answer is zero.
+
+**Deferred verification CLOSED:** the tb events file grew **40 → 245 bytes**, so
+the journald→`lrcycles.log`→shim chain works end to end. Confirmed on a later
+tick, as it should be — three detached jobs this session reported healthy while
+dead.
+
+**`d49xml` auto-restored** by the fixed rearm (both priority jobs now inactive).
+That is useful rather than merely tidy: it will screen the **LR-cycle
+checkpoints** against canonical as they export, giving the jump→anneal experiment
+an Elo readout at sb1550/1560/1570 without any extra plumbing.
+
+**Live:** cycle 1 at sb1543 → sb1570; matcher screening; memory 6512 MB; no OOM
+since the owner's external npm build at 08:15.
