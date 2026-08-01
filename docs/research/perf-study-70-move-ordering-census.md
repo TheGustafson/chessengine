@@ -170,10 +170,46 @@ baseline run, null floor ±0.15 pp.
 
 ### 3.1 The two landed wins
 
-| arm | fhf NonPV | fhf in-check | fhf qsearch | mechanism |
+Measured with the landed code A/B'd against its own predecessor **inside one
+binary** (`BASE="qsdef=0,evmvv=1"`, which reproduces the pre-change node counts
+to the last digit — 1,739,588 on wl50 @ d13 and 9,177,610 on uho1000 @ d10):
+
+| arm | fhf NonPV | fhf in-check | fhf qsearch | nodes |
 |---|---|---|---|---|
-| `defcapqs` — defended-destination penalty on captures, qsearch only | ~0 | ~0 | **see §3.3** | qsearch capture ordering was blind to recaptures |
-| `evcap` — capture history on evasion captures | +0.03 | **+0.76** | ~0 | evasion captures were scored by raw victim value alone |
+| null floor | ±0.06 | ±0.05 | ±0.15 | ±0.6 % |
+| capture history on evasion captures | +0.03 | **+0.76** | −0.03 | −1.23 % |
+| quiescence recapture discount (56/16) | +0.02 | −0.11 | **+3.63** | +0.60 % |
+| **both — shipped** | −0.09 | **+0.64** | **+3.51** | **−1.31 %** |
+
+Each change moves exactly the statistic it was built to move, five to twenty
+times the null, and leaves the others alone.
+
+**Where the constant came from, and the study's own Goodhart warning.** The
+quiescence discount is `QS_CAPTURE_DEFENDED_NUM/16 · attacker_value`, and the
+*principled* value is 112/16 = 7: that prices the full recapture in
+`CAPTURE_MVV_FACTOR`'s own frame, so a defended capture is ordered by
+`7·(victim − attacker)`. The fhf curve agrees all the way there and never turns
+over —
+
+| `defcapqs` | 4 | 8 | 16 | 32 | 56 | 112 |
+|---|---|---|---|---|---|---|
+| Δ fhf qsearch | +0.76 | +0.97 | +1.66 | +2.38 | +3.63 | **+4.63** |
+| Δ nodes (paired geomean) | — | — | — | — | **−0.50 %** | **+1.19 %** |
+| paired better/worse | — | — | — | — | **519/481** | **493/507** |
+
+— but the search gets **worse** past ~56. `QS_LATE_MOVE_LIMIT = 2` skips every
+non-checking non-recapture capture after the second, so a full-recapture
+discount does not demote a defended capture, it **deletes** it — including the
+ones whose defender is pinned or overloaded. The metric the term was built to
+maximise keeps improving while the thing it is a proxy for degrades. 56 is
+where nodes are best; the reasoning is in the constant's doc comment so the
+next person to "fix" it to the principled value has to read the counter-example
+first.
+
+**Evasions deliberately do not get the discount**, and that too is measured:
+applying it there cuts the in-check gain from **+0.76 pp to +0.41 pp**. An
+evasion list is short and forced — "will I be recaptured" competes with "or I
+could just move the king", and the capture is usually right anyway.
 
 ### 3.2 The retractions — two arms that were pruning, not ordering
 
@@ -209,7 +245,36 @@ left alone here.
 
 ---
 
-## 4. Reproducing
+## 4. What the study did NOT close, with numbers
+
+The census points at one block far larger than anything landed here, and it is
+left open on purpose rather than half-attacked:
+
+**The TT-less deficit itself.** 46 % of NonPV cutoffs arrive with no TT move and
+their first-move rate is 14.9 pp worse. Two hypotheses were tested and both are
+**dead**, which is why the block is still open:
+
+- *"We clobber TT moves when storing a moveless entry."* False —
+  `TtEntry::save` rule 1 already preserves the old move on a same-key moveless
+  write.
+- *"Our capture history can outweigh MVV because our score frame is
+  2.07× compressed."* False — `PIECE_VALUES` is 208/781/825/1276/2538, exactly
+  SF's `eca43a97` frame, so `7·victim` spans 1456…17766 against a ±10692
+  capture-history bound, the same ratio SF has.
+
+What remains untried, in the order the data ranks it: raising TT move
+*availability* at depths 1–3 (76 % / 68 % / 51 % TT-less), and improving the
+static quiet ordering specifically at the depth 3–6 band where `fhf` bottoms out
+at 0.827–0.839 while `tt_yes ≈ tt_no`.
+
+**The ARCHON-original offense term (D30) does not pay.** `offensew=0` reads
++0.07 pp of NonPV `fhf` — inside the null — for a per-quiet `attacks()` call on
+every non-pawn quiet. Deleting it is a speed change, not an ordering one, so it
+belongs to a per-node study; it is flagged here, not acted on.
+
+---
+
+## 5. Reproducing
 
 - `tools/perf70/nodes70.sh BIN` — the three node totals (the weak metric; kept
   because it is what a `Bench:` trailer is)
