@@ -14958,3 +14958,84 @@ reads exactly like "the decay is not wired" and would have been an alarming and
 false finding. Same class as the `i16_deltas_into` ghost earlier tonight:
 **a remembered file:line is not evidence; re-locate it before concluding from
 its absence.**
+
+---
+
+## 2026-08-01 05:00 — STUDY 67: the search side is FRONTEND-bound, and a dead string was costing real time
+
+**A landed win, a reframe of the engine's cost model, and two nulls with
+mechanisms.**
+
+### The re-derived profile (step 0 — the reason it was mandatory)
+
+`i16_deltas_into` / `i16_deltas_dual`: **confirmed absent**, as I found by grep.
+Live list on the current PGO binary, three counters:
+
+| symbol | instructions:u | branch-misses | `ic_cache_fill_l2` |
+|---|---:|---:|---:|
+| `search::<NonPv>` (45,565 B) | **30.87 %** | **37.05 %** | **34.06 %** |
+| `i8_deltas_into_inner` | 15.07 % | 7.72 % | 9.90 % |
+| `forward_into` | 12.01 % | 3.68 % | 7.09 % |
+| `init_quiets` | 9.84 % | **15.89 %** | 8.44 % |
+| `at_full` | 6.38 % | 7.42 % | 7.19 % |
+| **search side TOTAL** | **49.4 %** | **64.7 %** | **58.9 %** |
+
+### THE REFRAME: the search side is FRONTEND-bound, not memory- or compute-bound
+
+Per node, startup subtracted: **128.0 L1i line fills** (8.2 KB of CODE fetched
+from L2), **30.6 % I-cache miss rate**, **40.5 % of ops delivered by the DECODER
+rather than the op cache**, 21.09 % of dispatch slots lost to the frontend, and
+**445.7 cycles/node with a completely empty op queue** (11.5 % of the frame).
+Hot code working set **120.3 KB against a 32 KB L1i** — one function is larger
+than the entire L1i.
+
+**This refines, and does not contradict, the standing "ARCHON is MEMORY-bound"
+model** ([[archon-is-memory-bound-not-instruction-bound]]): the EVAL side is
+data-bound (the ~106 MB weight tables), the SEARCH side is CODE-bound. Different
+halves, different walls. **The project had no instrument for the frontend one
+until tonight.**
+
+### The landed win — verified by me, not taken on report
+
+`qtrace` took `mv: &str` and the call site passed `&m.to_string()`. **Rust
+evaluates arguments before the call**, so the SHIPPED build ran the whole
+`Display` chain, heap-allocated a `String` and dropped it — once per qsearch
+move — to feed a function whose body is literally `{}`.
+
+Confirmed on main before the fix: `src/search/mod.rs:324` is
+`fn qtrace(_: usize, _: Value, _: Value, _: Value, _: &str, _: &str) {}` and
+`mod.rs:4750` passes `&m.to_string()`. The fix changes the parameter to
+`mv: Move` (a `Copy` u16 newtype), so nothing is formatted in the shipped build.
+
+14 shuffled rounds: **instructions -1.259 % (14/14)**, `ic_cache_fill_l2`
+-5.087 % (12/14), task-clock -2.168 % (11/14) = **-2.33 % of measured search
+time**, a derived **+4.1 Elo** (derived — it has played no games).
+`malloc`, `<Square as Display>::fmt` and `<char as Display>::fmt` leave the
+profile entirely. The null is a **byte-identical binary** (the PGO pipeline is
+deterministic here), so every arm difference is real codegen.
+
+### Two nulls, and they overturn the obvious icache intuition
+
+- **Cold-path outlining LOSES.** Cut `search::<NonPv>` 45,565 -> 36,033 B
+  (-20.9 %) and raised L1i fills **+3.2 %**. **The bytes removed were never
+  fetched** — a line with zero sampled ops never enters L1i — and outlining two
+  warm callees added a fetch stream.
+- Deduplicating `do_move`/`next_move` monomorphisations confirms it from the
+  other side: the only arm that lowers fills (-1.462 %) but pays +1.517 %
+  instructions and loses wall clock.
+- **Function SIZE is not the instruction-cache cost; the number of distinct lines
+  the frame EXECUTES is.** Both arms cut ~20 % of bytes and moved the fill
+  counter in OPPOSITE directions.
+
+### The reusable pre-registration number
+
+**445.7 cycles / 128.0 fills = at most 3.48 cycles (~5 instructions) per L1i line
+fill.** The losing outlining arm paid 45. **Pre-register that ratio before
+building any icache arm, and never price one in bytes.**
+
+Self-caught and recorded rather than buried: its tools matched symbols by
+substring and `search::<NonPv>` is a substring of `qsearch::<NonPv>` (every
+within-symbol share re-derived, no conclusion changed), and three claims written
+from plausibility are now measured or flagged as non-evidence.
+
+`gate67` verifying. New instruments in `tools/perf67/` (12 scripts).
