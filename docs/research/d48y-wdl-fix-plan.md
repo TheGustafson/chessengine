@@ -15247,3 +15247,62 @@ Checked before deleting that no build was live in any target worktree (the singl
 **Standing note for future sessions: agent worktrees are the dominant disk
 consumer on this box, not training artifacts.** Nine studies = 37 GB. Clean
 `target/` between studies, and never prune the worktree list to do it.
+
+---
+
+## 2026-08-01 06:00 — STUDY 68: a second dead-work win, and the FILL COUNTER FAILS ITS OWN NULL
+
+**Landed win: -0.559 % instructions, -29.9 per node**, reproduced in **three
+independent panels to three decimal places** (15/15, 16/16, 14/14). Same class as
+study 67's `qtrace` — *work that ships and is discarded* — in its **second form**:
+
+1. **`SearchStats` is now zero-sized in the default build.** Eleven `pub`
+   counters on `Worker`, bumped at **fifteen** per-node/per-move sites, whose only
+   reader is a **RUN-TIME** `if std::env::var_os("ARCHON_SEARCH_STATS")`. `self`
+   is a `&mut Worker` live across the recursive call, so every `+=` was a real
+   load/add/store no optimiser may delete. **Their doc comment claimed "plain
+   adds… bench-neutral."** −0.545 %.
+   **Verified by me before accepting:** `mod.rs:891` is now `pub struct
+   SearchStats;` (unit) and `mod.rs:2214` is indeed the runtime `env::var_os`
+   check.
+   *Study 67: the sink was `cfg`'d to `{}` and the ARGUMENT still did the work.
+   Study 68: the sink is a runtime `if` and the STATE still does the work.*
+2. Three process-constant env probes snapshotted per `go` instead of per node
+   (−0.014 %).
+
+**Pre-registered negative — CODE LAYOUT IS CLOSED.** Pre-registration committed
+BEFORE the first panel. LLVM's **machine function splitter** (the production
+version of study 67's outlining arm, driven by PGO block counts) compacted the
+hot region's address span **30.7 %** and cut `search::<NonPv>`'s hot body 24.4 %,
+`iterative_deepening`'s 47.7 % — for **+0.001 % instructions (0/14)**. Nothing
+moved. Not landed; flag stays plumbed.
+
+### ★ THE BIG ONE: `ic_cache_fill_l2` does not survive a byte-identical null
+
+A **byte-identical** binary's paired median read **−0.491 %, +0.431 %, +0.826 %
+and +2.290 %** across four panels in ONE DAY, while a binary whose `.text`
+genuinely differs read **+0.055 %**. **The wander is the box, not the layout.**
+
+**This invalidates evidence I wrote into durable docs two hours ago.** Study 67's
+fill numbers (+3.2 %, −1.5 %) are **inside the noise**, and the **"3.48 cycles per
+L1i fill" pre-registration budget I derived from a single 445.7/128.0 reading is
+not a usable constant.** Study 67's *verdicts* survive — but only because they
+also rest on instruction costs (+0.385 %, +1.517 %, both 0/14), not on the fills.
+
+**Corrected the memory accordingly** (third memory correction tonight, all from
+the same cause: durable guidance written from mid-investigation numbers). It now
+says layout is closed on instructions, the fill counter decides nothing without a
+same-panel byte-identical null, and `instructions:u` — 0.000 % in all five panels
+— is the only decider.
+
+Its own honesty, worth keeping: at **n=7** the landed arm read a **+2.772 % fill
+regression and it was one paragraph from reverting**; at **n=16** it was
+**+0.073 %**. It also caught that the binary it panelled was not the binary it
+merged (a clippy fix moved `.text` 48 B) and re-panelled the landed one.
+
+**Priced next target:** `attacks::TABLES` is a `LazyLock` with **60 references
+inside `search::<NonPv>` alone, 22 of them the `Once` state word**; the safe fix
+is an `&'static AttackTables` field on `Board`. **Branch mispredicts — the search
+side owns 64.7 % — remain entirely unattacked.**
+
+Merged itself at `18d4dcaf`; `gate68b` re-verifying on merged main.
