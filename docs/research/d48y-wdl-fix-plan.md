@@ -18109,3 +18109,52 @@ predicts.
 number. I violated the time-series form of it — I quoted one sample from an
 8-point series and called it a reversion, after having just written that the
 metric could not settle anything. The dip agreed with the conclusion I wanted.
+
+## 2026-08-01 17:35 — OWNER'S PLAN: finish the distilled run, promote it, then DATA CURATION WITH FULL PROVENANCE
+
+**Decided by the owner:**
+1. Run the teacher-distilled continuation to completion (sb1642 -> 2130, alpha 0.4).
+2. **Promote that net to CANONICAL.**
+3. Then all focus moves to **data curation with total provenance** — "100 %
+   confidence in the data we train on".
+
+**Rationale, with the receipt:** SF's net in OUR search at equal nodes is
+**+90.7 Elo** ([[deficit-is-the-weights]]) on a provably identical 83,248-input
+feature space. The deficit is the WEIGHTS, i.e. data + recipe. The teacher blend
+has now harvested **+17.15 +/- 10.70** of that gap without touching the data —
+distillation SIDESTEPS data quality rather than fixing it, because the teacher is
+our labels already denoised.
+
+### Promotion gate — NOT yet satisfied
+**The +17.15 is vs the sb1630 WARM POINT, not vs canonical.** Promotion needs its
+own screen: **sb2130 vs D48X, >=1500 games**, at ship scale.
+And promotion MOVES THE NNUE GATE PINS (eval hash + d13 node total) — `CLAUDE.md`
+and `tools/check.sh` change in the SAME commit. **Check that the CURRENT pin slot
+moved, not the history**: `859a442` wrote its CLAUDE.md edit onto the
+PRECEDING-pin line and silently overwrote study 8's real hash for a day.
+
+### alpha sweep — DROPPED by decision
+alpha=0.7 / 1.0 were proposed and not taken; 27 h of GPU is committed to 0.4.
+**Consequence recorded honestly:** if the response is monotone in alpha we leave
+some of the ~90 unharvested. Recoverable later from any checkpoint. Not a reason
+to interrupt a decided run.
+
+### Provenance — what EXISTS vs what is MISSING
+**Exists (D38/design-18):** content-addressed DAG, append-only nets/data/
+experiments registries, sha256 identity, regen recipe per row, `ledger.py verify`
+for hash drift + referential integrity. Plus D46 / `data-recipe-contract.md` for
+recipe semantics.
+
+**Missing: GRANULARITY.** The ledger proves *this corpus* came from *that
+recipe*. It cannot answer *which positions* came from which source game, labelled
+by which engine build at which node count, surviving which filter decisions.
+**Today's result is exactly that question** — the teacher beat our labels and we
+cannot say WHICH labels were wrong or where they came from.
+
+**The build:** per-shard (ideally per-position) lineage — source ID + label
+provenance riding with each position — so a teacher/label disagreement is
+TRACEABLE. That converts "our data is noisy" from a belief into a query.
+
+### Immediate open measurement
+Where do teacher and labels disagree — by phase, piece count, eval magnitude?
+CPU-only, uses data we already have, and it is the first curation instrument.
