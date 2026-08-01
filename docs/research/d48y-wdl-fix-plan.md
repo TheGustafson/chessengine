@@ -16392,3 +16392,37 @@ an Elo readout at sb1550/1560/1570 without any extra plumbing.
 
 **Live:** cycle 1 at sb1543 → sb1570; matcher screening; memory 6512 MB; no OOM
 since the owner's external npm build at 08:15.
+
+---
+
+## 2026-08-01 09:09 — the LR experiment will be MEASURABLE: the anchor baseline is being taken now
+
+**Checked the thing that would have silently ruined the experiment.** The
+jump→anneal question is "did each cycle improve on sb1540?", which needs a
+**baseline Elo for the anchor itself**. `xml-sb1540.out` existed but had **zero
+`Elo:` lines** — the first attempt was interrupted when I stopped `d49xml` for
+the tunables test.
+
+**It is running again and advancing** (game 727 → 753 in 25 s, verified by
+watching rather than by status). Interim **+10.19 ± 14.0 at n=750** — not a
+reading, but the baseline will exist by the time cycle 1 finishes.
+
+**How the experiment reads out, with no extra plumbing:** `d49xml` screens every
+export against canonical, so we get
+
+  anchor sb1540 vs canonical  ← baseline, in flight
+  cycle 1 sb1570 vs canonical
+  cycle 2 sb1600 vs canonical
+  cycle 3 sb1630 vs canonical
+
+and each cycle's effect is the difference from the anchor. Less powerful than a
+direct cycle-vs-anchor A/B (the bars add), but it costs nothing extra and the box
+is already committed to the LR run.
+
+**Deliberately did NOT resume study 70's chain**, though both priority jobs are
+now done and I said I would. The matcher is about to be near-continuously busy —
+cycle exports land every ~24 min and each screen takes ~25 min — so adding a
+third CPU load recreates exactly the squeeze that hit at 08:02. It waits for a
+genuinely quiet slot; its games are safe on disk.
+
+**Live:** cycle 1 sb1543→1570, anchor screen at n=750, memory 7459 MB.
