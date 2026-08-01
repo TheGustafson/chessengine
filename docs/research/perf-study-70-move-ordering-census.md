@@ -282,6 +282,32 @@ instructions), and the games are already running on it. If a future study finds
 the qsearch threat fill expensive in wall clock, the swap is one line and its
 cost/benefit is already priced here.
 
+### 3.5 Games
+
+`tools/sprt.sh engines/bin/s70-cand engines/bin/s70-base` with
+`NODES=25000 BOOK=UHO_Lichess_4852_v1.epd HASH=16`, both sides PGO, both built
+from the same source except the two changes. (The prompt's suggested baseline
+`engines/bin/archon-s25` is **stale** — it reads 1,799,710 on the wl50 d13
+fingerprint against this tree's 1,739,588, so an SPRT against it would have
+confounded these changes with everything else that has landed since. A fresh
+same-source PGO baseline was built instead.)
+
+**In flight.** At 1,122 games: **+11.5 ± 12.5 Elo**, 52 % score, LLR 0.75
+against `[0, 5]` nElo bounds. Every reading since game 300 has been positive
+and the bar has not yet crossed zero; that is a trend, not a verdict, and the
+verdict belongs in `docs/strength-log.md` when the SPRT stops.
+
+`tools/sprt.sh` had to be fixed first: it passed **no `EvalFile`**, and an
+empty `EvalFile` silently evaluates PSQT — every SPRT run through that script
+before 2026-08-01 measured a PSQT engine unless the caller happened to append
+the option by hand. It now takes `NET=` (defaulting to
+`engines/canonical/net.cenn`) and prints it.
+
+**Gate:** `CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=2 bash tools/check.sh` exits 0.
+Eval hash **`2e1ede95…79c4`, unchanged** — this is search, not eval. Both node
+pins move, as a functional change must: `Bench:` 587683 → **401733**, NNUE d13
+1739588 → **1979892**.
+
 ---
 
 ## 4. What the study did NOT close, with numbers

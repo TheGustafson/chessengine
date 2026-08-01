@@ -85,7 +85,9 @@ build for every candidate), both verified node-identical to the shipped tree.
 | **LANDED: quiescence recapture discount** (`QS_CAPTURE_DEFENDED_NUM = 56`) | qsearch fhf **+3.51 pp** against a ±0.16 pp null. Qsearch has no good/bad SEE split and `QS_LATE_MOVE_LIMIT = 2`, so mis-ordering DELETES a capture rather than delaying it. The same term in the MAIN pipeline is inert (−0.01 pp) and is not paid for |
 | **The ordering metric GOODHARTS** | that discount's fhf curve is still climbing at the principled constant (full recapture, +4.63 pp) where the search is already worse (+1.19% nodes, 493/507 paired vs −0.50% and 519/481 at 56). Shipped at 56 |
 | **LANDED: capture history on evasion captures** | in-check fhf **+0.64 pp** against a ±0.11 pp null. Capture history was consulted for every capture in the engine except the ones played while in check — 27% of NonPV cutoffs. Applying the recapture discount to evasions too CUTS this to +0.41 pp, so evasions deliberately do not get it |
-| Both landed together | −1.31% nodes paired over 1000 positions at d10 (null spread ±1.4%, so directional). SPRT vs the same-source PGO baseline: **in flight** |
+| Both landed together | −1.31% nodes paired over 1000 positions at d10 (null spread ±1.4%, so directional). SPRT vs a same-source PGO baseline, 25k fixed nodes, UHO: **+11.5 ± 12.5 Elo at 1,122 games, LLR 0.75, in flight** — positive at every reading since game 300, but a trend, not a verdict |
+| `engines/bin/archon-s25` is a STALE baseline | it reads **1,799,710** on the wl50 d13 fingerprint against this tree's 1,739,588. Build a same-source PGO baseline for any SPRT |
+| `tools/sprt.sh` was passing NO `EvalFile` | an empty `EvalFile` silently evaluates PSQT, so every SPRT through that script measured a PSQT engine unless the caller appended the option by hand. Fixed: `NET=` defaults to `engines/canonical/net.cenn` and is printed |
 
 ## WHY WE LOSE — the holistic answer (2026-07-28, full 404-game corpus)
 
