@@ -17345,3 +17345,39 @@ the undertraining number cleanly (**+30.31 ± 11.0**) and this null cleanly.
 **Box handed back cleanly and automatically:** `d49abpri` restored the matcher at
 13:26:38 (baseline sb1650), `d49x500` continues to sb2130 under `x500watch`,
 memory 6481 MB.
+
+---
+
+## 2026-08-01 13:33 — PERF STUDY 71 COMMISSIONED: the TT-less deficit
+
+**D49 continuation sb1658**, 183.2k pos/s, self-restarting under `x500watch`.
+Matcher screening from baseline sb1650. Memory 5914 MB, disk 136 GB, all green.
+
+**Commissioned the largest quantified opportunity left in the engine**, the one
+study 70's census found and explicitly did not attack:
+
+- NonPV fhf **0.845** overall, hiding **0.9135 with a TT move vs 0.7645
+  without**;
+- **46 % of NonPV cutoffs are TT-less and own ~70 % of the wasted cutoff work**;
+- qsearch is **90 % TT-less** (0.976 vs 0.826);
+- the deficit **concentrates at shallow depth** — 76 / 68 / 51 % of nodes at
+  depths 1–3 arrive with no TT move.
+
+**Why this and not another microarch study:** the per-node surface is closed
+across ten studies (65–69 plus 42/43/44/46/47/48), and the dead-work class that
+produced the only two speed wins of the last 24 h was swept **empty** by 69.
+**The remaining lever is nodes per move, not time per node** — and this is where
+the census says the nodes are being wasted.
+
+**Handed it the full instrument state so it cannot repeat today's mistakes:**
+`instructions:u` is the only microarch counter surviving its null; **four others
+fail one**; **node counts on a position set fail a jitter null at +18.3 %** (and
+that is the NNUE gate's own set), so census statistics (±0.11–0.16 pp) and a
+paired sign test are the metrics; PGO inline re-decisions can invert an arm's
+sign; `sprt.sh` only started passing `EvalFile` today and must be verified on the
+live argv.
+
+**Also warned about the box:** `d49xml` is a **loop** service, so
+`systemctl is-active` is always true — any "wait for idle" starves. Gate on
+`pgrep -c fastchess` and stand the matcher down explicitly if it needs the box.
+That single confusion cost three starvations today.
