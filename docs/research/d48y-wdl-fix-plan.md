@@ -18073,3 +18073,39 @@ interior optimum, so a 5.7 % widening is not automatically free.
 lr 2.5e-05 = 5x the 5e-06 cycle floor, decaying 0.996/sb — the FIRST run actually
 at the owner's specified LR; the probe ran 1.249e-05, ~2.5x floor). sb1645 at
 146k pos/s.
+
+## 2026-08-01 17:20 — CORRECTION: heldout did NOT revert. It is RISING, and that is the stronger result.
+
+**My 17:05 entry says the label-heldout "rose then fully reverted" and built
+"equal label loss, +17 Elo" on it. That is WRONG — I read one dip as a trend.**
+
+| sb | value | ema |     | sb | value | ema |
+|---|---|---|---|---|---|---|
+| 1632 | 0.010545 | 0.010473 | | 1640 | **0.010546** | 0.010538 |
+| 1634 | 0.010568 | 0.010503 | | 1642 | 0.010572 | 0.010534 |
+| 1636 | 0.010570 | 0.010522 | | 1644 | 0.010608 | 0.010546 |
+| 1638 | 0.010583 | 0.010532 | | 1646 | **0.010620** | 0.010553 |
+
+sb1640 is a DIP inside a rising series; 1642/1644/1646 go 572/608/620, the
+highest yet. **The EMA never reverted at all** — monotone 473 -> 553 — and I
+dismissed that as lag because it suited the reading I already had.
+
+**Plain-run band over the same sb range: 0.010476-0.010499.** The teacher run is
+**~1.3 % above it and DIVERGING.**
+
+**Correct statement (the owner's, not mine): RISING label loss, RISING Elo.**
+"Equal loss, better play" would only mean the labels fail to discriminate.
+**"Worse loss, better play" means the labels actively point the wrong way** — the
+net is pulled off them and gains +17.15 +/- 10.70 doing it. Anti-correlated, not
+uncorrelated. [[loss-is-not-elo]] now has a receipt with a SIGN.
+
+**This strengthens the target_offset diagnosis** (all three live configs have
+`target_offset` ABSENT -> 0.0, i.e. the draw-blind transform that shrinks every
+label toward 0.5): if the labels were merely noisy, moving away from them would
+cost Elo. Moving away GAINS Elo, which is what a systematically BIASED label set
+predicts.
+
+**Method note for me:** rule 7 says per-class AND per-position, never a lone
+number. I violated the time-series form of it — I quoted one sample from an
+8-point series and called it a reversion, after having just written that the
+metric could not settle anything. The dip agreed with the conclusion I wanted.
