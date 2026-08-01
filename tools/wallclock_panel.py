@@ -227,9 +227,11 @@ def main():
                  f"Pass a resolved absolute path (readlink -f from the main "
                  f"checkout); a fresh worktree's copy dangles.")
     probe = subprocess.run([a.base] + cmd, capture_output=True, text=True)
-    if "Nodes searched" not in probe.stdout:
+    # the engine writes bench output to STDERR, not stdout -- check both
+    probe_out = (probe.stdout or "") + (probe.stderr or "")
+    if "Nodes searched" not in probe_out:
         sys.exit(f"REFUSING: probe run of '{a.base}' searched no nodes.\n"
-                 f"{probe.stdout.strip()[-300:]}\n{probe.stderr.strip()[-300:]}")
+                 f"{probe_out.strip()[-300:]}")
 
     order = [(a.base, null, a.arm), (null, a.arm, a.base), (a.arm, a.base, null)]
     nulls, arms, raw = [], [], []
