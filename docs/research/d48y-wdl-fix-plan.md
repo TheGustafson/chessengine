@@ -14045,3 +14045,57 @@ Gate on `instructions:u` (0.000 null, load-robust) plus a cache-miss counter;
 finding that instruction cuts have converted at ~zero because the engine is
 memory-bound — so this study is judged on MISSES and wall-clock, not i/n.
 User ruling: the 1280 accumulator STAYS; do not propose narrowing L1.
+
+---
+
+## 2026-08-01 01:15 — STUDY 65 REPORTED: the narrow row is a NULL, and the mechanism is the finding
+
+**Deliverable 1 — narrow weight row: BUILT, BIT-EXACT, and it LOSES.** `narrow65`
+stores a FullThreats row whose peak fits 6 signed bits in **960 B = 15 cache
+lines** (vs 20), decoded with `vpermb`/`vpmultishiftqb`/`vpternlogd`/`vpmovzxbw`.
+Correctness is not in doubt: **5,001,562 nodes and eval hash `2e1ede95…79c4`
+exact with the packing live**, 724 tests green under `sota,arch-d48x,narrow65`.
+
+Measured **against its own null in the SAME binary** (`ARCHON_NARROW=0`, so box
+load cancels — the right instrument, and the reason I believe the number):
+**+14.32% instructions, +3.53% L1d misses, +13.23% L2 misses, +18.90% L2 prefetch
+hits** — every memory counter the wrong way, despite the fold demonstrably
+reading **3.400 GB (7.40%) fewer weight-row bytes**.
+
+**Mechanism, and it is the useful part:** keeping each row in its unshrunk
+1280-byte slot is what let `feature * ACC` offset arithmetic survive (and saved a
+243 KB permutation table) — and it is ALSO what leaves a dead 320-byte tail that
+the L2 streaming prefetcher fetches anyway. **The byte cut and the offset saving
+are the same design choice, and they cancel.** A compacted two-plane layout is
+the version that could still win; everything except the addressing is landed.
+
+**Deliverable 2 — elision ceiling: no free predictor exists.** Over 1,332,313 RFP
++ 808,369 qsearch decision nodes, with `const0` as null and `truth` as self-test
+(100%/0 wrong — census wired right): no candidate converts one elision at a zero
+false-elide rate; best free predictor `pardelta` gets **7.36%** of RFP elisions at
+2% wrong and **0%** of qsearch at any rate; **TT remnant available at 6 nodes in
+2.14 million**; PSQT-only is identically the constant. 27.95% of RFP and 43.09%
+of qsearch elisions clear the bar by <128 units, which is why nothing works.
+The one live route is a TRAINED HalfKA-only tier (break-even 28.2% coverage).
+Nothing landed, pre-registered SPRT protocol in its §3.7.
+
+**Its correction to my brief, adjudicated:** it says 53.06% is fold-weighted ROWS
+(denominator 19,616,896 = `thr_into.rows`), not "folds", so my framing over-priced
+by 5.31x. Checked: **study 64's own prose says the same thing my brief did**
+("86.4% of *rows* fit in 6 bits but only 53.1% of *folds* do", its line 378), so
+this corrects study 64's terminology, not just mine. Plausible, NOT fully
+adjudicated — and it does not change the decision, because **the arm lost on
+direct measurement, not on pricing.**
+
+**DISPOSITION: narrow65 stays OFF.** It is feature-gated and additive; the
+`tools/check.sh` change only adds `sota,arch-d48x,narrow65` to the compile
+matrix. Agent claims the default path is untouched (`Bench: 587683`,
+node-identical, `.text` 760,085 -> 758,101, -0.218% instructions).
+**I am verifying that myself** — `gate65.service` is running
+`CHECK_NNUE_GATE=1 tools/check.sh` on its branch, memory-capped at 6G. Merge as a
+plain `git merge` once it passes; do NOT hand-extract docs (I tried, the
+cherry-pick dirtied mainwt and had to be reset — no commits lost).
+
+**Box:** avail 6659 MB, zero builds at launch time, swap still 4095/4095.
+sb1300 match still running; `d49frame` (1585 parity arm FIRST, then 1068) waits
+on it. D49 at sb1309, 183.1k pos/s.
