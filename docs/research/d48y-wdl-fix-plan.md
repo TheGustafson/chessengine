@@ -16140,3 +16140,46 @@ still owed before it governs a release.
 study 70's ORPHANED `fastchess` first: its service was stopped but the child
 survived, the same supervisor/child gap seen at 08:20. `fastchess: 0`, 6714 MB
 free, two PGO builds then 1500 NNUE games.
+
+---
+
+## 2026-08-01 08:45 — LR JUMP→ANNEAL experiment armed; tunables SPRT finally on the NNUE net
+
+### The tunables test took THREE launches to actually run the right engine
+
+1. `d49retest` — died instantly: **`fastchess not found`**. It ran from
+   `chessengine-mainwt`, whose `engines/bin/` is gitignored and empty.
+2. `d49retest2` — ran, but **still PSQT**: I had committed the `sprt.sh`
+   EvalFile fix to **main via mainwt**, then invoked the tool from the **primary
+   checkout**, which sits on `repr-gap-study` and still carried the OLD script.
+   `NET=` was silently ignored.
+3. `d49retest3` — **verified live before trusting it**:
+   `option.EvalFile=…/d48x-1280-sb520-ema-s600.cenn` is on the fastchess command
+   line. Binaries confirmed `archon-notun` **587683** vs `archon-tun` **486897**,
+   both from today's main, differing only in the 154 values.
+
+**That is the FIFTH time tonight the worktree/gitignore split has bitten**
+(gate net, merge conflict, wallclock tool, fastchess, sprt.sh). The pattern is
+always the same: **a fix committed on main is not present in a checkout on another
+branch, and gitignored binaries exist in only one of them.** Checking the running
+process's argv — not the script's source — is what caught it.
+
+### LR jump→anneal, per owner instruction
+
+`d49lrc.service` armed. Waits for the **sb1540** export, then:
+1. **Stops the watchdog FIRST**, then the trainer (or `d49wd` would restart it).
+2. **Saves the anchor as `d49anchor-sb1540-*.bin`.** Necessary: `ckpt_reaper`
+   globs `d49-1280-sb*-raw.bin` and keeps only multiples of 100 plus the latest
+   4 — **it would have deleted sb1540.** A different prefix is invisible to it.
+3. Runs three cycles, each **warm-starting at 5× the base LR and annealing
+   linearly to 0 over 30 sb**, saving a protected checkpoint after each:
+   **sb1540→1570, 1570→1600, 1600→1630**, peak **1.7919e-5** (5 × the base
+   schedule's 3.5837e-6 at sb1540).
+
+**Interpretation flagged rather than assumed:** "5× the LR" cannot mean 5× the
+*ending* LR for cycles 2–3, since that is 0. Each cycle therefore repeats the
+**same** peak — which is also what isolates the cycling effect from a decaying
+one. Configs `tools/nnue/runs/d49_lrcycle{1,2,3}_1280.json`.
+
+Working directory pinned to `chessengine/jax` — the trainer's config path is
+relative (`../tools/nnue/runs/...`) and `--same-dir` would have broken it.
