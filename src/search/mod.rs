@@ -261,8 +261,7 @@ fn qtrace(_: usize, _: Value, _: Value, _: Value, _: Move, _: &str) {}
 /// positive, so the truncation is a plain floor.
 #[inline]
 fn lmp_move_count(depth: Depth, improving: bool) -> i32 {
-    (params::LMP_BASE() + depth * depth)
-        / (params::LMP_IMPROVING_DEN() - i32::from(improving))
+    (params::LMP_BASE() + depth * depth) / (params::LMP_IMPROVING_DEN() - i32::from(improving))
 }
 
 /// The parent-futility bound (design/10 §3.5, the move loop's quiet branch):
@@ -3471,8 +3470,6 @@ impl Worker {
             // and the singular verification, i.e. hundreds of cycles more
             // overlap. The cost is that a pruned move's hint is wasted, which
             // is why this is measured rather than assumed.
-            #[cfg(feature = "ttspec42")]
-            tt.prefetch(self.board.prefetch_key(m));
             move_count += 1;
             self.stack[cur].move_count = move_count;
             let nodes_before = self.nodes; // root effort accounting (§3.4)
@@ -3490,14 +3487,6 @@ impl Worker {
             // piece `gives_check` would read back out of the mailbox, and the
             // intervening `stack[cur].move_count` store blocks the CSE. See
             // `Board::gives_check_by`.
-            // Perf study 54 arm `nogc54` reverts JUST this line to the
-            // pre-study-53 spelling, so `gc53`'s marginal effect can be
-            // measured on the tree that actually shipped it — study 53 §0.2
-            // left that open because its own control was not inert and
-            // `magic53` alone beat the combination on loads by 11.7/node.
-            #[cfg(feature = "nogc54")]
-            let gives_check = self.board.gives_check(m);
-            #[cfg(not(feature = "nogc54"))]
             let gives_check = self.board.gives_check_by(m, moved_piece);
             let mut new_depth = depth - 1;
             let delta = beta - alpha;
@@ -3626,27 +3615,6 @@ impl Worker {
                     // quiet's score below `-QHIST_PRUNE_MULT·depth`.
                     let pci = moved_piece.index();
                     let to = m.to().idx();
-                    // Perf study 55 mechanism B: three 2-D `[pci][to]` chains,
-                    // each re-deriving the same offset and re-checking the inner
-                    // row. `stat_score` — called from THIS loop iteration, 160
-                    // lines below — already uses study 36's flat `piece_to` form
-                    // for two of these three planes. Bit-identical: `history.rs`
-                    // proves `p[pci][to] == p.as_flattened()[piece_to(pci, to)]`.
-                    #[cfg(feature = "bccont55")]
-                    let cont_history = {
-                        let q = crate::history::piece_to(pci, to);
-                        crate::history::at_piece_to(
-                            self.histories.cont_ref(self.stack[cur - 1].cont_hist),
-                            q,
-                        ) + crate::history::at_piece_to(
-                            self.histories.cont_ref(self.stack[cur - 2].cont_hist),
-                            q,
-                        ) + crate::history::at_piece_to(
-                            self.histories.pawn_slot(self.board.pawn_key()),
-                            q,
-                        )
-                    };
-                    #[cfg(not(feature = "bccont55"))]
                     let cont_history =
                         self.histories.cont_ref(self.stack[cur - 1].cont_hist)[pci][to].get()
                             + self.histories.cont_ref(self.stack[cur - 2].cont_hist)[pci][to].get()
@@ -3721,17 +3689,6 @@ impl Worker {
                     }
                 }
             }
-
-            // Perf study 42 arm 2: the speculative TT prefetch moved BELOW the
-            // §3.5 pruning cascade. Arm 1 (`ttspec42`, above the cascade) buys
-            // the most overlap and pays for it on every move that is then
-            // pruned -- +95.6 instructions/node for ~1.07 probes/node, i.e.
-            // roughly three quarters of its hints thrown away. From here the
-            // move is committed, so the hint count collapses to the probe
-            // count, and the overlap on offer is still the whole singular
-            // verification search plus the reduction stack below it.
-            #[cfg(feature = "ttspec2_42")]
-            tt.prefetch(self.board.prefetch_key(m));
 
             // §3.6 — singular extensions and multicut (Wave-D items 13/14).
             // Only the ttMove is a candidate: an exclusion search below the
@@ -4349,15 +4306,6 @@ impl Worker {
                             c70_caps_before,
                             if is_capture { 0 } else { c70_quiet_rank },
                         );
-                        // Perf study 34: the ordering-quality instrument — the
-                        // index of the move that actually caused the cutoff.
-                        #[cfg(feature = "census34")]
-                        {
-                            use crate::census34 as cx;
-                            cx::bump(&cx::FH_NODES, 1);
-                            cx::bump(&cx::FH_MOVES, move_count as u64);
-                            cx::hist(&cx::HIST_FH, move_count as usize);
-                        }
                         // A cutoff by a heavily-extended move is weaker evidence
                         // of a fail-high-prone child, so it does not bump the
                         // count (design/10 §3.9, Wave-D item 15).
@@ -4419,13 +4367,6 @@ impl Worker {
                 / (depth + params::FH_SOFTEN_BETA_W());
         }
 
-        // Perf study 34: the move loop exits either by the fail-high `break`
-        // (counted at the cutoff site) or by exhausting the picker; the two
-        // together are the denominator of the ordering-quality rate.
-        #[cfg(feature = "census34")]
-        if best_value < beta {
-            crate::census34::bump(&crate::census34::NOFH_NODES, 1);
-        }
         #[cfg(feature = "census70")]
         if best_value < beta {
             crate::census70::allnode(c70_kind, depth, move_count, c70_best_idx, c70_had_tt);

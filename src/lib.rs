@@ -60,17 +60,10 @@ pub mod attacks;
 pub mod bench;
 pub mod bitboard;
 pub mod board;
-/// Perf study 34's move-ordering census (instrument only).
-#[cfg(feature = "census34")]
-pub mod census34;
 /// Perf study 70's move-ordering QUALITY census (instrument only).
 #[cfg(feature = "census70")]
 pub mod census70;
 pub mod cuckoo;
-/// Perf study 40's dose amplifier for the movepick partial sort
-/// (instrument only; the search tree is untouched at every dose).
-#[cfg(feature = "dosesort40")]
-pub mod dose40;
 pub mod eval;
 pub mod fen;
 pub mod history;

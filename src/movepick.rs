@@ -111,32 +111,7 @@ const _: () = assert!(align_of::<ExtMove>() == 4);
 /// Ties keep their relative order (the shift condition is a strict `<`), so
 /// the sort is stable among equal scores. Call sites: captures and evasions
 /// with `limit = i32::MIN` (a full sort); quiets with a depth-scaled limit.
-/// Width of `partial_insertion_sort`'s branchless window (perf study 34 §8).
-///
-/// Covers ~68% of insertions: the mean sorted prefix is 9.31 elements
-/// (`HIST_PFX`), insertions run at `se = 1..P-1`, so the covered fraction is
-/// `E[min(P-1, 8)] / E[P-1]` = 5.62/8.31. Widening it costs a store per lane
-/// on every insertion, which is why it is not 16.
-#[cfg(feature = "insertwin34")]
-const INSERT_WINDOW: usize = 8;
-
 pub(crate) fn partial_insertion_sort(moves: &mut [ExtMove], limit: i32) {
-    // Perf study 40's DOSE AMPLIFIER (`--features dosesort40`, dose from
-    // `P40_DOSE`). The arm this module is waiting on is a ~0.2%-of-cycles
-    // trade, an order of magnitude under what `cycles:u` can resolve on this
-    // box; the amplifier replays REAL earlier inputs through the same sort D
-    // extra times per call so the same trade lands at (D+1)x its size and a
-    // dose series can be regressed back to one call. See `dose40`.
-    #[cfg(feature = "dosesort40")]
-    crate::dose40::replay(moves, limit);
-    partial_insertion_sort_inner(moves, limit)
-}
-
-/// The sort proper. Split out only so [`crate::dose40`] can re-enter it without
-/// recursing through the amplifier; `#[inline(always)]` keeps the shipped
-/// codegen byte-identical (verified: `.text` md5 unchanged, study 40 §1.3).
-#[inline(always)]
-pub(crate) fn partial_insertion_sort_inner(moves: &mut [ExtMove], limit: i32) {
     if moves.is_empty() {
         return;
     }
@@ -167,119 +142,23 @@ pub(crate) fn partial_insertion_sort_inner(moves: &mut [ExtMove], limit: i32) {
         // asserted, and it is precisely the fact the compiler was missing: one
         // `cmov` in place of a check plus a panic block.
         let se = sorted_end.min(p);
-        // Perf study 34 arm 2 — the BRANCHLESS fixed-width insertion, taken
-        // when the sorted prefix still fits one window.
-        //
-        // The walk below is 1.28% of all engine cycles and 6.46% of ALL engine
-        // branch mispredicts (study 34 §5), essentially all of it in its own
-        // exit test: the displacement averages 2.8 with a wide spread, which is
-        // the worst case a predictor can be handed. A fixed trip count has no
-        // exit test to mispredict.
-        //
-        // It is the SAME permutation, not an approximation. Because
-        // `moves[0..se]` is sorted descending, `{ j < se : value < tmp.value }`
-        // is a contiguous SUFFIX, so a full-window pass with the shift
-        // predicated on that comparison performs exactly the walk's writes:
-        //   - `j` in `[q, se)`   -> shift, `moves[j+1] = moves[j]`
-        //   - `j` in `[0, q)`    -> the compare is false, `moves[j+1]` rewritten
-        //                           with its own value
-        //   - `j` in `[se, W)`   -> masked off, likewise a self-write
-        // and `q` falls out as `se` minus the number of shifts. Descending `j`
-        // means every read is of a slot not yet written, which is what makes
-        // the self-writes no-ops rather than smears.
-        //
-        // Guarded on `se <= W` (the window must cover the prefix) and
-        // `moves.len() > W` (so `moves[W]` is in bounds — the self-writes may
-        // reach past `p`, which is harmless in value but must be in range).
-        // Everything else falls through to the walk unchanged.
-        //
-        // ⚠ **DECIDED, AND THE ANSWER IS NO. DO NOT RE-OPEN THIS BLIND.**
-        //
-        // Perf study 34 built it, verified it node-identical, and measured the
-        // trade exactly — study 40 reproduced every figure on today's tree over
-        // 60 paired within-round rounds with zero spread and a byte-identical
-        // null at 0.000%: `instructions:u` **+0.719%/node** (+42.58),
-        // `branches:u` **-0.525%** (-3.26), `ex_ret_brn_misp:u` **-4.409%**
-        // (-1.014), 60/60 rounds on each. The mechanism is exactly as designed.
-        //
-        // What study 34 could not do was PRICE it, because `cycles:u` cannot
-        // see a 0.3% effect on this box. Study 40 priced it on a counter that
-        // can: **`ex_no_retire.empty`** — the cycles in which nothing retired
-        // because the front end had nothing to deliver, which is where a
-        // mispredict spends its cost. It is 192.91 cycles/node here (4.7% of
-        // the engine), so the arm's effect is 4.7% OF IT rather than 0.22% of
-        // cycles. 159 paired rounds, contrasts against the byte-identical null:
-        //
-        //     ex_ret_brn_misp     -4.517% +/- 0.102% (44.3 se) -1.088 misp/node
-        //     ex_no_retire.empty  -5.150% +/- 0.357% (14.4 se)  -9.93 cyc/node
-        //     cycles - SMT        +0.186% +/- 0.137%  (1.4 se)  +7.47 cyc/node
-        //
-        // **The arm buys 9.93 cycles of mispredict bubble and pays 17.40 cycles
-        // of issue for it.** Study 34's model assumed ~18 cycles per mispredict
-        // and ~4 IPC on the added instructions; measured on this arm in this
-        // engine they are **9.13** and **2.45**, both worse for the arm, and
-        // that is the whole gap between its predicted -0.17% and the measured
-        // **+0.19%** (about -0.3 Elo). For the arm to break even the 42.58
-        // added instructions would have to sustain 42.58/9.93 = 4.29 per cycle.
-        //
-        // The code stays because it is correct, node-identical, and the exact
-        // negative result is worth more in the tree than in a doc. If you widen
-        // the window or shorten the dependency chain, re-price it against
-        // **9.13 cycles per mispredict** — that is the exchange rate on this
-        // engine, and at it the whole of `init_quiets`' mispredict share (3.31
-        // per node) is only 30.2 cycles/node, 0.74% of cycles.
-        // Details: study 40 §3.
-        #[cfg(feature = "insertwin34")]
-        if se <= INSERT_WINDOW && moves.len() > INSERT_WINDOW {
-            moves[p] = moves[se];
-            // Length `INSERT_WINDOW + 1` is a constant LLVM can see, so every
-            // index below is discharged without a panic edge (study 20 arm 7's
-            // lesson, applied to a constant instead of `p`).
-            let win = &mut moves[..=INSERT_WINDOW];
-            let mut q = se;
-            for j in (0..INSERT_WINDOW).rev() {
-                let cur = win[j];
-                let nxt = win[j + 1];
-                let shift = j < se && cur.value < tmp.value;
-                win[j + 1] = if shift { cur } else { nxt };
-                q -= shift as usize;
-            }
-            win[q] = tmp;
-            continue;
-        }
+        // Four branchless/reordered rewrites of the shift walk below have been
+        // built, measured, and REJECTED — `copy_within` (+91 i/n) and
+        // `partition_point` (+77.8 i/n) in study 23, the windowed branchless
+        // insertion in study 34/40 (+42.58 i/n for −1.088 mispredicts/node),
+        // and the single-load reorder in study 55 (+14.7 i/n on the shipped
+        // tree). The arms were deleted 2026-08-01 (simplification tier 0,
+        // item 0.15); the pricing rule survives in CLAUDE.md: a mispredict
+        // costs 9.13 cycles HERE, so a branchless rewrite may add at most
+        // ~22.4 instructions per mispredict removed. Details: studies 23 §6,
+        // 40 §3, 55.
         let head = &mut moves[..=p];
         // Hole-punch: the element leaving the prefix edge goes to `p`.
         head[p] = head[se];
-        // PERF STUDY 23 measured this loop at 2.84% of ALL engine cycles and
-        // 10.19% of all branch misses — the largest mispredict source outside
-        // the NNUE and `search` itself. Two rewrites were tried and BOTH lost:
-        // scan-then-`copy_within` cost +91 i/n (memmove is the wrong tool for a
-        // ~3-element shift) and `partition_point` cost +77.8 i/n without moving
-        // branch misses at all. The constraint that makes this hard is that the
-        // TAIL permutation is observable — `BadQuiet` emits the unsorted
-        // remainder in buffer order — so no algorithm that reorders it can pass
-        // the node-identity gate. See docs/research/perf-study-23-*.md §6.
-        // Perf study 55 mechanism B, study 54's shape exactly: the shipped
-        // condition reads `head[q - 1].value` and the body then reads the WHOLE
-        // `head[q - 1]` again — two indexed reads per shifted element, where one
-        // borrow does. Line 147 above already carries the comment "One read of
-        // `moves[p]`, not two" for the identical defect twenty lines earlier;
-        // this loop never got the same treatment. This is NOT either rewrite
-        // study 23 §6 measured and rejected (`copy_within` +91 i/n,
-        // `partition_point` +77.8 i/n): the algorithm, the comparison order and
-        // the resulting permutation — including the observable tail — are
-        // untouched. Only the number of loads changes.
+        // The TAIL permutation is observable — `BadQuiet` emits the unsorted
+        // remainder in buffer order — so no algorithm that reorders it can
+        // pass the node-identity gate (study 23 §6).
         let mut q = se;
-        #[cfg(feature = "bcsort55")]
-        while q > 0 {
-            let prev = head[q - 1];
-            if prev.value >= tmp.value {
-                break;
-            }
-            head[q] = prev;
-            q -= 1;
-        }
-        #[cfg(not(feature = "bcsort55"))]
         while q > 0 && head[q - 1].value < tmp.value {
             head[q] = head[q - 1];
             q -= 1;
@@ -423,7 +302,7 @@ fn recapture_map(board: &Board, depth: Depth) -> Bitboard {
 /// the discriminant. Steps 05/06 implement the two capture-only pipelines
 /// (quiescence, ProbCut) plus the shared TT stages; the main and evasion
 /// pipelines land in doc 09 §4 steps 7-8.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 enum Stage {
     // main search
@@ -584,53 +463,6 @@ pub struct MovePicker {
     buf: [core::mem::MaybeUninit<ExtMove>; MAX_MOVES],
     #[cfg(debug_assertions)]
     written: [bool; MAX_MOVES],
-    /// Perf study 34's census (instrument builds only): per-picker tallies,
-    /// aggregated in `Drop` because only the drop point knows how far the
-    /// search actually walked before the node ended.
-    #[cfg(feature = "census34")]
-    c: Census,
-}
-
-/// Per-picker census tallies (perf study 34, instrument builds only).
-#[cfg(feature = "census34")]
-#[derive(Default)]
-struct Census {
-    /// Length of the sorted prefix `partial_insertion_sort` produced for the
-    /// quiet region — the elements whose order the sort actually paid for.
-    prefix: u32,
-    n_quiets: u32,
-    gq_scanned: u32,
-    gq_emitted: u32,
-    bq_scanned: u32,
-    bq_emitted: u32,
-    gc_scanned: u32,
-    gc_emitted: u32,
-    /// Set once `init_quiets` has run, so `Drop` can tell a picker that never
-    /// reached `QuietInit` from one that generated an empty quiet list.
-    quiets_generated: bool,
-}
-
-#[cfg(feature = "census34")]
-impl Drop for MovePicker {
-    fn drop(&mut self) {
-        use crate::census34 as cx;
-        cx::bump(&cx::GC_SCANNED, self.c.gc_scanned as u64);
-        cx::bump(&cx::GC_EMITTED, self.c.gc_emitted as u64);
-        if !self.c.quiets_generated {
-            return;
-        }
-        cx::bump(&cx::GQ_SCANNED, self.c.gq_scanned as u64);
-        cx::bump(&cx::GQ_EMITTED, self.c.gq_emitted as u64);
-        cx::bump(&cx::BQ_SCANNED, self.c.bq_scanned as u64);
-        cx::bump(&cx::BQ_EMITTED, self.c.bq_emitted as u64);
-        cx::bump(&cx::Q_SKIPPED, self.skip_quiets as u64);
-        // "Exhausted" = the search consumed every quiet the picker generated.
-        let walked = self.c.gq_scanned + self.c.bq_scanned;
-        cx::bump(&cx::Q_EXHAUSTED, u64::from(walked >= self.c.n_quiets));
-        cx::hist(&cx::HIST_GQ, self.c.gq_scanned as usize);
-        cx::hist(&cx::HIST_NQ, self.c.n_quiets as usize);
-        cx::hist(&cx::HIST_PFX, self.c.prefix as usize);
-    }
 }
 
 /// Perf study 55 mechanism B: `MAX_MOVES` is a power of two and the region-index
@@ -736,25 +568,6 @@ impl MovePicker {
         // A TT move is usable iff it is a real move that this position would
         // actually generate; an unusable one skips the `*Tt` stage (§3.5).
         let usable = tt_move.is_ok() && board.pseudo_legal(tt_move);
-        // Perf study 34: price the two `pseudo_legal` paths that run a FULL
-        // move generation just to validate one move (study 23 remainder 6).
-        #[cfg(feature = "census34")]
-        {
-            use crate::census34 as cx;
-            let in_check = !board.checkers().is_empty();
-            let cand = tt_move.is_ok();
-            cx::bump(&cx::MP_NEW, 1);
-            cx::bump(&cx::MP_TT_CAND, cand as u64);
-            cx::bump(&cx::MP_TT_USABLE, usable as u64);
-            cx::bump(
-                &cx::MP_TT_NONNORMAL,
-                (cand && tt_move.kind() != crate::moves::MoveKind::Normal) as u64,
-            );
-            cx::bump(
-                &cx::MP_TT_EVASION_GEN,
-                (cand && in_check && tt_move.kind() == crate::moves::MoveKind::Normal) as u64,
-            );
-        }
         MovePicker::with_base(base, tt_move, depth, ply, VALUE_ZERO, cont_hist, usable)
     }
 
@@ -762,6 +575,10 @@ impl MovePicker {
     /// `threshold = probcut_beta - static_eval` is computed by the caller
     /// (doc 10). The TT move is usable only if it is additionally a capture or
     /// queen promotion (`capture_stage`).
+    ///
+    /// The `depth`/`ply`/`cont_hist` fields are inert placeholders on this
+    /// pipeline (DEPTH_QS / 0 / SENTINEL): ProbCut scores captures only, and
+    /// capture scoring never reads them.
     // perf study 55 (arm named on the cfg_attr below): study 54 measured -20.8 i/n from a helper
     // becoming single-call-site, which let LLVM's last-call-to-static bonus
     // inline it.  `search::<NT>` duplicates every search-body call site, so
@@ -815,8 +632,6 @@ impl MovePicker {
             buf: [core::mem::MaybeUninit::uninit(); MAX_MOVES],
             #[cfg(debug_assertions)]
             written: [false; MAX_MOVES],
-            #[cfg(feature = "census34")]
-            c: Census::default(),
         }
     }
 
@@ -897,10 +712,6 @@ impl MovePicker {
                 Stage::GoodCapture => {
                     while self.cur < self.end_cur {
                         let ext = self.slot(self.cur);
-                        #[cfg(feature = "census34")]
-                        {
-                            self.c.gc_scanned += 1;
-                        }
                         // Dedup: the TT move was already emitted at MainTt.
                         if ext.mv == self.tt_move {
                             self.cur += 1;
@@ -908,10 +719,6 @@ impl MovePicker {
                         }
                         if board.see_ge(ext.mv, -ext.value / GOOD_CAPTURE_SEE_DIVISOR()) {
                             self.cur += 1;
-                            #[cfg(feature = "census34")]
-                            {
-                                self.c.gc_emitted += 1;
-                            }
                             return Some(ext.mv);
                         }
                         // Bad: park it in `[0, end_bad_captures)`. The stale,
@@ -949,10 +756,6 @@ impl MovePicker {
                     if !self.skip_quiets {
                         while self.cur < self.end_cur {
                             let ext = self.slot(self.cur);
-                            #[cfg(feature = "census34")]
-                            {
-                                self.c.gq_scanned += 1;
-                            }
                             if ext.value <= GOOD_QUIET_THRESHOLD() {
                                 if self.sorted_covers {
                                     break;
@@ -963,10 +766,6 @@ impl MovePicker {
                             self.cur += 1;
                             // Dedup: the TT move was already emitted at MainTt.
                             if ext.mv != self.tt_move {
-                                #[cfg(feature = "census34")]
-                                {
-                                    self.c.gq_emitted += 1;
-                                }
                                 return Some(ext.mv);
                             }
                         }
@@ -1045,12 +844,6 @@ impl MovePicker {
         self.end_generated = n;
         self.end_cur = n;
         partial_insertion_sort(self.slots_mut(0..n), i32::MIN);
-        #[cfg(feature = "census34")]
-        {
-            use crate::census34 as cx;
-            cx::bump(&cx::IC_CALLS, 1);
-            cx::bump(&cx::IC_SCORED, n as u64);
-        }
     }
 
     /// Perf study 70's census hook: the `Stage` discriminant as the caller
@@ -1244,56 +1037,6 @@ impl MovePicker {
         ];
         let base = self.end_captures;
 
-        // Perf study 44 §6 — SOFTWARE-PIPELINED HISTORY PREFETCH.
-        //
-        // The scoring loop below reads SEVEN randomly-addressed history cells
-        // per quiet, from tables totalling ~20 MiB that share a 32 MB L3 with
-        // a 16 MB TT and ~29 MB of NNUE weights. Study 44 sampled
-        // `ex_no_retire.load_not_complete` and found `init_quiets` owns
-        // **6.57% of every load-stall cycle in the engine**, of which 89% is
-        // load-wait rather than execution — i.e. this loop is not computing,
-        // it is waiting for `pawn` (12.6 MB) and the five `cont` planes
-        // (5.1 MB).
-        //
-        // The six plane BASES are already hoisted above the loop, but a base
-        // is not a line: `q` varies per move, so the line is not known until
-        // the iteration that needs it, and the loop body is far too short to
-        // cover a DRAM round trip. Looking `PF_DIST` moves ahead turns the
-        // per-move dependent miss into an overlapped one, which is the same
-        // trade `TranspositionTable::prefetch` already makes (study 42 priced
-        // that one hint at 3.5% of engine cycles).
-        //
-        // NODE-IDENTICAL BY CONSTRUCTION, not by test: `_mm_prefetch` computes
-        // no value the score depends on, so the tree cannot move. The gate
-        // still checks it, because "by construction" has been wrong before.
-        //
-        // `PF_DIST` is the one free parameter and it was measured, not picked
-        // — see §6.2 for the 2/4/8 sweep.
-        #[cfg(feature = "histpf44")]
-        const PF_DIST: usize = 4;
-        #[cfg(feature = "histpf44")]
-        let prefetch_history_for = |m: crate::moves::Move| {
-            // A quiet always starts on one of our pieces, but this runs on a
-            // move the loop has not reached yet, so it asks rather than
-            // asserts — the `expect` below stays the loop's own contract.
-            if let Some(pc) = board.piece_on(m.from()) {
-                let q = crate::history::piece_to(pc.index(), m.to().idx());
-                crate::history::prefetch_piece_to(pawn_plane, q);
-                crate::history::prefetch_piece_to(c1, q);
-                crate::history::prefetch_piece_to(c2, q);
-                crate::history::prefetch_piece_to(c3, q);
-                crate::history::prefetch_piece_to(c4, q);
-                crate::history::prefetch_piece_to(c6, q);
-                crate::history::prefetch_line(main_plane.as_ptr().wrapping_add(m.raw16() as usize));
-            }
-        };
-        // Prologue: the first `PF_DIST` moves have no earlier iteration to
-        // issue their hint, so they get it here, before the loop's first body.
-        #[cfg(feature = "histpf44")]
-        for &m in list.iter().take(PF_DIST) {
-            prefetch_history_for(m);
-        }
-
         // The per-quiet scoring body, shared verbatim by the two loop shapes
         // below. A `macro_rules!` rather than a closure or a method because
         // the body both reads `self.quiet_prior` and calls `self.set_slot`:
@@ -1484,10 +1227,6 @@ impl MovePicker {
         let mut row = &rows[0];
         let mut pci = 0usize;
         for (i, &m) in list.iter().enumerate() {
-            #[cfg(feature = "histpf44")]
-            if let Some(&ahead) = list.get(i + PF_DIST) {
-                prefetch_history_for(ahead);
-            }
             if !run.contains(m.from()) {
                 let pc = board
                     .piece_on(m.from())
@@ -1515,38 +1254,8 @@ impl MovePicker {
         }
         // See `sorted_covers`: with the prefix limit at or below the good/bad
         // threshold, the two emission stages split the region at one index.
-        //
-        // `null34` is perf study 34's NULL ARM: it forces the flag off, so the
-        // binary carries the arm's struct layout, its extra fields and its
-        // rewritten `GoodQuiet` loop, and performs the OLD amount of scanning.
-        // A null that does not perturb the same machinery the arm perturbs is
-        // not a null (study 23 §2.2) — a byte-different build with an inert
-        // `let` reordering would not have moved the stage machine at all.
-        self.sorted_covers = !cfg!(feature = "null34") && sort_limit <= GOOD_QUIET_THRESHOLD();
-        // Census BEFORE the sort: the prefix model is "element 0 plus every
-        // LATER element >= limit", and the sort permutes the range, so the
-        // count is only well defined on the pre-sort order.
-        #[cfg(feature = "census34")]
-        let pfx = if n == 0 {
-            0
-        } else {
-            1 + self
-                .slots_mut(base + 1..base + n)
-                .iter()
-                .filter(|e| e.value >= sort_limit)
-                .count()
-        };
+        self.sorted_covers = sort_limit <= GOOD_QUIET_THRESHOLD();
         partial_insertion_sort(self.slots_mut(base..base + n), sort_limit);
-        #[cfg(feature = "census34")]
-        {
-            use crate::census34 as cx;
-            cx::bump(&cx::IQ_CALLS, 1);
-            cx::bump(&cx::IQ_SCORED, n as u64);
-            cx::bump(&cx::IQ_PREFIX, pfx as u64);
-            self.c.prefix = pfx as u32;
-            self.c.n_quiets = n as u32;
-            self.c.quiets_generated = true;
-        }
     }
 
     /// Generate + score check evasions into `buf[0..n]`, full-sort, and set the
@@ -1623,8 +1332,6 @@ impl MovePicker {
         self.end_bad_captures = 0;
         self.end_generated = n;
         partial_insertion_sort(self.slots_mut(0..n), i32::MIN);
-        #[cfg(feature = "census34")]
-        crate::census34::bump(&crate::census34::IE_CALLS, 1);
     }
 
     /// Scan the emission window `buf[cur..end_cur]` for the next element passing
@@ -1663,40 +1370,12 @@ impl MovePicker {
         while self.cur < self.end_cur {
             let ext = self.slot(self.cur);
             self.cur += 1;
-            #[cfg(feature = "census34")]
-            self.census_scan();
             // Dedup: the TT move was already emitted at the `*Tt` stage.
             if ext.mv != self.tt_move && ok(board, ext) {
-                #[cfg(feature = "census34")]
-                self.census_emit();
                 return Some(ext.mv);
             }
         }
         None
-    }
-
-    /// Census (perf study 34): attribute one inspected element to its stage.
-    #[cfg(feature = "census34")]
-    #[inline]
-    fn census_scan(&mut self) {
-        match self.stage {
-            Stage::GoodQuiet => self.c.gq_scanned += 1,
-            Stage::BadQuiet => self.c.bq_scanned += 1,
-            Stage::Qcapture | Stage::Probcut => self.c.gc_scanned += 1,
-            _ => {}
-        }
-    }
-
-    /// Census (perf study 34): attribute one emitted move to its stage.
-    #[cfg(feature = "census34")]
-    #[inline]
-    fn census_emit(&mut self) {
-        match self.stage {
-            Stage::GoodQuiet => self.c.gq_emitted += 1,
-            Stage::BadQuiet => self.c.bq_emitted += 1,
-            Stage::Qcapture | Stage::Probcut => self.c.gc_emitted += 1,
-            _ => {}
-        }
     }
 }
 
