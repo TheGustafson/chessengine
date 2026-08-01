@@ -14498,3 +14498,46 @@ refresh, it is a property of our eval rather than an artifact of stale constants
 If it FLATTENS or inverts, the old curve was measuring the mismatch between our
 eval and out-of-date margins — and that is the outcome that would vindicate the
 original frame theory after all.
+
+---
+
+## 2026-08-01 02:32 — the frame effect SURVIVES the margin refresh; study 66 commissioned
+
+**D49:** sb1368, 187.8k pos/s, heldout ema 0.010460.
+
+**EARLY BUT IMPORTANT — the parity arm reproduces under the NEW tunables:**
+
+| scale 1585 (slope 0.995) | Elo vs canonical | n |
+|---|---:|---:|
+| BEFORE (eca43a97 margins) | -18.08 +/- 10.79 | 1500 |
+| **AFTER (ebcea3ef margins, PGO)** | **-15.88 +/- 12.2** | 985, running |
+
+Essentially identical. **So the frame effect is NOT an artifact of stale
+constants** — refreshing 154 search values, including razoring 465/300 ->
+483/318 and the whole RFP/LMR/singular/qsearch family, did not rescue parity. It
+is a property of OUR EVAL against SF-shaped margins, not of the margins being out
+of date. Not final (985/1500); 1068 / 756 / 535 follow.
+
+**PERF STUDY 66 COMMISSIONED** (`d49xml` is stopped for the re-run, no builds
+running, 6584 MB avail — the first genuine slot since the box saturated).
+Target: the accumulator-fold kernels, **from our own profile with no Stockfish
+comparison** per the standing directive.
+
+The brief is grounded in checked facts rather than remembered ones:
+- **Both FT weight tables are ALREADY i8** (`sota_loader.rs:158` and `:163`) — the
+  precision lever is SPENT and the brief forbids re-proposing quantisation. This
+  alone would have cost a day.
+- ~106 MB of tables, so every row touched is a cold 1280 B = **20 cache lines**.
+  The lever is **rows touched and their ORDER**.
+- **Study 65's mechanism is handed over as input**: its narrow row failed because
+  the byte cut and the offset saving were the same design choice and cancelled,
+  leaving a dead 320 B tail the L2 prefetcher fetched anyway. Its compacted
+  two-plane layout is named as the surviving candidate.
+- **Judged on MISSES and WALL-CLOCK, explicitly NOT `instructions:u`** — the
+  engine is memory-bound (IPC 1.595, >=47% stall) and a prior programme cut
+  -317.7 i/n for ZERO wall-clock. `cycles:u` is barred outright while a match
+  runs (+49.9% under load).
+- Gate pins given as **tonight's** values (`486897` / `2e1ede95…79c4` / `1743308`),
+  since stale docs still carry the old ones.
+- 1280 accumulator stays (owner ruling); measure against an in-binary null so box
+  load cancels, as study 65 did.
