@@ -402,8 +402,14 @@ exactly this reason.
 Training ownership returned to the coordinator (owner's ruling: subagents do
 not own training runs). Nothing of this agent's is running.
 
-**Merge to main:** commits `859133f1..HEAD` on
-`worktree-agent-ac79f75828e3be36d`, based on main at `962ffc3c`. Fast-forward.
+**Merge to main:** five commits `859133f1..c4421df0` on
+`worktree-agent-ac79f75828e3be36d`, branched from main at `962ffc3c`.
+
+Main has since advanced past that base, so this is a **merge, not a
+fast-forward** — but a conflict-free one, checked rather than hoped: over that
+range main touched exactly **one** file, `docs/research/d48y-wdl-fix-plan.md`,
+and `git diff 962ffc3c main -- jax/ tools/nnue/` is **empty**. Nothing this
+branch changes was touched on the other side.
 
 | file | new? | production-ready? |
 |---|---|---|
