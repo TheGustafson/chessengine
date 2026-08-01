@@ -293,6 +293,53 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   **`instructions:u` held 0.000 % in all five panels and is the only counter
   here that can decide anything.** Prefer arms it can see. A remembered null
   from a previous night is not a null.
+  **Perf study 69 adds `branch-misses:u` to that list** — its byte-identical
+  null read **−0.803 % (11/16)** in a 16-round panel, so no mispredict arm
+  under ~0.8 % may be judged on it.
+- **★★ A PGO-TO-PGO DELTA IS NOT A CLEAN MEASUREMENT OF A SOURCE CHANGE (perf
+  study 69, 2026-08-01).** The byte-identical null is 0.000 % and every study
+  since 61 has treated it as the resolution floor. **It is the floor for a
+  REBUILD, not for a SOURCE CHANGE.** Measured on one diff, two ways: the
+  `attacks::TABLES` arm reads **−0.077 % instructions (10/10) as a NON-PGO
+  pair** and **+0.321 % (0/16) as a PGO pair**, and the 0.40 % difference lands
+  in symbols the diff never touches — `forward_into` **+0.71** share points,
+  `i8_deltas_into_inner` **−0.81**. Mechanism: the arm shrinks its callees
+  (`qsearch` −903 B, `init_quiets` −538 B, `see_ge` −193 B), PGO's inline cost
+  model re-decides, and more gets pulled into an already register-starved 45 KB
+  `search::<NonPv>` — study 55 §0.1's size curve from the other end. **Study
+  68's `--features pad68` does NOT bound this**: a never-called cold function
+  emits no profile counters, so no inlining decision changes. Until a null that
+  perturbs the PROFILE (not just `.text`) is built and measured, **the
+  shipped-pipeline error bar on every arm in studies 61–68 is unknown** —
+  build it before the next arm (`tools/perf69/buildnp69.sh` is the non-PGO
+  control half of it). Any arm under ~0.4 % PGO-to-PGO must be confirmed on a
+  non-PGO pair.
+- **BRANCH MISPREDICTS ARE A 6.0 %-OF-CYCLES BUDGET WITH NO HOT SPOT (perf
+  study 69, 2026-08-01).** Profiled to the branch site for the first time
+  (`tools/perf69/mispred69.sh` + `misroll69.py` — AMD LBR v2, six minutes,
+  re-derivable). 21.65 mispredicts/node × **this engine's own measured 9.13
+  cycles** (study 40 §3 — *not* the generic ~15) = 197.7 cycles/node. The
+  largest single SOURCE LINE is `movepick.rs:282` (the insertion sort's shift
+  loop) at **4.49 %** of the taken-mispredict population = 0.157 % of cycles,
+  and studies 23/34/40/55/56 have attacked it five times and lost every time.
+  **The break-even is arithmetic: at 9.13 cycles and study 40's measured 2.45
+  IPC on added scalar work, a branchless rewrite may cost at most 22.4
+  instructions per mispredict removed** (`insertwin34` cost 42.58 — it was not
+  a bad implementation, it was 1.9× over budget). Price any new branch arm
+  against that number first. **Instrument caveat: an LBR stack holds only
+  TAKEN branches** (12.55 of the 21.65 misp/node) and is blind to a never-taken
+  guard; use `tools/perf69/opsat69.py` (IBS dispatched ops) for those.
+- **THE DEAD-WORK CLASS IS CLOSED WITH A NUMBER (perf study 69, 2026-08-01).**
+  After studies 67 and 68 each found one instance by reading one symbol,
+  `tools/perf69/guardsweep69.sh` swept the whole `.text`: the entire
+  `LazyLock`/`OnceLock` guard class is **4.21 dispatched ops per node** in three
+  statics (`attacks::TABLES` 3.40, `sota_features::THREAT_TABLES` 0.65,
+  `cuckoo::CUCKOO` 0.15), and the other 133 candidate sites never execute. The
+  biggest of the three was built as a `Board` field and **LOST** (see the
+  banner on `attacks::tables()`); the other two are priced at −0.7 and −0.2
+  i/node and declined. `format!`/`to_string`, per-node `env` reads, and gated
+  counters all sweep clean. Re-run `guardsweep69.sh` after any new knob or
+  diagnostic lands — it is one command and it terminates.
 - **NEVER `pkill -f <pattern>`** (user instruction 2026-07-27, after it
   happened twice in one session). `pkill -f` matches every process's FULL
   command line — including the shell running the very command that typed the
