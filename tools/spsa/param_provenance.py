@@ -68,13 +68,34 @@ def sf_show(ref, path):
     return r.stdout if r.returncode == 0 else ""
 
 
+def tunables_regions(src):
+    """The text inside `tunables!` invocations ONLY.
+
+    D50 (2026-08-01) added a sibling `constants!` block with the same entry
+    spelling for constified handles that are OFF the SPSA surface; parsing the
+    whole file would silently count them as tunables and hide the constify.
+    """
+    regions = []
+    pos = 0
+    while True:
+        start = src.find("tunables! {", pos)
+        if start == -1:
+            break
+        end = src.find("\n}", start)
+        if end == -1:
+            break
+        regions.append(src[start:end])
+        pos = end + 1
+    return "\n".join(regions)
+
+
 def parse_tunables():
     """(name, type, raw-default, file) for every `tunables!` entry."""
     rows = []
     for f in PARAM_FILES:
         if not os.path.exists(f):
             continue
-        src = open(f).read()
+        src = tunables_regions(open(f).read())
         for name, ty, val in re.findall(
             r"^\s*pub ([A-Z_0-9]+)\s*:\s*(\w+)\s*=\s*([^;]+);", src, re.M
         ):

@@ -168,12 +168,7 @@
       "min": 23,
       "max": 110,
       "start": 47
-    },
-    {
-      "name": "CHECK_EXT_MIN_DEPTH",
-      "min": 3,
-      "max": 12,
-      "start": 6
     }
-  ]
+  ],
+  "_notes": "CHECK_EXT_MIN_DEPTH removed 2026-08-01: the knob no longer exists (stale entry; param_provenance exited 1 on it)."
 }

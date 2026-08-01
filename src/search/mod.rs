@@ -3064,8 +3064,11 @@ impl Worker {
                         );
                     }
                     self.stats.gate(Gate::Rfp);
-                    return (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval)
-                        / params::RFP_RET_DEN();
+                    // One degree of freedom (D50 blend fold): the eval weight
+                    // is the beta weight's complement to 1024.
+                    return (params::RFP_RET_BETA_W() * beta
+                        + (1024 - params::RFP_RET_BETA_W()) * eval)
+                        / 1024;
                 }
             }
 
@@ -5047,9 +5050,11 @@ impl Worker {
                 // non-decisive stand-pat cutoff partway back toward beta.
                 // Decisive scores are never blended (§8.11).
                 if !is_decisive(best_value) {
-                    best_value = (params::QS_STANDPAT_BEST_W() * best_value
+                    // One degree of freedom (D50 blend fold): the best-value
+                    // weight is the beta weight's complement to 1024.
+                    best_value = ((1024 - params::QS_STANDPAT_BETA_W()) * best_value
                         + params::QS_STANDPAT_BETA_W() * beta)
-                        / params::QS_STANDPAT_DEN();
+                        / 1024;
                 }
                 // A stand-pat fail high on a TT miss caches the raw eval
                 // as a Bound::Lower eval-only entry (§3.11).
@@ -5310,9 +5315,10 @@ impl Worker {
         // damping; the blended value is what gets stored below). Decisive
         // scores are never blended (§8.11).
         if !is_decisive(best_value) && best_value > beta {
-            best_value = (params::QS_FAILHIGH_BEST_W() * best_value
+            // One degree of freedom (D50 blend fold), as at the stand-pat site.
+            best_value = ((1024 - params::QS_FAILHIGH_BETA_W()) * best_value
                 + params::QS_FAILHIGH_BETA_W() * beta)
-                / params::QS_FAILHIGH_DEN();
+                / 1024;
         }
 
         // Step 12 — TT store at DEPTH_QS: LOWER on a fail high, else

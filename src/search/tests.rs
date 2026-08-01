@@ -432,17 +432,6 @@ fn rfp_prune_margin_folds_the_threat_relaxation_with_the_right_sign() {
     );
 }
 
-#[test]
-fn rfp_return_blend_weights_sum_to_the_denominator() {
-    // The return `(716·beta + 308·eval)/1024` is a weighted average, so
-    // its result lies between beta and eval — the weights must sum to
-    // the denominator or the blend would drift off the [beta, eval] band.
-    assert_eq!(
-        params::RFP_RET_BETA_W() + params::RFP_RET_EVAL_W(),
-        params::RFP_RET_DEN()
-    );
-}
-
 /// Drive `search` directly at a fixed ply on a fresh stack — the RFP
 /// analogue of [`qsearch_at`]. `nodes` is zeroed so a return with
 /// `w.nodes == 0` proves the node made no move (RFP short-circuited
@@ -488,7 +477,7 @@ fn rfp_fires_on_a_winning_nonpv_node_and_returns_the_blend() {
     let v = search_at::<NonPv>(&mut w, &tt, beta - 1, beta, depth, true, 1);
     assert_eq!(
         v,
-        (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval) / params::RFP_RET_DEN()
+        (params::RFP_RET_BETA_W() * beta + (1024 - params::RFP_RET_BETA_W()) * eval) / 1024
     );
     assert_eq!(w.nodes, 0, "RFP must return before making any move");
 }
@@ -508,7 +497,7 @@ fn rfp_never_fires_on_a_pv_node() {
     assert!(w.nodes > 0, "a PV node must not RFP-prune");
     assert_ne!(
         v,
-        (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval) / params::RFP_RET_DEN(),
+        (params::RFP_RET_BETA_W() * beta + (1024 - params::RFP_RET_BETA_W()) * eval) / 1024,
         "the PV node must not return the RFP blend"
     );
 }
@@ -1305,7 +1294,7 @@ fn nmp_prunes_a_winning_cut_node_via_the_null_search() {
     assert!(v >= beta, "the null search fails high");
     assert_ne!(
         v,
-        (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval) / params::RFP_RET_DEN(),
+        (params::RFP_RET_BETA_W() * beta + (1024 - params::RFP_RET_BETA_W()) * eval) / 1024,
         "the return is the null value, not the (vetoed) RFP blend"
     );
 }
@@ -1815,12 +1804,8 @@ fn qsearch_stand_pat_fail_high_blends_toward_beta() {
     let eval = static_eval(&w.board);
     let beta = eval - 100;
     let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
-    let (w_best, w_beta, den) = (
-        params::QS_STANDPAT_BEST_W(),
-        params::QS_STANDPAT_BETA_W(),
-        params::QS_STANDPAT_DEN(),
-    );
-    assert_eq!(v, (w_best * eval + w_beta * beta) / den);
+    let w_beta = params::QS_STANDPAT_BETA_W();
+    assert_eq!(v, ((1024 - w_beta) * eval + w_beta * beta) / 1024);
     assert_eq!(w.nodes, 0, "a stand-pat cutoff searches nothing");
     let cached = tt.probe(w.board.key());
     assert!(cached.hit);
@@ -1980,14 +1965,10 @@ fn qsearch_in_check_never_stands_pat() {
     let beta = 0;
     let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
     assert_eq!(w.nodes, 1, "in check the evasion must be searched");
-    let (w_best, w_beta, den) = (
-        params::QS_FAILHIGH_BEST_W(),
-        params::QS_FAILHIGH_BETA_W(),
-        params::QS_FAILHIGH_DEN(),
-    );
+    let w_beta = params::QS_FAILHIGH_BETA_W();
     assert_eq!(
         v,
-        (w_best * -corrected_eval(&after, Some(kh2)) + w_beta * beta) / den
+        ((1024 - w_beta) * -corrected_eval(&after, Some(kh2)) + w_beta * beta) / 1024
     );
     assert!(v >= beta, "still a fail high after the blend");
 }
@@ -2007,12 +1988,8 @@ fn qsearch_fail_high_softening_blends_toward_beta() {
     let beta = eval + 100;
     let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
     assert_eq!(w.nodes, 1);
-    let (w_best, w_beta, den) = (
-        params::QS_FAILHIGH_BEST_W(),
-        params::QS_FAILHIGH_BETA_W(),
-        params::QS_FAILHIGH_DEN(),
-    );
-    assert_eq!(v, (w_best * -static_eval(&after) + w_beta * beta) / den);
+    let w_beta = params::QS_FAILHIGH_BETA_W();
+    assert_eq!(v, ((1024 - w_beta) * -static_eval(&after) + w_beta * beta) / 1024);
 }
 
 #[test]

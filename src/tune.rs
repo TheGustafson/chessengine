@@ -111,3 +111,22 @@ macro_rules! tunables {
         Ok(())
     }};
 }
+
+/// Constified handles (D50, 2026-08-01): the same `NAME()` getter spelling as
+/// [`tunables!`], but the value is a compile-time constant in EVERY build — a
+/// `tune` build does not expose it, so it is off the SPSA surface entirely.
+///
+/// D50 reverses design/01 §3.8's default: **a constant becomes a tunable when
+/// a campaign wants it, not by default.** Promoting one back is a one-line
+/// move into the `tunables!` block (call sites are untouched either way).
+#[macro_export]
+macro_rules! constants {
+    ( $( $(#[$meta:meta])* pub $name:ident : $ty:tt = $default:expr; )* ) => {
+        $(
+            $(#[$meta])*
+            #[allow(non_snake_case)]
+            #[inline(always)]
+            pub fn $name() -> $ty { $default }
+        )*
+    };
+}
