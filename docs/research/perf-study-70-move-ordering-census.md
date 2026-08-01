@@ -303,6 +303,15 @@ before 2026-08-01 measured a PSQT engine unless the caller happened to append
 the option by hand. It now takes `NET=` (defaulting to
 `engines/canonical/net.cenn`) and prints it.
 
+**And the number that looks bad, stated plainly.** The wl50 d13 pin went
+1,739,588 → **1,979,892, i.e. +13.8 %**, and the depth-6 PSQT bench went
+587,683 → 401,733, i.e. −31.6 %. Neither is evidence of anything: §1.1's null
+panel moves the first by up to +18.3 % and the second is a 49-position
+depth-6 PSQT run. They are fingerprints. The measurement is §3.1's paired
+1000-position −1.31 %, and even that is inside its own ±1.4 % null — which is
+why the case rests on the census statistics and the games, and is stated that
+way rather than dressed up.
+
 **Gate:** `CHECK_NNUE_GATE=1 CHECK_TEST_THREADS=2 bash tools/check.sh` exits 0.
 Eval hash **`2e1ede95…79c4`, unchanged** — this is search, not eval. Both node
 pins move, as a functional change must: `Bench:` 587683 → **401733**, NNUE d13
