@@ -15351,3 +15351,29 @@ since stale text now carries 486897/1743308.
 
 Also told to delete its worktree `target/` on finish — that class of leftover had
 reached 37 GB tonight.
+
+**`gate68b` PASSED — my OWN gate on merged main `18d4dcaf`**, not the agent's:
+eval hash `2e1ede95…79c4`, d13 `1739588`, **`Bench: 587683`**, all checks passed.
+All three pins unmoved — the correct signature for a −29.9 instructions/node win
+on a node-identical tree.
+
+Worth noting why I re-checked: the agent reported "both gate runs completed
+successfully" while **my** unit was still at the bench fingerprint with no pins
+printed. Its statement was true of ITS runs. Inheriting it would have meant
+reporting a pass I had not seen — the same shape as the tunable agent's "gate
+passes", which was true on its own base and useless on mine.
+
+### ENGINE STATE — main `18d4dcaf`, verified
+
+| landed tonight | measured |
+|---|---|
+| study 65 narrow row (feature OFF) | bit-exact, loses; mechanism refuted by 66 |
+| study 66 compaction/locality | closed by construction; fold is MSHR-limited |
+| study 67 `qtrace` dead-work | **−2.33 % of search time** |
+| study 68 `SearchStats` + env probes | **−0.559 % instructions, −29.9/node** |
+| SF `ebcea3ef` tunables | **REVERTED, −29.49 ± 14.88 over 1500 games** |
+
+Both landed wins are the SAME defect class — work that ships and is discarded —
+and neither is visible in `Bench:` (both node-identical). The engine's headline
+fingerprint cannot see the only two speed wins of the night; the wall-clock and
+instruction panels are what found them.
