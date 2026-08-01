@@ -15,9 +15,11 @@ FENS=tools/nnue/calib/wl50.fens
 CPU=${P68_CPU:-2}
 printf '%-14s %14s  %s\n' label nodes 'eval sha256'
 for L in "$@"; do
-  # the per-position progress report goes to STDERR; only the summary is wanted
+  # `bench` writes its whole report -- per-position lines AND the summary -- to
+  # STDERR, so fold stderr into the pipe and pick the summary line by its
+  # two-space-before-colon spelling (the per-position lines have none).
   n=$(taskset -c "$CPU" "engines/bin/$L" bench 16 1 100000 "$FENS" nodes "$NET" \
-      2>/dev/null | awk '/Nodes searched  :/{print $NF}')
+      2>&1 | awk '/Nodes searched  :/{print $NF}')
   h=$("engines/bin/$L" nnue-eval "$NET" < "$FENS" | sha256sum | cut -d' ' -f1)
   printf '%-14s %14s  %s\n' "$L" "$n" "$h"
 done
