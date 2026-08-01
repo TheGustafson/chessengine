@@ -16531,3 +16531,28 @@ handover.
 near-continuous matcher, and the per-node microarch surface is closed (65–69).
 The next real lever — a trained small-net eval tier, break-even 28.2 % coverage
 from study 65 — needs the GPU, which the LR cycles now hold through ~sb1630.
+
+---
+
+## 2026-08-01 10:02 — cycle 1 at sb1568/1570; my WAITER misreported, the run is healthy
+
+**Cycle 1 at sb1568**, 186.9k pos/s, ~5 min from the sb1570 export that triggers
+the checkpoint save and the cycle-2 handover. `d49lrc`, `d49lrc1`, `d49xml` all
+active; memory 4989 MB.
+
+**A background waiter reported FAILED (exit 4) and it was a false alarm.** Its
+loop ended with `grep -qE 'cycle 1 (DIED|FAILED)'`, which returns non-zero when —
+correctly — it finds nothing, so the script's exit status was the *absence of a
+failure*. The clock proves it never waited: 34 s elapsed, not the 20 min the loop
+would have taken.
+
+**Checked the underlying state rather than trusting either signal:** cycle 1 is
+at sb1568, `sb1570-ema-raw.bin` does not exist yet, newest export is sb1560. All
+consistent, nothing wrong.
+
+**Worth recording because it is the mirror image of this session's other
+failure mode.** Three times tonight a job reported HEALTHY while dead (study 70's
+chain twice, my first orchestrator once). This is the opposite: a job reported
+FAILED while healthy. **Both come from reading a status instead of the thing the
+status is about** — and the fix is the same, look at the superbatch counter and
+the files on disk.
