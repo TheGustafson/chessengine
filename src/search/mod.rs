@@ -3501,6 +3501,15 @@ impl Worker {
         };
         #[cfg(not(feature = "sota"))]
         let picker_tt_move = tt_data.mv;
+        // Perf study 71's null for the deficit itself: order the node as if the
+        // TT had offered nothing, while every pruning/reduction/extension gate
+        // still reads `tt_data.mv`.
+        #[cfg(feature = "arm70")]
+        let picker_tt_move = if crate::arm70::arm().hide_tt {
+            Move::NULL
+        } else {
+            picker_tt_move
+        };
         #[cfg(feature = "foldcount")]
         if fresh_eval {
             crate::eval::nnue::foldcount::note_search(
@@ -3551,8 +3560,12 @@ impl Worker {
             (_, false, false) => crate::census70::KIND_NONPV,
             (_, false, true) => crate::census70::KIND_NONPV_CHK,
         };
+        // Study 71: "the node had a usable TT move", asked of the TT rather
+        // than of the picker's stage, so the `hidett` null still splits the
+        // census by the population it is nulling. Identical to the old
+        // `matches!(mp.stage_id(), 0 | 7)` whenever nothing hides the move.
         #[cfg(feature = "census70")]
-        let c70_had_tt = matches!(mp.stage_id(), 0 | 7);
+        let c70_had_tt = tt_data.mv != Move::NULL && self.board.pseudo_legal(tt_data.mv);
         #[cfg(feature = "census70")]
         crate::census70::node_entry(
             c70_kind,
@@ -3568,11 +3581,15 @@ impl Worker {
                     crate::census70::WHY_UNUSABLE
                 }
             },
-            i32::from(tt_data.depth),
+            tt_data.depth,
         );
         // Index of the move that is currently `best_move` (study 70 census).
         #[cfg(feature = "census70")]
         let mut c70_best_idx = 0i32;
+        // Study 71: capture-stage moves emitted so far, and the running rank
+        // of the current move among the quiets.
+        #[cfg(feature = "census70")]
+        let (mut c70_caps_before, mut c70_quiet_rank) = (0i32, 0i32);
 
         let mut best_value = -VALUE_INFINITE;
         let mut best_move = Move::NULL;
@@ -3635,6 +3652,17 @@ impl Worker {
                 continue;
             }
             let is_capture = self.board.capture_stage(m);
+            // Study 71's ordering diagnostic: the split of the move loop into
+            // its two stages, so a non-first cutoff can say WHICH of them put
+            // the cutting move late.
+            #[cfg(feature = "census70")]
+            {
+                if is_capture {
+                    c70_caps_before += 1;
+                } else {
+                    c70_quiet_rank += 1;
+                }
+            }
             // The mover, resolved ONCE for the whole iteration (perf study 23
             // arm 6). It used to be read from the mailbox three times — in the
             // capture arm's SEE gate, in the quiet arm's continuation-history
@@ -4523,6 +4551,8 @@ impl Worker {
                             move_count,
                             mp.stage_id(),
                             c70_had_tt,
+                            c70_caps_before,
+                            if is_capture { 0 } else { c70_quiet_rank },
                         );
                         // Perf study 34: the ordering-quality instrument — the
                         // index of the move that actually caused the cutoff.
@@ -4603,7 +4633,7 @@ impl Worker {
         }
         #[cfg(feature = "census70")]
         if best_value < beta {
-            crate::census70::allnode(c70_kind, depth, move_count, c70_best_idx);
+            crate::census70::allnode(c70_kind, depth, move_count, c70_best_idx, c70_had_tt);
         }
 
         // Step 14 — node result: ply-relative mate/stalemate terminals
@@ -5374,7 +5404,7 @@ impl Worker {
                     crate::census70::WHY_UNUSABLE
                 }
             },
-            i32::from(tt_data.depth),
+            tt_data.depth,
         );
         #[cfg(feature = "census70")]
         let mut c70_best_idx = 0i32;
@@ -5497,7 +5527,15 @@ impl Worker {
                     }
                     if value >= beta {
                         #[cfg(feature = "census70")]
-                        crate::census70::cutoff(c70_kind, 0, move_count, mp.stage_id(), c70_had_tt);
+                        crate::census70::cutoff(
+                            c70_kind,
+                            0,
+                            move_count,
+                            mp.stage_id(),
+                            c70_had_tt,
+                            0,
+                            0,
+                        );
                         break; // fail high
                     }
                     alpha = value;
@@ -5506,7 +5544,7 @@ impl Worker {
         }
         #[cfg(feature = "census70")]
         if best_value < beta {
-            crate::census70::allnode(c70_kind, 0, move_count, c70_best_idx);
+            crate::census70::allnode(c70_kind, 0, move_count, c70_best_idx, c70_had_tt);
         }
 
         // Step 10 — mate and the narrow stalemate test. Every evasion was

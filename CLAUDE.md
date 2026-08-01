@@ -181,12 +181,14 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   from `engines/canonical/` (see below) and pins two numbers, both reproduced
   by a from-source non-PGO build: the **eval hash**
   `2e1ede95…79c4` (sha256 of the forward-pass score for all 50
-  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1979892**
+  `tools/nnue/calib/wl50.fens`) and the **d13 node total 2045128**
   (`bench 16 1 13 <fens> depth <net>` — the net is the optional **6th arg**;
   omit it and you silently measure PSQT). The NODE pin was last moved on
-  2026-08-01 by **perf study 70's two move-ordering fixes** (1739588 →
-  1979892, and the depth-6 `Bench:` pin 587683 → 401733) — a functional search
-  change, so the eval hash deliberately did NOT move. Before that, both were
+  2026-08-01 by **perf study 71's quiet SEE ordering penalty** (1979892 →
+  2045128, and the depth-6 `Bench:` pin 401733 → 300694) — a functional search
+  change, so the eval hash deliberately did NOT move. Before that, on the same
+  day, **perf study 70's two move-ordering fixes** (1739588 → 1979892, `Bench:`
+  587683 → 401733). Before those, both were
   re-pinned on 2026-07-30 by the **`network_scale` 600 canonical promotion** (`859a442`,
   +14.78 ± 5.45 over 5880 games) — a four-byte header change with the payload
   byte-identical from offset 64, so the existing binary loads it with no
@@ -597,7 +599,7 @@ Concurrently: **stage-A SPSA** (12 params, V net + PGO tune binary,
 fn20k, 8 games × 2400 iters, exchange on DISK not tmpfs) — measured
 zero training interference.
 Engine: S0 search program COMPLETE (all six audit items; **depth-6
-bench pin now 401733**; tripwires clean); **PGO is THE
+bench pin now 300694**; tripwires clean); **PGO is THE
 standard build** (tools/build_pgo.sh WITH eval-file; pairs both-PGO;
 Bench: trailer stays portable-default); freebies landed (+~6% both
 arches); distributed-SPSA kit built+parked (D36 amended — no

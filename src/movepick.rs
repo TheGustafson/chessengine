@@ -42,7 +42,7 @@ use crate::moves::{MAX_MOVES, Move, MoveList};
 use crate::search::params::{
     CAPTURE_MVV_FACTOR, EVASION_CAPTURE_BONUS, GOOD_CAPTURE_SEE_DIVISOR, GOOD_QUIET_THRESHOLD,
     QS_CAPTURE_DEFENDED_NUM, QUIET_CHECK_BONUS, QUIET_CHECK_SEE_MARGIN, QUIET_LOW_PLY_WEIGHT,
-    QUIET_MAIN_HISTORY_WEIGHT, QUIET_OFFENSE_FACTOR, QUIET_PAWN_HISTORY_WEIGHT,
+    QUIET_MAIN_HISTORY_WEIGHT, QUIET_OFFENSE_FACTOR, QUIET_PAWN_HISTORY_WEIGHT, QUIET_SEE_PENALTY,
     QUIET_SORT_DEPTH_FACTOR, QUIET_THREAT_FACTOR,
 };
 use crate::types::{DEPTH_QS, Depth, PieceType, VALUE_ZERO, Value};
@@ -304,6 +304,9 @@ struct PtRow {
     threat_w: i32,
     /// `pt.value() * QUIET_OFFENSE_FACTOR()`, premultiplied.
     offense_w: i32,
+    /// Study 71 `qeq` arm only: squares attacked by an EQUAL-or-lesser piece.
+    #[cfg(feature = "arm70")]
+    eq: Bitboard,
 }
 
 /// The P-ORD quiet prior's per-move bonus, kept OUT of `init_quiets`' scoring
@@ -1152,6 +1155,17 @@ impl MovePicker {
         let by_minor =
             by_pawn | by_type[PieceType::Knight as usize] | by_type[PieceType::Bishop as usize];
         let by_rook = by_minor | by_type[PieceType::Rook as usize];
+        // Study 71's `qeq` arm: the EQUAL-or-lesser tiers, built from the same
+        // cumulative unions. Only constructed for the arm bench.
+        #[cfg(feature = "arm70")]
+        let threat_eq: [Bitboard; 6] = [
+            by_pawn,
+            by_minor,
+            by_minor,
+            by_rook,
+            by_rook | by_type[PieceType::Queen as usize],
+            all_threats,
+        ];
         let threat: [Bitboard; 6] = [
             Bitboard::EMPTY, // Pawn: no cheaper attacker
             by_pawn,         // Knight
@@ -1279,6 +1293,7 @@ impl MovePicker {
                 check: check_squares[i],
                 threat_w: PieceType::ALL[i].value() * QUIET_THREAT_FACTOR() * a.threat_w / 16,
                 offense_w: PieceType::ALL[i].value() * QUIET_OFFENSE_FACTOR() * a.offense_w / 16,
+                eq: threat_eq[i],
             }
         };
         let rows: [PtRow; 6] = [
@@ -1393,6 +1408,92 @@ impl MovePicker {
 
                 if let Some(lp) = low_ply_plane {
                     value += QUIET_LOW_PLY_WEIGHT() * lp[raw].get() / (1 + ply as i32);
+                }
+
+                // Perf study 71 — the quiet SEE penalty. Two guards, both of
+                // them free: `all_threats` is the enemy attack map
+                // `init_quiets` already built for the threat tiers, and a quiet
+                // landing on a square no enemy attacks passes `see_ge(m, 0)`
+                // trivially; and a quiet already below `GOOD_QUIET_THRESHOLD`
+                // is emitted after the bad captures whatever else happens to
+                // it. Together they leave 0.155 `see_ge` calls per scored
+                // quiet.
+                //
+                // Placed LAST on purpose — after the threat and offense terms,
+                // so the second guard reads the finished score. That is not
+                // just cheaper, it is the non-redundant order: the threat tier
+                // has already sunk "queen onto a square a rook attacks" below
+                // the threshold, and this term should be paying for the cases
+                // the tier is BLIND to (equal-valued attackers; a pawn, whose
+                // tier is literally `Bitboard::EMPTY`).
+                #[cfg(not(feature = "arm70"))]
+                if QUIET_SEE_PENALTY() != 0
+                    && value > GOOD_QUIET_THRESHOLD()
+                    && all_threats.contains(m.to())
+                    && !board.see_ge(m, 0)
+                {
+                    // CLAMPED at the threshold: the term REORDERS inside the
+                    // good pile and can never push a quiet into the bad one,
+                    // where it would be emitted after the bad captures and
+                    // become a candidate for late-move pruning. That is not a
+                    // detail — see the constant's doc comment: the unclamped
+                    // form's node win is pile-crossing, and it LOST games.
+                    value = (value - QUIET_SEE_PENALTY()).max(GOOD_QUIET_THRESHOLD() + 1);
+                }
+                #[cfg(feature = "arm70")]
+                {
+                    let a = crate::arm70::arm();
+                    let qsee = if a.qsee < 0 {
+                        QUIET_SEE_PENALTY()
+                    } else {
+                        a.qsee
+                    };
+                    // The shipped form has both guards on; `qseegq=0` is how
+                    // the screen turns the second one back off.
+                    let gq = a.qsee_gq || a.qsee < 0;
+                    let clamp = a.qsee_clamp || a.qsee < 0;
+                    let pt_ok = match a.qsee_pt {
+                        1 => pci % PieceType::COUNT == PieceType::Pawn as usize,
+                        2 => pci % PieceType::COUNT != PieceType::Pawn as usize,
+                        _ => true,
+                    };
+                    if (qsee != 0 || a.qsee_pv != 0)
+                        && pt_ok
+                        && self.depth >= a.qsee_depth
+                        && (!a.qsee_guard || all_threats.contains(m.to()))
+                        && (!gq || value > GOOD_QUIET_THRESHOLD())
+                        && {
+                            #[cfg(feature = "census70")]
+                            crate::census70::note_see_call();
+                            !board.see_ge(m, a.qsee_thr)
+                        }
+                    {
+                        // `pci = color * 6 + piece_type` (`Piece::index`).
+                        let pen =
+                            qsee + a.qsee_pv * PieceType::ALL[pci % PieceType::COUNT].value() / 16;
+                        value = if clamp && value > GOOD_QUIET_THRESHOLD() {
+                            (value - pen).max(GOOD_QUIET_THRESHOLD() + 1)
+                        } else {
+                            value - pen
+                        };
+                    }
+                    if a.qeq != 0 && row.eq.contains(m.to()) {
+                        value -= a.qeq;
+                    }
+                    if a.qsee_rand != 0 {
+                        let mut h = (m.raw16() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+                            ^ (pci as u64).wrapping_mul(0xD1B5_4A32_D192_ED03);
+                        h ^= h >> 31;
+                        h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+                        h ^= h >> 32;
+                        if (h % 1024) < a.qsee_rate as u64 {
+                            value -= a.qsee_rand;
+                        }
+                    }
+                    #[cfg(feature = "census70")]
+                    crate::census70::note_quiet(
+                        (!a.qsee_guard || all_threats.contains(m.to())) && !board.see_ge(m, 0),
+                    );
                 }
 
                 #[cfg(feature = "policy")]
@@ -2365,6 +2466,71 @@ mod tests {
             .value
     }
 
+    /// Perf study 71 — `QUIET_SEE_PENALTY`, both guards and the ordering that
+    /// makes the second one non-redundant.
+    #[test]
+    fn quiet_see_penalty_fires_only_on_a_losing_quiet_the_threat_tier_misses() {
+        const BASE: i32 = 2 * -5 + 2 * -1262 + 5 * -552; // −5294, as above
+        let fresh = Histories::new();
+
+        // (a) The case the shipped threat tier is BLIND to: rook to a square an
+        //     enemy ROOK attacks. `threat[Rook]` is "attacked by a pawn, knight
+        //     or bishop", so an equal-valued attacker scores nothing, and the
+        //     destination is undefended — SEE alone catches it.
+        let b = board("3r3k/8/8/8/8/8/8/K3R3 w - - 0 1");
+        let rd1 = Move::normal(Square::E1, Square::D1);
+        assert!(
+            b.all_threats().contains(Square::D1),
+            "the black rook must attack d1 or the cheap guard skips the test"
+        );
+        // The offense term also fires here (the rook on d1 attacks the
+        // undefended enemy rook on d8), so the unclamped score would be
+        // `BASE + offense - QUIET_SEE_PENALTY()` = -41686 — well past the
+        // threshold, so the CLAMP catches it and the move stays the worst
+        // GOOD quiet instead of becoming a bad one. That clamp is the whole
+        // difference between an ordering change and a pruning change.
+        assert!(
+            BASE + PieceType::Rook.value() * QUIET_OFFENSE_FACTOR() - QUIET_SEE_PENALTY()
+                < GOOD_QUIET_THRESHOLD(),
+            "this case must be one the clamp actually binds on"
+        );
+        assert_eq!(
+            quiet_score(&b, &fresh, rd1, 7),
+            GOOD_QUIET_THRESHOLD() + 1,
+            "an equal-attacker hang is invisible to the threat tier, must be caught \
+             by SEE, and must be clamped to the bottom of the GOOD pile"
+        );
+
+        // (b) The same shape with the destination DEFENDED: Rxd1 Kxd1 is an
+        //     even trade, `see_ge(m, 0)` holds, and nothing is subtracted.
+        let b = board("3r3k/8/8/8/8/8/2K5/4R3 w - - 0 1");
+        assert_eq!(
+            quiet_score(&b, &fresh, rd1, 7),
+            BASE + PieceType::Rook.value() * QUIET_OFFENSE_FACTOR()
+        );
+
+        // (c) The cheap guard: a destination no enemy attacks never pays for a
+        //     `see_ge` and never loses a point.
+        let b = board(crate::fen::START_FEN);
+        assert_eq!(
+            quiet_score(&b, &fresh, Move::normal(Square::A2, Square::A3), 7),
+            BASE
+        );
+
+        // (d) NON-REDUNDANCY with the threat tier. A queen stepping onto a
+        //     rook-attacked square is already sunk below GOOD_QUIET_THRESHOLD
+        //     by the tier, so the second guard declines to pay for SEE at all
+        //     and the score is the tier's alone — see the (d) case of
+        //     `quiet_scoring_matches_hand_computed_values`, which pins exactly
+        //     that value.
+        let b = board("3rk3/8/8/8/8/8/8/Q3K3 w - - 0 1");
+        let qd1 = Move::normal(Square::A1, Square::D1);
+        assert_eq!(
+            quiet_score(&b, &fresh, qd1, 7),
+            BASE - PieceType::Queen.value() * QUIET_THREAT_FACTOR()
+        );
+    }
+
     #[test]
     fn quiet_scoring_matches_hand_computed_values() {
         // Fresh-history base: 2·main(−5) + 2·pawn(−1262) + 5·cont(−552).
@@ -2484,8 +2650,12 @@ mod tests {
         );
 
         // SLIDER, clear ray. Re1–d1 attacks the undefended queen on d8 down an
-        // empty d-file.
-        let open = board("3q3k/8/8/8/8/8/8/K3R3 w - - 0 1");
+        // empty d-file. The white king sits on c2 rather than a1 so that d1 is
+        // DEFENDED: without that, `QUIET_SEE_PENALTY` fires (the queen takes
+        // the rook for nothing) and buries the offense bonus this case exists
+        // to pin. Black's attack map — the only thing the offense term reads —
+        // is unaffected by where the white king stands.
+        let open = board("3q3k/8/8/8/8/8/2K5/4R3 w - - 0 1");
         assert!(!open.all_threats().contains(Square::D8));
         assert_eq!(
             quiet_score(&open, &fresh, Move::normal(Square::E1, Square::D1), 7),

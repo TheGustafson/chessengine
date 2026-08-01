@@ -78,6 +78,9 @@ macro_rules! zeros {
     ($n:expr, $m:expr, $k:expr) => {
         [const { zeros!($m, $k) }; $n]
     };
+    ($n:expr, $m:expr, $k:expr, $j:expr) => {
+        [const { zeros!($m, $k, $j) }; $n]
+    };
 }
 
 /// Beta cutoffs by \[kind\]\[depth\]\[cutoff move index\].
@@ -130,6 +133,36 @@ pub static TT_MOVELESS_SRC: [[AtomicU64; MSRCS]; KINDS] = zeros!(KINDS, MSRCS);
 pub static CUT_TT: [[AtomicU64; 2]; KINDS] = zeros!(KINDS, 2);
 pub static CUT1_TT: [[AtomicU64; 2]; KINDS] = zeros!(KINDS, 2);
 
+/// **Study 71**: the same cutoff population as [`CUT_SRC`] and [`CUT_IDX`],
+/// but split by whether the node had a usable TT move. The aggregate hides
+/// the only question that matters once a store-policy fix is ruled out —
+/// *which stage of the static ordering emits the cutting move when the TT
+/// cannot, and how far down the list is it?* A TT-less node that cuts on
+/// move 2 from `GoodQuiet` wants a different repair from one that cuts on
+/// move 9 from `BadCapture`.
+pub static CUT_SRC_TT: [[[AtomicU64; SRCS]; 2]; KINDS] = zeros!(KINDS, 2, SRCS);
+/// The same, additionally split by how far down the list the cutting move sat
+/// (bucket 0 = move 1, 1 = move 2, 2 = move 3, 3 = move 4 or later). This is
+/// the table that separates "we ordered the captures wrong" from "we searched
+/// a capture where the quiet was right": if the move-1 cutoffs are captures
+/// and the move-2 cutoffs are quiets, the two STAGES are interleaved wrongly;
+/// if both are the same stage, the error is inside that stage's scoring.
+pub const NIDX: usize = 4;
+pub static CUT_SRC_IDX_TT: [[[[AtomicU64; SRCS]; NIDX]; 2]; KINDS] = zeros!(KINDS, 2, NIDX, SRCS);
+pub static CUT_IDX_TT: [[[AtomicU64; IDXS]; 2]; KINDS] = zeros!(KINDS, 2, IDXS);
+/// **Study 71**: for a cutoff emitted by a QUIET stage, how many
+/// capture-stage moves the loop had already emitted (`capsbefore`) and the
+/// cutting quiet's rank among the quiets (`qrank`). Together they split a
+/// non-first quiet cutoff into its two possible causes: the quiet was ranked
+/// first among quiets and merely sat behind captures (`qrank == 1`,
+/// `capsbefore > 0` — the two STAGES are interleaved wrongly), or the quiet
+/// scoring itself put the wrong quiet in front (`qrank > 1`).
+pub static CUT_CAPS_BEFORE_TT: [[[AtomicU64; IDXS]; 2]; KINDS] = zeros!(KINDS, 2, IDXS);
+pub static CUT_QRANK_TT: [[[AtomicU64; IDXS]; 2]; KINDS] = zeros!(KINDS, 2, IDXS);
+/// At TT-less ALL-nodes, where the eventual best move sat — the ordering
+/// error the cutoff histogram cannot see (an all-node has no cutoff).
+pub static ALL_BEST_IDX_TT: [[[AtomicU64; IDXS]; 2]; KINDS] = zeros!(KINDS, 2, IDXS);
+
 /// **The cost of mis-ordering.** An LMR scout that beats alpha is the search
 /// saying "I reduced a move I should not have"; the full-depth re-search that
 /// follows is a whole extra subtree bought by putting that move late. Counted
@@ -172,23 +205,41 @@ fn ibucket(idx: i32) -> usize {
 /// A beta cutoff: `kind` node, `depth` plies left, on the `move_count`-th
 /// searched move, emitted by `MovePicker` stage `src`.
 #[inline]
-pub fn cutoff(kind: usize, depth: i32, move_count: i32, src: u8, had_tt: bool) {
+pub fn cutoff(
+    kind: usize,
+    depth: i32,
+    move_count: i32,
+    src: u8,
+    had_tt: bool,
+    caps_before: i32,
+    quiet_rank: i32,
+) {
     CUT_IDX[kind][dbucket(depth)][ibucket(move_count)].fetch_add(1, Relaxed);
     CUT_SRC[kind][(src as usize).min(SRCS - 1)].fetch_add(1, Relaxed);
     let t = usize::from(had_tt);
     CUT_TT[kind][t].fetch_add(1, Relaxed);
+    let sc = (src as usize).min(SRCS - 1);
+    CUT_SRC_TT[kind][t][sc].fetch_add(1, Relaxed);
+    CUT_SRC_IDX_TT[kind][t][((move_count.max(1) - 1) as usize).min(NIDX - 1)][sc]
+        .fetch_add(1, Relaxed);
+    CUT_IDX_TT[kind][t][ibucket(move_count)].fetch_add(1, Relaxed);
     if move_count == 1 {
         CUT1_TT[kind][t].fetch_add(1, Relaxed);
+    }
+    if quiet_rank > 0 {
+        CUT_CAPS_BEFORE_TT[kind][t][ibucket(caps_before)].fetch_add(1, Relaxed);
+        CUT_QRANK_TT[kind][t][ibucket(quiet_rank)].fetch_add(1, Relaxed);
     }
 }
 
 /// A node whose move loop ended without a cutoff.
 #[inline]
-pub fn allnode(kind: usize, depth: i32, moves_searched: i32, best_idx: i32) {
+pub fn allnode(kind: usize, depth: i32, moves_searched: i32, best_idx: i32, had_tt: bool) {
     let d = dbucket(depth);
     ALL_N[kind][d].fetch_add(1, Relaxed);
     ALL_MOVES[kind][d].fetch_add(moves_searched.max(0) as u64, Relaxed);
     ALL_BEST_IDX[kind][ibucket(best_idx)].fetch_add(1, Relaxed);
+    ALL_BEST_IDX_TT[kind][usize::from(had_tt)][ibucket(best_idx)].fetch_add(1, Relaxed);
 }
 
 /// Node entry, and whether the picker got a usable TT move. When it did not,
@@ -209,6 +260,28 @@ pub fn node_entry(kind: usize, depth: i32, has_tt_move: bool, why: usize, stored
             };
             TT_MOVELESS_SRC[kind][b].fetch_add(1, Relaxed);
         }
+    }
+}
+
+/// Study 71: quiets scored, and how many of them fail `see_ge(m, 0)` — the
+/// denominator the `qsee` arm's size-matched random control has to match.
+pub static QUIETS_SCORED: AtomicU64 = AtomicU64::new(0);
+pub static QUIETS_SEE_LOSS: AtomicU64 = AtomicU64::new(0);
+
+pub static QUIET_SEE_CALLS: AtomicU64 = AtomicU64::new(0);
+
+/// One `see_ge` actually paid for by the quiet scorer — the cost side of the
+/// term, and what the guard arms exist to reduce.
+#[inline]
+pub fn note_see_call() {
+    QUIET_SEE_CALLS.fetch_add(1, Relaxed);
+}
+
+#[inline]
+pub fn note_quiet(see_loss: bool) {
+    QUIETS_SCORED.fetch_add(1, Relaxed);
+    if see_loss {
+        QUIETS_SEE_LOSS.fetch_add(1, Relaxed);
     }
 }
 
@@ -350,6 +423,63 @@ pub fn report(nodes: u64) {
         if b.iter().sum::<u64>() > 0 {
             eprintln!("C70 bestidx kind={kname} hist={}", csv(&b));
         }
+        for (t, tname) in ["no", "yes"].into_iter().enumerate() {
+            let sp = row(&CUT_SRC_TT[k][t]);
+            let spt: u64 = sp.iter().sum();
+            if spt > 0 {
+                let named: Vec<String> = sp
+                    .iter()
+                    .enumerate()
+                    .filter(|&(_, &c)| c != 0)
+                    .map(|(i, &c)| {
+                        format!(
+                            "{}={c}({:.2}%)",
+                            SRC_NAMES[i],
+                            100.0 * c as f64 / spt as f64
+                        )
+                    })
+                    .collect();
+                eprintln!(
+                    "C70 srctt kind={kname} tt={tname} n={spt} {}",
+                    named.join(" ")
+                );
+                eprintln!(
+                    "C70 idxtt kind={kname} tt={tname} hist={}",
+                    csv(&row(&CUT_IDX_TT[k][t]))
+                );
+                for (b, blabel) in ["1", "2", "3", "4+"].into_iter().enumerate() {
+                    let bs = row(&CUT_SRC_IDX_TT[k][t][b]);
+                    let bt: u64 = bs.iter().sum();
+                    if bt == 0 {
+                        continue;
+                    }
+                    let named: Vec<String> = bs
+                        .iter()
+                        .enumerate()
+                        .filter(|&(_, &c)| c != 0)
+                        .map(|(i, &c)| {
+                            format!("{}={c}({:.1}%)", SRC_NAMES[i], 100.0 * c as f64 / bt as f64)
+                        })
+                        .collect();
+                    eprintln!(
+                        "C70 srcidx kind={kname} tt={tname} idx={blabel} n={bt} {}",
+                        named.join(" ")
+                    );
+                }
+            }
+            let cb = row(&CUT_CAPS_BEFORE_TT[k][t]);
+            if cb.iter().sum::<u64>() > 0 {
+                eprintln!("C70 capsbefore kind={kname} tt={tname} hist={}", csv(&cb));
+                eprintln!(
+                    "C70 qrank kind={kname} tt={tname} hist={}",
+                    csv(&row(&CUT_QRANK_TT[k][t]))
+                );
+            }
+            let ab = row(&ALL_BEST_IDX_TT[k][t]);
+            if ab.iter().sum::<u64>() > 0 {
+                eprintln!("C70 allbesttt kind={kname} tt={tname} hist={}", csv(&ab));
+            }
+        }
         let lt = row(&LMR_TRY[k]);
         let lr = row(&LMR_RESEARCH[k]);
         let ltn: u64 = lt.iter().sum();
@@ -370,6 +500,16 @@ pub fn report(nodes: u64) {
         if zw > 0 || pv > 0 {
             eprintln!("C70 phase kind={kname} zw_nodes={zw} pv_research_nodes={pv}");
         }
+    }
+    let qs = QUIETS_SCORED.load(Relaxed);
+    if qs > 0 {
+        let ql = QUIETS_SEE_LOSS.load(Relaxed);
+        eprintln!(
+            "C70 quietsee scored={qs} see_loss={ql} rate={:.4} see_calls={} call_rate={:.4}",
+            ql as f64 / qs as f64,
+            QUIET_SEE_CALLS.load(Relaxed),
+            QUIET_SEE_CALLS.load(Relaxed) as f64 / qs as f64
+        );
     }
     let st = SING_TRY.load(Relaxed);
     if st > 0 {

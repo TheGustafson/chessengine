@@ -100,6 +100,83 @@ pub struct Arm {
     /// control, and the ORDERING effect of the store is
     /// `(flmove=1,ttup=1) - (ttup=1)`.
     pub tt_up_blind: i32,
+    /// **The deficit's own null (perf study 71).** Hide the TT move from the
+    /// MOVE PICKER only — every pruning, reduction and extension gate still
+    /// reads `tt_data.mv`, so the tree's shape changes for exactly one reason:
+    /// the ordering lost its best hint.
+    ///
+    /// Study 70 priced the TT-less deficit as the 14.9 pp gap between
+    /// `fhf(has TT move)` and `fhf(no TT move)` and called it the largest
+    /// recoverable block in the engine. That subtraction assumes the two
+    /// populations are otherwise comparable. They are not obviously so: a node
+    /// WITH a TT move is one the search has visited before, and re-visited
+    /// nodes may simply be easier. This arm separates the two — it measures
+    /// what the SAME nodes do without the hint.
+    pub hide_tt: bool,
+    /// **A real SEE term on quiet ordering (perf study 71).** Subtract `qsee`
+    /// from a quiet's ordering score when `see_ge(m, 0)` fails. Stockfish's
+    /// `score<QUIETS>` has no SEE term at all — the nearest thing is the
+    /// threat tier `PieceValue[pt] * 20 * (attacked-by-LESSER at from minus at
+    /// to)`, which is blind to an EQUAL-valued attacker and to whether the
+    /// destination is defended at all. Study 71's census says 28.5 % of the
+    /// TT-less quiet cutoffs are cases where the top-scored quiet was the
+    /// wrong one, and a quiet that simply hangs material can never be the move
+    /// that causes a beta cutoff.
+    ///
+    /// `-1` keeps the shipped [`QUIET_SEE_PENALTY`]; `0` turns the term OFF,
+    /// which is how the landed change is A/B'd against its own predecessor
+    /// inside one binary.
+    ///
+    /// [`QUIET_SEE_PENALTY`]: crate::search::params::QUIET_SEE_PENALTY
+    pub qsee: i32,
+    /// Turn OFF the shipped guard ("the destination is in the enemy attack
+    /// map"), which is not EXACT — a discovered attacker through the vacated
+    /// from-square can attack the destination only after the move — so the
+    /// screen can price what that inexactness costs.
+    pub qsee_guard: bool,
+    /// **The size-matched null for `qsee`.** Demote a deterministic
+    /// pseudo-random `qsee_rate/1024` share of quiets by the same amount. A
+    /// quiet pushed below `GOOD_QUIET_THRESHOLD` is emitted after the bad
+    /// captures and is far likelier to be cut off by late-move pruning, so a
+    /// big demotion raises `fhf` for a PRUNING reason whatever it is applied
+    /// to. Matching the share and the magnitude and keeping only the predicate
+    /// is what separates the SEE signal from that.
+    pub qsee_rand: i32,
+    pub qsee_rate: i32,
+    /// Value-scaled variant: penalty = `qsee_pv * PieceValue[mover] / 16`,
+    /// the shape the neighbouring threat term already uses.
+    pub qsee_pv: i32,
+    /// SEE threshold: the test is `see_ge(m, qsee_thr)`. 0 = "does not lose
+    /// material".
+    pub qsee_thr: i32,
+    /// **The free approximation to `qsee`.** Penalise a quiet whose
+    /// destination is attacked by a piece of EQUAL-or-lesser value, using the
+    /// cumulative threat tiers `init_quiets` already builds. The shipped
+    /// threat term only knows STRICTLY lesser attackers, so "rook to a square
+    /// a rook attacks" is currently invisible to it. Costs two bitboard tests
+    /// and no `see_ge`; blind to whether the destination is defended, which is
+    /// exactly what the SEE arm buys.
+    pub qeq: i32,
+    /// Additionally require the quiet to be ABOVE `GOOD_QUIET_THRESHOLD`
+    /// before paying for `see_ge`. A quiet already in the bad pile is emitted
+    /// after the bad captures whatever else happens to it, so demoting it
+    /// further reorders only the tail — and skipping those saves the
+    /// majority of the SEE calls.
+    pub qsee_gq: bool,
+    /// Only score-penalise quiets whose mover is a pawn (`1`) or is NOT a pawn
+    /// (`2`). Splits the term's value by mover, because the shipped threat
+    /// tier is literally `Bitboard::EMPTY` for a pawn.
+    pub qsee_pt: i32,
+    /// Apply the term only at `depth >= qsee_depth`.
+    pub qsee_depth: i32,
+    /// **Clamp the demotion at `GOOD_QUIET_THRESHOLD + 1`.** Without it the
+    /// penalty does two things at once: it reorders the quiet, and — when it
+    /// crosses the threshold — it moves the quiet into the BAD pile, emitted
+    /// after the bad captures and far likelier to be dropped outright by
+    /// late-move pruning. With the clamp the term is pure REORDERING inside
+    /// the good pile and cannot prune anything, which is the only form whose
+    /// `fhf` gain has no pruning component left in it at all.
+    pub qsee_clamp: bool,
     /// Study 71: the same store in QUIESCENCE — a qsearch fail-low knows
     /// which capture scored highest and throws it away too (21.9 % of the
     /// NonPV moveless population, 54.6 % of the qsearch one).
@@ -135,6 +212,18 @@ pub const SHIPPED: Arm = Arm {
     fl_move: -1,
     qfl_move: -1,
     tt_up_blind: -1,
+    hide_tt: false,
+    qsee: -1,
+    qsee_guard: true,
+    qsee_rand: 0,
+    qsee_rate: 0,
+    qsee_pv: 0,
+    qsee_thr: 0,
+    qeq: 0,
+    qsee_gq: false,
+    qsee_pt: 0,
+    qsee_depth: 0,
+    qsee_clamp: false,
 };
 
 fn parse(spec: &str) -> Arm {
@@ -168,6 +257,18 @@ fn parse(spec: &str) -> Arm {
             "flmove" => a.fl_move = n,
             "qflmove" => a.qfl_move = n,
             "ttup" => a.tt_up_blind = n,
+            "hidett" => a.hide_tt = n != 0,
+            "qsee" => a.qsee = n,
+            "qseeg" => a.qsee_guard = n != 0,
+            "qseerand" => a.qsee_rand = n,
+            "qseerate" => a.qsee_rate = n,
+            "qseepv" => a.qsee_pv = n,
+            "qseethr" => a.qsee_thr = n,
+            "qeq" => a.qeq = n,
+            "qseegq" => a.qsee_gq = n != 0,
+            "qseept" => a.qsee_pt = n,
+            "qseedepth" => a.qsee_depth = n,
+            "qseeclamp" => a.qsee_clamp = n != 0,
             other => panic!("arm70: unknown knob {other:?}"),
         }
     }

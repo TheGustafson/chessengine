@@ -205,6 +205,66 @@ crate::tunables! {
     /// ordering signal and leaves them in the window.
     pub QS_CAPTURE_DEFENDED_NUM: Value = 56;
 
+    /// **Quiet SEE penalty (perf study 71).** Subtract this from a quiet's
+    /// ordering score when the move loses material by static exchange
+    /// evaluation (`!see_ge(m, 0)`), guarded on "the destination is in the
+    /// enemy attack map" — a quiet landing on a square no enemy attacks passes
+    /// `see_ge(m, 0)` trivially, so the guard skips most of the calls and
+    /// changes almost nothing (measured: `fhf` +0.47 guarded vs +0.45
+    /// unguarded at 65536).
+    ///
+    /// **What it adds that was not already there.** Stockfish's `score<QUIETS>`
+    /// (and ours, which is its exact transcription plus the D30 offense term)
+    /// has NO SEE term. Its nearest relative is the threat tier
+    /// `PieceValue[pt] * QUIET_THREAT_FACTOR * (attacked-at-from minus
+    /// attacked-at-to)`, and that tier knows only STRICTLY cheaper attackers —
+    /// so "rook to a square a rook attacks" is invisible to it, and for a PAWN
+    /// the tier is literally `Bitboard::EMPTY`. It is also blind to whether
+    /// the destination is defended.
+    ///
+    /// **Both halves of that matter, measured separately.** A free
+    /// approximation that only widens the tier to EQUAL-or-cheaper attackers
+    /// (`qeq`, no `see_ge` at all) reads +0.19 pp of NonPV `fhf` at its best
+    /// and turns NEGATIVE (−0.59) at this constant's magnitude: without
+    /// knowing that the destination is defended, "attacked by an equal piece"
+    /// is a bad predicate. The SEE call is what earns the term.
+    ///
+    /// **The second guard is `value > GOOD_QUIET_THRESHOLD`**, and it makes
+    /// the term both cheaper and better: a quiet already in the bad pile is
+    /// emitted after the bad captures whatever else happens to it, so paying
+    /// for its `see_ge` buys nothing. It removes **56 % of the SEE calls**
+    /// (0.354 -> 0.158 per scored quiet) and moves `fhf` from +0.43 to +0.48.
+    ///
+    /// **The demotion is CLAMPED at `GOOD_QUIET_THRESHOLD + 1`, and that is a
+    /// games-driven decision, not a stylistic one.** Unclamped, a big enough
+    /// penalty pushes the quiet into the BAD pile, where it is emitted after
+    /// the bad captures and becomes a late-move-pruning candidate — so the
+    /// term stops being ordering and starts being pruning. That version looks
+    /// better on every proxy (uho300 @ d11 nodes −6.34 %, total instructions
+    /// −3.13 %) and **lost games: −5.35 ± 9.26 Elo over 1,948 fixed-node
+    /// games**, the second instance in two studies of study 70's "ordering
+    /// quality is a proxy and it Goodharts". The mechanism is named: the
+    /// search ALREADY prunes losing quiets by SEE in the move loop, at
+    /// `-QSEE_MULT * lmr_depth²` — depth-scaled and permissive — and the
+    /// unclamped ordering demotion is a second, harsher, depth-blind copy of
+    /// the same rule. Clamped, the term cannot prune anything and keeps the
+    /// LARGER `fhf` gain (+0.50 pp overall, **+0.89 pp at TT-less nodes**).
+    ///
+    /// **The constant is not resolved inside 24576..98304 and is left to
+    /// SPSA.** Every point in that band reads +0.43..+0.56 pp of `fhf`
+    /// (14-18x its null); the ranking flips depending on which position set
+    /// and which statistic is read, which is the node metric's chaos and not
+    /// a curve.
+    ///
+    /// Ordering only: nothing downstream reads the picker's quiet score except
+    /// the emission order and the `GOOD_QUIET_THRESHOLD` split (`stat_score`,
+    /// which feeds LMR, is computed from the history tables directly), and the
+    /// clamp keeps the split itself fixed. The size- and magnitude-matched
+    /// RANDOM control — demote a pseudo-random 23 % of quiets, the same share
+    /// this predicate selects, by the same amount — reads **−1.17 pp of `fhf`
+    /// and +17.2 % nodes**, so the gain is the predicate and not the demotion.
+    pub QUIET_SEE_PENALTY: Value = 49152;
+
     // --- Move ordering: good/bad capture split (design/09 §3.6 stage 3) ---
 
     /// Divisor of the score-dependent SEE gate `see_ge(m, -score / 18)` that
