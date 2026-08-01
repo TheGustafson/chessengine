@@ -12953,3 +12953,44 @@ load, and the only defence was me remembering to look at `ps`.
 **D49:** sb1197, 27 superbatches into the decay leg, heldout ema **0.010574** —
 the run's lowest, falling steadily. Four services active, 7.6 GB free.
 **Phase-lock test still not run** — needs ~40 new-leg superbatches, I have 27.
+
+## Tick — 2026-07-31 20:16, decay leg passes the cycling leg's best — and why that proves less than it looks
+
+**D49 sb1204, 34 superbatches into the decay leg.** Heldout EMA falling
+monotonically: **0.010598 → 0.010574 → 0.010564.**
+
+| | best EMA | at |
+|---|---|---|
+| CYCLING leg (sb710–1170, n=47) | 0.010607 | sb1160 |
+| **DECAY leg (n=3)** | **0.010564** | sb1200 |
+
+**The decay leg is already below the cycling leg's best, after 30 superbatches.**
+
+### Three reasons that is weaker evidence than it appears
+
+1. **It does not isolate the schedule.** The decay leg runs *after* the cycling
+   leg, so it is simply **later in training** and should be better regardless of
+   what schedule it uses. **This is not evidence the decay is better than
+   continued cycling would have been** — that comparison would need a
+   counterfactual we did not run.
+2. **n = 3 heldout points.** The session's own lesson from this week is that a
+   claim defensible at n≈4 expires as n grows; the inverse applies here — a
+   pattern at n=3 is not yet a claim.
+3. **Loss is not Elo.** The standing receipt is **44e-6 of heldout alongside ~30
+   Elo of games**. A 43e-6 improvement converts to nothing in particular.
+
+**What it IS good for:** the abort condition is comfortably not firing, and
+training is still making progress at sb1204 rather than sitting in place. That is
+the whole job of this instrument.
+
+**One genuine asymmetry worth noting in the comparison's favour:** the cycling
+leg's "best" was itself a **favourable-phase sample** — its EMA was contaminated
+by a sawtooth whose troughs read low, so 0.010607 is cycling's *best case*. The
+decay leg has no phase to sample, so its 0.010564 is an ordinary reading. The
+comparison is therefore conservative rather than flattering.
+
+**Phase-lock test still not run:** n=34 new-leg superbatches, needs ~40.
+Deliberately waiting rather than reading it early — the same discipline that
+caught the n=4 trend error.
+
+**D49:** four services active, 7.7 GB free. **Study 63** working.
