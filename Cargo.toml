@@ -147,6 +147,17 @@ datagen = []
 # D41 learned search-consequence head contracts and experiments. OFF by
 # default; the initial scaffold is shadow-only and has no search authority.
 search-control = []
+# Perf study 68: the `ARCHON_SEARCH_STATS` / SSTATS search-anatomy report.
+# OFF by default, and OFF means the eleven counters do not EXIST -- `SearchStats`
+# is a zero-sized type and every bump method an empty body, so the shipped build
+# carries no store on any of the fifteen per-node/per-move sites that used to
+# feed them. `cfg(test)` implies it, because two NMP unit tests read `nmp_try`.
+#
+# It was a runtime `if std::env::var_os(...)` before, which is exactly why this
+# cost shipped: an empty *body* deletes a store only if there is no place to
+# store, and a `&mut Worker` field live across the recursive search call is a
+# place. Measured numbers: docs/research/perf-study-68-layout-2026-08-01.md.
+search-stats = []
 # The SOTA NNUE net (D40, design/11 §12): SF features + Reckless-shaped hybrid
 # head. OFF by default (the whole SOTA path is inert until it ships), so the
 # default build + depth-6 bench stay byte-identical. Build with `--features sota`.

@@ -2206,7 +2206,7 @@ fn search_nnue_accumulator_stays_consistent_across_the_tree() {
         // Assert it rather than argue it — study 14 §7.1's `has_repeated`
         // hole was exactly a claimed-but-unexecuted path (D33 reviewer C, T2).
         assert!(
-            w.st_nmp_try > 0,
+            w.stats.nmp_try > 0,
             "the tree must contain a null move for {fen} — otherwise the \
              acc_ply mapping is untested by this oracle"
         );
@@ -2269,7 +2269,7 @@ fn search_sota_accumulator_stays_consistent_across_the_tree() {
         w.iterative_deepening(&tt, &stop, &mut TimePersist::default(), &mut |_| {});
 
         assert!(w.nodes > 0, "search evaluated nodes for {fen}");
-        null_moves += w.st_nmp_try;
+        null_moves += w.stats.nmp_try;
     }
     // Without a null move somewhere in these trees the oracle never sees the
     // ply mapping this test exists for — the same measurement-not-argument
