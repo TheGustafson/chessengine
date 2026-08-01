@@ -14327,3 +14327,43 @@ the main worktree resolves the canonical pair. Re-running as `gatetune2`.
 **Note for whoever gates next:** a `CHECK_NNUE_GATE=1` run from a fresh worktree
 will fail this way every time until that symlink exists. It is not a code
 regression and should not be diagnosed as one.
+
+---
+
+## 2026-08-01 01:35 — the tunable refresh GATES CLEAN, and the -17.2% headline does NOT mean what it looks like
+
+**D49:** sb1340 exported (the recurring matcher `d49xml` picked it up
+automatically at 01:31 and is screening it at the frame-fair scale 1068).
+heldout ema **0.010467**, another run low.
+
+**Gate numbers, measured by me on `tunables-on-main`, not inherited:**
+
+| | before | after |
+|---|---:|---:|
+| eval hash | `2e1ede95…79c4` | **`2e1ede95…79c4` (UNCHANGED)** |
+| d13 NNUE nodes (depth 13, canonical net, wl50) | 1739588 | **1743308 (+0.21%)** |
+| `Bench:` (depth 6, PSQT, default) | 587683 | **486897 (-17.2%)** |
+
+The **unchanged eval hash is the correctness proof**: a 154-value pure-search
+change reshaped the tree and left the forward pass bit-identical.
+
+**THE REGIME GAP IS THE REAL FINDING.** The same change is **-17.2% at depth 6
+with PSQT** and **+0.21% at depth 13 with the NNUE net**. Our headline `Bench:`
+metric is measured in a regime WE DO NOT PLAY IN — no net, depth 6. Quoting
+"-17.2% nodes" as a strength-relevant tree reduction would be wrong by two orders
+of magnitude. Recorded in CLAUDE.md next to the pin so it cannot be misread
+later.
+
+**I verified Bench myself rather than trusting the number:** built the release
+binary on this base and ran the pinned invocation directly — 486897, matching the
+agent exactly. So the values did take effect; it is the INTERPRETATION that was
+the trap, not the transcription.
+
+**Pins moved in the CURRENT slot, with history preserved** — the exact discipline
+CLAUDE.md demands ("when you move a pin, check that the doc's CURRENT slot moved,
+not its history"), and the exact thing `859a442` got wrong. `gatetune3` is
+confirming a clean pass.
+
+**Still owed before this can ship:** a PGO build and the full frame re-run under
+these margins (`frame_rerun.sh`), plus strength testing — a -17.2% depth-6 change
+is functional by definition.
