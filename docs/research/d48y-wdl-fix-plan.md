@@ -14662,3 +14662,44 @@ be narrated after the fact either way.
 **Memory:** 4164 MB available, lower than earlier because study 66 is building,
 but well above the 2500 MB floor and its builds are capped at 6G with swap off.
 Zero kernel OOM kills tonight since 22:53.
+
+---
+
+## 2026-08-01 03:32 — 756 FINAL. The curve is a PLATEAU WITH A CLIFF, not a slope.
+
+**D49:** sb1395, 188.0k pos/s, heldout ema 0.010457.
+
+**Frame re-run, three arms final under ebcea3ef margins (PGO binary):**
+
+| pack scale | slope vs SF | BEFORE | AFTER |
+|---:|---:|---:|---:|
+| 1585 (parity) | 0.995 | -18.08 +/- 10.79 | **-19.71 +/- 11.48** |
+| 1068 | 0.672 | -8.57 +/- 10.57 | **-3.01 +/- 11.09** |
+| 756 | 0.477 | +3.24 +/- 10.65 | **-1.39 +/- 11.60** |
+| 535 | 0.339 | not run | running |
+
+**The shape changed, and it is more informative than the old one.** Under the
+refreshed margins **756 and 1068 are statistically indistinguishable** (-1.39 vs
+-3.01, 1.6 Elo apart on +/-11.5 bars) while **parity is ~17 Elo below both**. So
+this is not the smooth monotonic slope the old data suggested — it is a
+**PLATEAU across slope 0.48-0.67 with a CLIFF at parity.** The 535 arm tests
+whether the plateau extends down to 0.34.
+
+**A hypothesis of mine, raised and REFUTED inside one tick.** Both interim
+readings had swung +5.4 Elo toward the final (1068: -8.54@529 -> -3.01;
+756: -6.77@1027 -> -1.39). Two equal same-signed swings looked mechanistic, so I
+proposed that fastchess reads the opening book IN ORDER, biasing early games.
+**Checked: `tools/screen.sh:86` passes `order=random`. No such bias exists.**
+The statistics say the same thing — deviation SD is ~6.8 Elo at n=529 and ~3.4 at
+n=1027, so the swings are 0.8 and 1.6 sigma, unremarkable, and two positives is a
+1-in-4 coin flip.
+
+**So the interims were never WRONG; my INTERPRETATION was.** -3.01 sits well
+inside -8.54 +/- 16.7. The failure last tick was quoting a number as
+"point-for-point identical" when its own bar was +/-16.7 — not the measurement
+misbehaving. Recording this because the tempting lesson ("interims are biased")
+is false and would have become a permanent bad rule.
+
+**Still unresolved and unchanged:** the MECHANISM of the parity cliff. Depth is
+refuted (13.209 vs 13.204). Every arm is fixed-node; real-TC confirmation is
+still required before any frame decision ships.
