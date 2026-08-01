@@ -212,6 +212,25 @@ def main():
         subprocess.run(pin + [b] + cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return time.perf_counter() - s
 
+
+    # PERF STUDY 60's TRAP, IN THIS TOOL TOO (found 2026-07-31 after it voided
+    # two published Elo figures). `engines/canonical/net.cenn` is a symlink into
+    # gitignored `data/`, so it DANGLES in every fresh git worktree -- and this
+    # script's default --net resolves relative to its own location, i.e. to the
+    # worktree it is running from. With a dangling net the engine prints
+    # "reading NNUE file: No such file" and EXITS HAVING SEARCHED ZERO NODES, in
+    # ~0.02 s. The panel then happily reports a median over three near-instant
+    # exits. Refuse instead: the net must be readable AND a probe run must
+    # actually search the frame.
+    if not os.path.isfile(net):
+        sys.exit(f"REFUSING: --net '{net}' is missing or a dangling symlink.\n"
+                 f"Pass a resolved absolute path (readlink -f from the main "
+                 f"checkout); a fresh worktree's copy dangles.")
+    probe = subprocess.run([a.base] + cmd, capture_output=True, text=True)
+    if "Nodes searched" not in probe.stdout:
+        sys.exit(f"REFUSING: probe run of '{a.base}' searched no nodes.\n"
+                 f"{probe.stdout.strip()[-300:]}\n{probe.stderr.strip()[-300:]}")
+
     order = [(a.base, null, a.arm), (null, a.arm, a.base), (a.arm, a.base, null)]
     nulls, arms, raw = [], [], []
     busy_before = cpu_busy()
@@ -233,6 +252,21 @@ def main():
                 for r, tb, tn, ta in raw:
                     fh.write(f"{r}\t{tb:.6f}\t{tn:.6f}\t{ta:.6f}\n")
             print(f"raw rounds -> {a.dump}")
+
+    # PERF STUDY 63 -- a before/after census CANNOT see a job that starts AND
+    # ends between the two checks; one did exactly that inside study 63's first
+    # panel. The base binary's own per-round time is sampled throughout, so a
+    # regime shift mid-run shows up as a half-vs-half difference.
+    base_t = [x[1] for x in raw]          # study 63 already records per-round timings
+    if len(base_t) >= 8:
+        h = len(base_t) // 2
+        m1, m2 = st.median(base_t[:h]), st.median(base_t[h:])
+        drift = 100 * (m2 - m1) / m1
+        print(f"\nmid-run stability (base binary): first half {m1:.3f}s, "
+              f"second half {m2:.3f}s, drift {drift:+.2f}%")
+        if abs(drift) > 2.0:
+            print("*** REGIME SHIFT mid-run: load arrived or left between the "
+                  "before/after checks. Treat this panel as VOID. ***")
 
     busy_after = cpu_busy()
     print(f"\nbox CPU busy (excluding this panel): before {100*busy_before:.1f}%, "
