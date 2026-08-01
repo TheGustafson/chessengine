@@ -250,6 +250,34 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
 - Profiling: `RUSTFLAGS="-C target-cpu=x86-64-v3 -C force-frame-pointers=yes"
   cargo build --profile profiling` (release codegen + line tables for
   perf/flamegraph)
+- **THE HOT-SYMBOL LIST, and the dead names still circulating in briefs**
+  (verified 2026-08-01). **Profile ONLY the PGO binary** — a non-PGO build
+  inlines differently and has misled this project twice. Live symbols:
+
+  | symbol | share | where |
+  |---|---|---|
+  | `avx512::i8_into_shaped` | **53.61 % of L1-miss latency** | `sota_simd.rs:1864` |
+  | `forward_into` | 14.44 % | `sota_head.rs:621` |
+  | `finny_refresh_into` | 6.72 % | `sota_accumulator.rs:632` |
+  | `init_quiets` | search side | `movepick.rs:971` |
+  | `search<NT: NodeType>` | search side | `search/mod.rs:2281` |
+
+  **`i16_deltas_into` / `i16_deltas_dual` DO NOT EXIST** — perf study 32's i8
+  conversion replaced them, yet they are still quoted at "13.14 %" in
+  hand-carried context blocks, and a study was nearly commissioned against a
+  function that is not in the tree. `current_full` is likewise from the pre-i8
+  era. **Re-derive the profile before targeting anything; never inherit these
+  percentages.**
+- **Routes CLOSED by construction (studies 65/66, 2026-08-01)** — do not re-open
+  without a new mechanism: **sub-byte FT weight formats** in all three layouts
+  (the 243 KB indirection map alone costs +6.02 % instructions / +15.28 % L2
+  misses, so even a *free* map loses more than the bytes saved); **locality and
+  row reordering** (a block transpose cut intra-fold 4 KB page-sharing 3.32 ×
+  and moved every counter ≤1.5 %); **prefetch-the-next-row** (dead by
+  construction). Mechanism for all three: **the fold is MISS-PARALLEL** — one
+  tile walk exposes ~80 independent line accesses inside a ~320-µop window, so
+  misses are MSHR-limited, not proximity-limited. Both FT weight tables are
+  already `i8`; that precision lever is spent.
 - **NEVER `pkill -f <pattern>`** (user instruction 2026-07-27, after it
   happened twice in one session). `pkill -f` matches every process's FULL
   command line — including the shell running the very command that typed the

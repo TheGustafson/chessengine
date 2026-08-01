@@ -14850,3 +14850,36 @@ as closing the search side.
 Told to measure whether the search side is branch/compute-bound rather than
 assuming the engine-wide memory-bound result applies, and to report
 branch-mispredict and icache counters alongside misses.
+
+---
+
+## 2026-08-01 04:20 — tick: two DURABLE fixes, one of them to a memory that had gone wrong
+
+**D49:** sb1416, 188.4k pos/s, heldout ema **0.010447** — another run low.
+`d49xml` screening sb1410 unattended (stdev 601.5 vs canonical 610). Disk 121 GB.
+Study 67 running. Memory 6363 MB, no OOM.
+
+**1. A memory I wrote FOUR HOURS AGO had become actively wrong and I corrected
+it.** After discovering the frame mismatch I recorded "the frame is a REAL LEVER,
+target slope 1.00" — and tonight's 6000 games refuted precisely that. Leaving it
+would have handed the next session a confident instruction to chase ~18 Elo in
+the wrong direction. It now records the measured curve, both of my wrong theories
+in order, and the standing conclusion: **the frame is NOT a lever, the shipped
+scale is already on the optimum, leave it alone.** The index line was rewritten
+too.
+
+This is worth noting as a pattern: **a memory written mid-investigation captures
+a hypothesis, not a result.** The 22:00 version was honest about what was known
+at 22:00 and wrong by 04:00. Memories written before the games land need
+revisiting after them.
+
+**2. The dead profile symbols now live in CLAUDE.md**, which is loaded every
+session — previously the list existed ONLY in hand-carried context blocks, which
+is exactly why `i16_deltas_into` (13.14 %) kept circulating despite not existing
+in the tree. Added: the live hot-symbol table with file:line, the explicit
+warning that `i16_deltas_into` / `i16_deltas_dual` / `current_full` are pre-i8
+ghosts, "profile ONLY the PGO binary", and the three routes studies 65/66 closed
+by construction with the miss-parallel/MSHR mechanism attached.
+
+The point of putting it there rather than in a study doc: a study doc is read by
+whoever already knows to look. CLAUDE.md is read by whoever does not.
