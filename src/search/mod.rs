@@ -261,9 +261,7 @@ fn qtrace(_: usize, _: Value, _: Value, _: Value, _: Move, _: &str) {}
 /// positive, so the truncation is a plain floor.
 #[inline]
 fn lmp_move_count(depth: Depth, improving: bool) -> i32 {
-    // The depth² term carries a coefficient (identity at 1024) because it,
-    // not LMP_BASE, is what actually sets this threshold — see LMP_DEPTH_MULT.
-    (params::LMP_BASE() + params::scale_1024(depth * depth, params::LMP_DEPTH_MULT()))
+    (params::LMP_BASE() + depth * depth)
         / (params::LMP_IMPROVING_DEN() - i32::from(improving))
 }
 
@@ -325,9 +323,7 @@ fn capture_futility_value(
     static_eval
         + params::CFUT_BASE()
         + params::CFUT_LMRDEPTH_MULT() * lmr_depth
-        // Class 4: `captured_value` is in PIECE_VALUES (Stockfish's material
-        // frame) while `static_eval` is ours, ~0.64x of it. Identity at 1024.
-        + params::scale_1024(captured_value, params::CFUT_PIECE_MULT())
+        + captured_value
         + params::CFUT_HIST_MULT() * capt_hist / params::CAPT_HIST_DEN()
 }
 
@@ -3207,12 +3203,7 @@ impl Worker {
                 let probcut_depth = depth
                     - params::PROBCUT_DEPTH_SUB()
                     - params::PROBCUT_IMPROVING_SUB() * Depth::from(improving);
-                // Class 4: an EVAL-frame gap fed to `see_ge`, whose threshold
-                // is in PIECE_VALUES. Identity at 1024.
-                let threshold = params::scale_1024(
-                    probcut_beta - self.stack[cur].static_eval,
-                    params::SEE_THRESH_MULT(),
-                );
+                let threshold = probcut_beta - self.stack[cur].static_eval;
                 let mut mp = MovePicker::new_probcut(&self.board, tt_data.mv, threshold);
                 while let Some(m) = mp.next_move(&self.board, &self.histories) {
                     if m == self.stack[cur].excluded_move || !self.board.legal(m) {
@@ -5255,16 +5246,11 @@ impl Worker {
                     // move's optimistic value still raises best_value
                     // (D11 SEE-scale piece values; empty destination —
                     // en passant — counts 0, SF parity).
-                    // Class 4: `piece_type.value()` is MATERIAL, `futility_base`
-                    // is EVAL, and the two frames differ by a different factor
-                    // here than in Stockfish. Identity at 1024.
                     let futility_value = futility_base
-                        + params::scale_1024(
-                            self.board
-                                .piece_on(m.to())
-                                .map_or(0, |victim| victim.piece_type.value()),
-                            params::QS_PIECE_MULT(),
-                        );
+                        + self
+                            .board
+                            .piece_on(m.to())
+                            .map_or(0, |victim| victim.piece_type.value());
                     if futility_value <= alpha {
                         qtrace(ply, alpha, beta, best_value, m, "prune:futility");
                         best_value = best_value.max(futility_value);
@@ -5274,12 +5260,7 @@ impl Worker {
 
                     // SEE vs the window: the exchange cannot recover the
                     // gap between futility_base and alpha.
-                    // Class 4, as at the ProbCut filter: an eval-frame gap
-                    // used as a material threshold. Identity at 1024.
-                    if !self.board.see_ge(
-                        m,
-                        params::scale_1024(alpha - futility_base, params::SEE_THRESH_MULT()),
-                    ) {
+                    if !self.board.see_ge(m, alpha - futility_base) {
                         best_value = best_value.max(alpha.min(futility_base));
                         self.stats.gate(Gate::QsSeeWindow);
                         continue;

@@ -58,42 +58,14 @@ const _: () = assert!(
 
 crate::tunables! {
 
-    // --- The eval-frame scale (docs/research/eval-frame-scale-model-2026-07-27.md) ---
-
-    /// **The single knob for the eval-frame correction.** In 1024ths, so
-    /// `1024` = 1.0 = *exact identity with today's engine* — every transform
-    /// below is `c * FRAME_S / 1024` or its inverse, and integer arithmetic
-    /// makes both a no-op at 1024. That identity is the point: it makes the
-    /// sweep a clean control instead of a comparison against a rebuilt
-    /// baseline.
-    ///
-    /// Why one knob for many constants. Our static eval measures at ≈0.58×
-    /// SF18's internal frame (three independent estimates: 0.55 winner-slope
-    /// from games, 0.579 wl50, 0.605 WAC), while our cp-denominated margins
-    /// sit at Stockfish's RAW values — razor 465 vs 485, capture-futility
-    /// base 231 vs 232, aspiration delta 5 vs 5. If that holds, every one of
-    /// them is ~1.7× too large in effect and they are all wrong *by the same
-    /// factor*, because they all inherited the same unconverted import.
-    ///
-    /// The non-linearity does NOT cost us the single parameter — it only
-    /// changes how each constant READS the knob. See [`frame_scale`] (class
-    /// 1/2, eval-space) and [`frame_expand`] (class 3, cross-unit divisors
-    /// that must move the opposite way). Class 5 (plies, depths, counts)
-    /// ignores it. Class 4 (material mixed into an eval comparison) cannot be
-    /// repaired by any constant and is deliberately NOT wired here.
-    ///
-    /// Theory puts the optimum near 594 (= 0.58); 1024 is the control.
-    ///
-    /// **WARNING (2026-07-27, verified by grep): `frame_scale` /
-    /// `frame_expand` / `frame_scale_i64` have ZERO call sites outside this
-    /// file.** Moving FRAME_S changes NOTHING — a sweep of it measures a
-    /// guaranteed null (a false-negative generator, not just dead code). The
-    /// rescale hypothesis was refuted five other ways (tuning-audit
-    /// 2026-07-27), so the transforms were never wired; do not put this knob
-    /// in an SPSA campaign, and do not cite a FRAME_S sweep as evidence about
-    /// the frame. If the hypothesis ever returns with a new mechanism, wire
-    /// the transforms first and prove non-identity with a sweep that MOVES.
-    pub FRAME_S: Value = 1024;
+    // The eval-frame correction apparatus (FRAME_S + frame_scale/frame_expand/
+    // frame_scale_i64) was DELETED 2026-08-01 (simplification plan tier 0,
+    // item 0.1). The transforms had ZERO call sites outside this file (a
+    // documented false-negative generator: a FRAME_S sweep measured a
+    // guaranteed null), and the correction the taxonomy was built to express
+    // LANDED INSIDE THE NET with the s600 output-scale promotion — the
+    // 2026-08-01 prune-budget re-run shows every previously-starved gate live.
+    // History: docs/research/eval-frame-scale-model-2026-07-27.md.
 
     // --- Aspiration windows (design/07 §3.6) ---
 
@@ -325,29 +297,14 @@ crate::tunables! {
     /// `futility_base = static_eval + 335` (§3.8 step 5). A capture whose
     /// victim cannot lift this base above alpha is skipped.
     pub QS_FUTILITY_MARGIN: Value = 335;
-    /// **Class-4 converter for the qsearch futility bound**, in 1024ths.
-    /// `1024` = identity, so the shipped engine is unchanged.
-    ///
-    /// `futility_value = static_eval + QS_FUTILITY_MARGIN + captured_value`
-    /// adds a MATERIAL quantity to an EVAL one. Both engines do that, but the
-    /// two frames differ by a different amount in each: Stockfish's eval pawn
-    /// is ~385 against a `PieceValue` pawn of 208, so a captured queen enters
-    /// its bound as ~6.6 pawns. Ours is ~246 against the SAME `PieceValue`,
-    /// so the same queen enters as ~10.3 pawns.
-    ///
-    /// We therefore inflate the captured piece by ~1.57x relative to
-    /// Stockfish, the bound is almost never below alpha, and qsearch futility
-    /// barely prunes. That is paid at EVERY LEAF: measured, our qsearch
-    /// expands 2.53 nodes per leaf against SF18's 1.40, which reproduces as
-    /// the flat ~2x node multiplier that survived four other explanations
-    /// (`docs/research/SCREENING.md` §14-15).
-    ///
-    /// Unlike the margin itself, this is not a tuning knob with an arbitrary
-    /// optimum — 0.64 is the derived value that puts our bound on Stockfish's
-    /// footing. `CFUT_PIECE_MULT` is the same correction for the main-loop
-    /// capture futility, where it measured neutral because that gate fires
-    /// far less often.
-    pub QS_PIECE_MULT: i32 = 1024;
+    // The class-4 eval/material frame converters (QS_PIECE_MULT,
+    // CFUT_PIECE_MULT, SEE_THRESH_MULT, LMP_DEPTH_MULT + scale_1024) were
+    // DELETED 2026-08-01 (simplification plan tier 0, item 0.14): all four
+    // were pinned at 1024 = exact identity since birth, and the eval-frame
+    // correction program they were built to express CLOSED when the s600 net
+    // rescale landed the correction inside the net (the 2026-08-01 prune
+    // budget re-run shows every gate live post-s600). Their doc blocks'
+    // frame arithmetic lives on in docs/research/eval-frame-scale-model-*.
     /// The hard SEE floor: any move whose static exchange value cannot reach
     /// this bar is never searched in qsearch (§3.8 step 7).
     pub QS_SEE_FLOOR: Value = -74;
@@ -739,27 +696,12 @@ crate::tunables! {
     /// (2 - improving)` (design/10 §3.5): the constant floor of quiets always
     /// tried before movecount pruning can bite, before the depth² growth.
     pub LMP_BASE: i32 = 3;
-    /// **Coefficient of the depth² term, in 1024ths.** `1024` = 1.0 = exact
-    /// identity with Stockfish's shape.
-    ///
-    /// Why it exists: LMP removes **46.8% of our tree**
-    /// (`docs/research/prune-budget-2026-07-27.md` §1), second only to LMR,
-    /// and until now the entire mechanism had exactly ONE tunable —
-    /// [`LMP_BASE`] — whose leverage is almost nil, because `depth²`
-    /// dominates the sum at every depth that matters. Measured: `LMP_BASE`
-    /// 2 → 8 moves the tree by +0.4% to +4.6%, against LMP's 46.8%
-    /// contribution.
-    ///
-    /// That is the distinction the prune budget forced into the open:
-    /// **contribution is not leverage.** A mechanism can shape half the tree
-    /// and still be untunable, and no SPSA campaign can find what no
-    /// parameter can express. This coefficient gives the dominant term a
-    /// handle.
-    ///
-    /// Deviating from Stockfish's shape here is deliberate: their constants
-    /// are a prior, not a destination, and a coefficient pinned at identity
-    /// costs nothing until something measures a better value.
-    pub LMP_DEPTH_MULT: i32 = 1024;
+    // LMP_DEPTH_MULT (the depth² coefficient, identity at 1024) was deleted
+    // 2026-08-01 with the other item-0.14 identity converters. Its doc made a
+    // real point — LMP's contribution (~2-47% of the tree depending on the
+    // net era) vastly exceeds LMP_BASE's leverage, "no SPSA campaign can find
+    // what no parameter can express" — but no campaign ever asked, and D50
+    // makes such handles opt-in when one does.
     /// Divisor base of the LMP threshold: `(… ) / (LMP_IMPROVING_DEN -
     /// improving)`. At the default 2 a not-improving node prunes at half the
     /// move count, which is a large structural asymmetry that was previously
@@ -842,45 +784,6 @@ crate::tunables! {
     /// CFUT_MAX_LMRDEPTH`); deeper predicted searches are trusted to see the
     /// tactic themselves.
     pub CFUT_MAX_LMRDEPTH: Depth = 7;
-    /// **Class-4 converter: material units → eval units, in 1024ths.**
-    /// `1024` = 1.0 = exact identity, so the shipped engine is unchanged.
-    ///
-    /// `PIECE_VALUES` are Stockfish's exactly (pawn 208) while our static
-    /// eval measures ~0.64× Stockfish's frame
-    /// (`docs/research/eval-frame-scale-model-2026-07-27.md` §11.2, quantile-
-    /// matched and flat across the whole range). Every site that ADDS a piece
-    /// value to a static eval therefore over-weights the material term by
-    /// ~1/0.64 = 1.56×.
-    ///
-    /// This is the one mismatch class no margin constant can absorb — the
-    /// error rides on `captured_value`, which varies by piece, so a flat
-    /// margin adjustment cannot cancel it. The frame study could only test it
-    /// bundled inside `EVAL_SCALE`'s global rescale (§10.1), which lost for
-    /// other reasons; it has never been isolated.
-    ///
-    /// Applied in [`capture_futility_value`], where the prediction is
-    /// `static_eval + margins + captured_value <= alpha`. Over-weighting
-    /// `captured_value` inflates the bound, so capture futility prunes LESS —
-    /// consistent with its measured contribution of ~0.5% of the tree
-    /// (`docs/research/prune-budget-2026-07-27.md` §1), i.e. near-inert.
-    ///
-    /// Theory puts the interesting region near 655 (= 0.64); 1024 is the
-    /// control.
-    pub CFUT_PIECE_MULT: i32 = 1024;
-    /// **Class-4 converter: eval units → material units, in 1024ths.**
-    /// `1024` = identity. The inverse direction of [`CFUT_PIECE_MULT`], for
-    /// the two sites that feed an EVAL-frame difference to `see_ge`, whose
-    /// threshold is in `PIECE_VALUES` units:
-    ///
-    /// - ProbCut's capture filter, `probcut_beta - static_eval`
-    /// - qsearch futility's `see_ge(m, alpha - futility_base)`
-    ///
-    /// An eval-frame gap is ~0.64× the material-frame gap that means the same
-    /// thing, so both thresholds are too SMALL: ProbCut admits captures that
-    /// cannot really reach its raised beta, and qsearch futility declines to
-    /// prune exchanges it should. Theory puts the interesting region near
-    /// 1600 (= 1/0.64).
-    pub SEE_THRESH_MULT: i32 = 1024;
     /// Flat base of the capture-futility optimistic value over the static eval.
     pub CFUT_BASE: Value = 231;
     /// Per-lmr-depth slope of the capture-futility value (can be negative at
@@ -1597,126 +1500,9 @@ crate::tunables! {
 
 }
 
-// ─── The eval-frame transforms (docs/research/eval-frame-scale-model-2026-07-27.md) ───
-//
-// One knob, [`FRAME_S`], read through the transform each constant's UNITS
-// require. Deriving the exponent per class is the whole point — guessing it
-// is worse than leaving the constant alone, because class 3 moves the
-// opposite way to class 1 and applying the wrong one doubles the error
-// instead of removing it.
-//
-//   class 1  pure eval margin      `eval ⋈ eval ± C`        -> frame_scale
-//   class 2  eval² divisor         `delta = mss / D`        -> frame_scale
-//            (D has units eval²/eval = eval, so it scales the SAME way as a
-//            margin — the trap is that being a divisor suggests otherwise)
-//   class 3  cross-unit divisor    `eval_adj = |corr| / D`  -> frame_expand
-//            (corr keeps its own units, so D must GROW to yield the same
-//            eval-space effect)
-//   class 4  material into eval    `staticEval + C + PieceValue[x]`
-//            -> NOT REPRESENTABLE HERE. The error rides on the piece-value
-//            term, which varies by captured piece, so no constant absorbs it.
-//   class 5  plies / depths / counts / SEE-vs-material -> untouched
-
-/// Class 1 and 2: an eval-space quantity. Exact identity at `FRAME_S == 1024`.
-///
-/// i64 intermediate because the largest consumers here (correction and
-/// mean-squared divisors) reach ~10^5 and `c * 1024` would overflow an i32
-/// at ~2.1M — far below where these constants actually live, but the cast is
-/// free and the failure would be silent wraparound.
-#[inline(always)]
-pub fn frame_scale(c: Value) -> Value {
-    round_div_1024(c as i64 * FRAME_S() as i64) as Value
-}
-
-/// Divide by 1024 rounding HALF AWAY FROM ZERO, not truncating.
-///
-/// Truncation is not a rounding detail here, it is a correctness bug for small
-/// constants — found by the verification pass 2026-07-27. At s = 594:
-/// `SE_DOUBLE_BASE = -3` truncated to -1 against an exact -1.74, an effective
-/// ratio of 0.33 rather than 0.58; and `ASPIRATION_BASE_DELTA = 5` truncated
-/// to 2 at BOTH s = 594 and s = 470, silently making two sweep arms identical
-/// for that constant. A sweep whose arms are not actually distinct cannot
-/// measure what it claims to.
-///
-/// Symmetric about zero so a ±margin pair rounds the same way; truncation
-/// biases the two sides differently, which is its own quiet defect.
-///
-/// Identity at 1024 is preserved: `(c*1024 + 512) / 1024 == c` for every c,
-/// because the remainder can never reach 1024.
-#[inline(always)]
-fn round_div_1024(n: i64) -> i64 {
-    round_div(n, 1024)
-}
-
-/// Class 3: a divisor converting NON-eval units (correction/history) into
-/// eval space. Moves the OPPOSITE way to [`frame_scale`]. Identity at 1024.
-#[inline(always)]
-pub fn frame_expand(d: Value) -> Value {
-    round_div(d as i64 * 1024, FRAME_S().max(1) as i64) as Value
-}
-
-/// Apply a 1024ths multiplier, rounding half AWAY from zero.
-///
-/// The rounding is not a detail. Truncation here turned `SE_DOUBLE_BASE`
-/// −3 into −1 under a 0.58 factor — a 0.33 ratio where 0.58 was intended —
-/// and made two arms of a sweep silently identical
-/// (`docs/research/eval-frame-scale-model-2026-07-27.md`, retraction 5).
-/// Class-4 converters run on small signed quantities, so they are exposed to
-/// exactly that failure.
-#[inline(always)]
-pub fn scale_1024(v: i32, mult: i32) -> i32 {
-    if mult == 1024 {
-        return v; // exact identity, and the only path the shipped engine takes
-    }
-    round_div(v as i64 * mult as i64, 1024) as i32
-}
-
-/// `n / q` rounded half away from zero. The sign-symmetric form matters: a
-/// naive `(n + q/2) / q` is correct only for positive `n` and silently breaks
-/// identity for negative constants — caught here by the identity test, which
-/// is precisely what that test is for.
-#[inline(always)]
-fn round_div(n: i64, q: i64) -> i64 {
-    if n >= 0 {
-        (n + q / 2) / q
-    } else {
-        -((-n + q / 2) / q)
-    }
-}
-
-/// [`frame_scale`] for the i64 tunables (the aspiration mean-squared divisor).
-#[inline(always)]
-pub fn frame_scale_i64(c: i64) -> i64 {
-    round_div_1024(c * FRAME_S() as i64)
-}
-
-#[cfg(test)]
-mod frame_tests {
-    use super::*;
-
-    /// The identity that makes the sweep a clean control: at FRAME_S = 1024
-    /// every transform must be a bit-exact no-op, so s=1.0 reproduces the
-    /// shipped engine rather than an arithmetic near-miss.
-    #[test]
-    fn frame_transforms_are_exact_identities_at_1024() {
-        assert_eq!(FRAME_S(), 1024, "the shipped default must be identity");
-        for c in [0, 1, 5, 40, 76, 231, 300, 465, 485, 10588, 182069, -465] {
-            assert_eq!(frame_scale(c), c, "frame_scale moved {c}");
-            assert_eq!(frame_expand(c), c, "frame_expand moved {c}");
-            assert_eq!(frame_scale_i64(c as i64), c as i64);
-        }
-    }
-
-    /// The two directions must actually oppose — a copy-paste that made
-    /// frame_expand a second frame_scale would silently double the class-3
-    /// error, which is the failure this whole taxonomy exists to prevent.
-    #[test]
-    fn scale_and_expand_move_opposite_ways() {
-        // Exercised via the arithmetic directly, since FRAME_S is a compile
-        // -time constant in non-tune builds and cannot be moved in a test.
-        let s = 594i64; // 0.58
-        let c = 1000i64;
-        assert!((c * s) / 1024 < c, "scale must shrink for s < 1");
-        assert!((c * 1024) / s > c, "expand must grow for s < 1");
-    }
-}
+// The eval-frame transform family (frame_scale / frame_expand /
+// frame_scale_i64 / scale_1024 and their tests) lived here until 2026-08-01
+// (simplification plan tier 0, items 0.1/0.14). See the deletion note at the
+// top of the `tunables!` block; the class taxonomy and the rounding lessons
+// (truncation silently merged two sweep arms) are preserved in
+// docs/research/eval-frame-scale-model-2026-07-27.md.
