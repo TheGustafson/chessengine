@@ -18036,3 +18036,40 @@ from being unreproducible):
   `distill_alpha` 25 hits). **The agent's "git diff 962ffc3c main -- jax/ is
   empty" was read against a stale ref** — the code merged; only its later doc
   commits sit unmerged on the branch.
+
+## 2026-08-01 17:05 — ★ TEACHER BLEND VERDICT: +17.15 +/- 10.70, LOS 99.92 % (1500 games)
+
+**CAND** = d49sfb sb1642 (12 sb of 60/40 SF-teacher blend), **REF** = d49sfb
+sb1630-EMA, the EXACT checkpoint it warmed from. Same pack path, scale 756, fn25k.
+
+```
+Elo: +17.15 +/- 10.70   nElo: +28.24 +/- 17.58   LOS: 99.92 %
+Games 1500  W472 L398 D630 (52.47 %)   Ptnml [18,159,334,209,30]  PairsRatio 1.35
+```
+
+**WHAT IT DOES NOT SAY: this is not the teacher's Elo.** CAND had 12 sb of
+training that REF did not, so ordinary progress is inside the number. The
+**matched alpha=0 control** (12 sb of PLAIN training from the identical
+sb1630-EMA warm) is the only thing that separates them and is still OWED.
+
+**WHY THE TEACHER IS STILL THE LIKELY CAUSE — the arithmetic:** the measured
+undertraining slope is +30.31 Elo over ~1000 sb = **~0.03 Elo/sb**, so 12 sb of
+plain training predicts **~0.4 Elo**. We measured **+17.15 — about 40x** that
+rate. The other candidate cause, the 5x LR restart, was measured a NULL
+(**-7.41 +/- 10.76**, three cycles vs anchor). Both alternatives are priced and
+neither covers +17.
+
+**Confound on the record (flagged BEFORE the games, per null-first):** eval stdev
+sb1642 **452.2** vs sb1630 **427.9** = **+5.7 %**. Some of the margin may be frame
+rather than knowledge. [[eval-frame-0538-sf-internal]] says the shipped scale is an
+interior optimum, so a 5.7 % widening is not automatically free.
+
+**And the heldout receipt matters now.** Label-heldout rose then fully reverted
+(1632 `0.010545` -> 1636 `0.010570` -> 1640 `0.010546`) while the net gained
+17 Elo. **A metric that ended flat sat on top of a real strength gain** — exactly
+[[loss-is-not-elo]]. Had I kept my 14:17 abort check, I would have killed this.
+
+**Live:** the full 500-sb continuation is running (sb1642 -> 2130, alpha 0.4,
+lr 2.5e-05 = 5x the 5e-06 cycle floor, decaying 0.996/sb — the FIRST run actually
+at the owner's specified LR; the probe ran 1.249e-05, ~2.5x floor). sb1645 at
+146k pos/s.
