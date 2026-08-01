@@ -13089,3 +13089,36 @@ The fix is on its branch and will merge with its report; I am not cherry-picking
 it mid-study.
 
 **D49:** sb1218, heldout ema **0.010539**, 187k pos/s, four services active.
+
+## Tick — 2026-07-31 21:01, the null-attribution lesson saved to memory
+
+Recorded the panel-tool finding as a standing lesson, because it is a *habit*
+error rather than a one-off bug and it will recur otherwise:
+
+> **When a byte-identical null misbehaves, check the harness for asymmetry
+> between the arms BEFORE touching the environment** — different filesystem,
+> path, scheduling, order, cache state. Only once the harness is symmetric is
+> "the box was busy" a permitted explanation.
+
+**The receipt is that I got this backwards all day**, and it cost more than a
+number: a biased-high null made the licence harder to pass, the tool issued false
+refusals, I recorded one as *"the difference a quiet box makes"*, then wrote a
+load-detector on that premise and told study 63's brief that refusing under load
+was "correct behaviour, not a bug."
+
+Also recorded: **why the smoke test missed it.** A *broken* instrument that
+refuses is indistinguishable from a *working* instrument on a noisy box — both
+print `NOT LICENSED`. That is why "I tested it and it refused sensibly" was not
+evidence of correctness.
+
+And the discipline that kept the damage contained: **work out which half a defect
+touches before retracting or defending.** The tmpfs asymmetry is null-only (null
+is copy-vs-base across filesystems; the arm is NVMe-vs-NVMe), and unpinned runs
+are variance not bias — so the arm centres survived. **That was the mechanism's
+verdict, not a convenience**, and a retraction would have been recorded had it
+gone the other way.
+
+**D49:** sb1225, heldout ema **0.010522** — still falling
+(0.010564 → 0.010539 → 0.010522), 188k pos/s, four services active, 146 GB disk.
+**Study 63** still working; its tool fix merges with its report rather than being
+cherry-picked mid-study.
