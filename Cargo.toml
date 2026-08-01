@@ -461,6 +461,14 @@ histpf44 = []
 # (study 57's dispatch table: −113 i/n while L1i misses rose 6.2 %).
 # Node-identical by construction — inlining decisions cannot move the tree.
 icold67 = []
+# `icold67b` — the DEDUPLICATION arm, a different mechanism from `icold67`'s.
+# `icold67` moved code that the frame barely executes; this one moves code the
+# frame executes a lot of, in SEVERAL COPIES. Study 67's duplication census
+# (`tools/perf67/dupcensus67.py`) over the four search monomorphisations:
+# `do_move` 16,638 B in 3 copies, `next_move` 10,871 B in 4. Both are hot in at
+# least two of them, so one out-of-line copy lets both callers fetch the same
+# lines. Node-identical by construction.
+icold67b = []
 # Perf study 44's FOLD-TILE WIDTH sweep. `REGS` (the number of live zmm
 # accumulators in every fold kernel's tile) is 20 at ACC 1280, chosen as the
 # largest exact divisor of ACC_BLOCKS and adjudicated on `instructions:u` --

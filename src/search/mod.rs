@@ -5311,6 +5311,10 @@ impl Worker {
     /// for facts that were sitting in registers one line up. The two cold call
     /// sites (ProbCut, qsearch) pass exactly what this function used to compute,
     /// so nothing moved onto a path that did not already pay for it.
+    // Perf study 67 arm B: 16,638 bytes across three search monomorphisations,
+    // 15.2 % of `search::<NonPv>`'s dispatched ops and 11.6 % of
+    // `qsearch::<NonPv>`'s -- the largest DUPLICATED HOT block in the engine.
+    #[cfg_attr(feature = "icold67b", inline(never))]
     #[inline]
     fn do_move(
         &mut self,
@@ -5385,6 +5389,8 @@ impl Worker {
         }
     }
 
+    // Perf study 67 arm B, same reason as `do_move`.
+    #[cfg_attr(feature = "icold67b", inline(never))]
     #[inline]
     fn undo_move(&mut self, m: Move) {
         self.board.unmake_move(m);

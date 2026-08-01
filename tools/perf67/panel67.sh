@@ -18,8 +18,11 @@ FENS=tools/nnue/calib/wl50.fens
 echo "round,label,instructions,branch_misses,ic_fill_l2,opq_empty,task_clock_ms"
 for r in $(seq 1 "$R"); do
   for L in "$@"; do
+    # `perf stat` writes its counters to STDERR and the bench writes its node
+    # report to STDOUT, so the redirection order matters: dup stderr onto the
+    # capture pipe FIRST, then send stdout to /dev/null.
     out=$(taskset -c "$CPU" perf stat -x, -e "$EV" -- \
-      "engines/bin/$L" bench 16 1 100000 "$FENS" nodes "$NET" 2>/dev/null >/dev/null || true)
+      "engines/bin/$L" bench 16 1 100000 "$FENS" nodes "$NET" 2>&1 >/dev/null || true)
     i=$(printf '%s\n' "$out" | awk -F, '/instructions:u/{print $1}')
     b=$(printf '%s\n' "$out" | awk -F, '/branch-misses:u/{print $1}')
     f=$(printf '%s\n' "$out" | awk -F, '/ic_cache_fill_l2:u/{print $1}')

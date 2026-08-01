@@ -810,7 +810,13 @@ impl MovePicker {
     // look expensive was `L1-dcache-load-misses` rising; measuring the
     // DENOMINATOR settles that -- total L1d LOADS fall 4.1/node, so this is less
     // memory work at a marginally worse hit rate, not more work.
-    #[inline(always)]
+    // Perf study 67 arm B — the DEDUPLICATION arm, a different mechanism from
+    // `icold67`'s: PGO emits this body **four times** (10,871 B across
+    // `search::<{Pv,NonPv}>` and `qsearch::<{Pv,NonPv}>`) and it is EXECUTED in
+    // at least two of them. One out-of-line copy would let both callers fetch
+    // the same lines.
+    #[cfg_attr(not(feature = "icold67b"), inline(always))]
+    #[cfg_attr(feature = "icold67b", inline(never))]
     pub fn next_move(&mut self, board: &Board, hist: &Histories) -> Option<Move> {
         loop {
             match self.stage {
