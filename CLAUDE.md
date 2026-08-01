@@ -177,7 +177,7 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   `sota` — verified 2026-07-27 by `nm` finding zero threat symbols in the
   default release binary. A no-net `bench` is a PSQT run (empty `EvalFile`
   ⇒ NNUE off). So an incremental-accumulator rewrite can be arbitrarily
-  wrong and leave 553609 untouched. The gate reads the CANONICAL net and arch
+  wrong and leave 486897 untouched. The gate reads the CANONICAL net and arch
   from `engines/canonical/` (see below) and pins two numbers, both reproduced
   by a from-source non-PGO build: the **eval hash**
   `2e1ede95…79c4` (sha256 of the forward-pass score for all 50
@@ -294,7 +294,7 @@ arm**; **stay on ONE position, no aggregates during diagnosis**.
 docs, raw perf artifacts) were moved to `old/` because nothing live referenced
 them. Verified: no live file references any moved path, and
 `CHECK_NNUE_GATE=1 bash tools/check.sh` still exits 0 with `Bench: 587683`
-(the pin of that day; it is 553609 since the 2026-08-01 SF `ebcea3ef`
+(the pin of that day; it is 486897 since the 2026-08-01 SF `ebcea3ef`
 tunable refresh).
 **Nothing in `old/` is loaded or trusted**; several of its documents contain
 conclusions that were later refuted.
@@ -458,7 +458,7 @@ Concurrently: **stage-A SPSA** (12 params, V net + PGO tune binary,
 fn20k, 8 games × 2400 iters, exchange on DISK not tmpfs) — measured
 zero training interference.
 Engine: S0 search program COMPLETE (all six audit items; **depth-6
-bench pin now 553609**; tripwires clean); **PGO is THE
+bench pin now 486897**; tripwires clean); **PGO is THE
 standard build** (tools/build_pgo.sh WITH eval-file; pairs both-PGO;
 Bench: trailer stays portable-default); freebies landed (+~6% both
 arches); distributed-SPSA kit built+parked (D36 amended — no

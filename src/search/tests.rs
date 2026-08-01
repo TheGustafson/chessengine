@@ -989,7 +989,7 @@ fn continuation_history_pruning_drops_a_distrusted_quiet() {
     // offset-2 continuation slab (the SENTINEL predecessor frames below the
     // root, which the ply-1 node reads for both offsets) to a large
     // negative drives every quiet's
-    // `cont_history = 2·(−8000) + pawnHistory(−1262) = −17262 < −4136·1`,
+    // `cont_history = 2·(−8000) + pawnHistory(−1338) = −17338 < −4136·1`,
     // so the gate fires and the second quiet is pruned outright — 1 node.
     let fen = "7k/8/8/8/8/2N5/8/K7 w - - 0 1";
     let eval = corrected_eval(&board(fen), None);
@@ -1073,11 +1073,11 @@ fn capture_futility_value_matches_the_hand_computed_bound() {
     // truncation of `134·capt_hist/1024` (formed before the divide).
     let cases: &[(Value, i32, Value, i32, Value)] = &[
         (0, 0, 0, 0, 234),             // the flat base alone
-        (0, -1, 208, -699, 104),       // depth-1 pawn capture, fresh capt_hist: 234-247+208-91
+        (0, -1, 208, -742, 98),        // depth-1 pawn capture, fresh capt_hist: 234-247+208-97
         (0, 0, 0, -1, 234),            // -134/1024 truncates toward zero to 0
         (0, 0, 0, -1024, 100),         // -134·1024/1024 = -134 → 234-134
         (100, 3, 208, 1024, 1417),     // 100+234+741+208+134
-        (-1412, -1, 208, -699, -1308), // the search-level fixture's bound
+        (-1412, -1, 208, -742, -1314), // the search-level fixture's bound
     ];
     for &(se, lmr, cap, ch, want) in cases {
         assert_eq!(
@@ -1094,7 +1094,7 @@ fn capture_see_margin_matches_the_hand_computed_value() {
     // capture-history term formed before the truncating divide.
     let cases: &[(Depth, i32, Value)] = &[
         (1, 0, 177),      // 177 + 0
-        (1, -699, 154),   // 177 + (34·-699)/1024 = 177 - 23
+        (1, -742, 153),   // 177 + (34·-742)/1024 = 177 - 24
         (2, -1, 354),     // -34/1024 truncates toward zero to 0
         (4, 1024, 742),   // 708 + 34
         (10, 3000, 1869), // 1770 + 102000/1024 = 1770 + 99
@@ -1187,8 +1187,8 @@ fn capture_futility_prunes_a_futile_capture_at_its_margin() {
     // recaptures cxb3, so move 1 costs two nodes) and fails low, leaving
     // best_value non-loss with no best move. Nxc2 then reaches the capture
     // branch, where at depth 1 `lmr_depth == 0` and the fresh capture
-    // history is −699, so the futility bound is exactly
-    // `capture_futility_value(static_eval, 0, 208, -699)`. The boundary is
+    // history is −742, so the futility bound is exactly
+    // `capture_futility_value(static_eval, 0, 208, -742)`. The boundary is
     // sharp (`futility_value <= alpha`):
     //   - alpha = bound:     Nxc2 is pruned → 2 nodes (only move 1's pair).
     //   - alpha = bound - 1: Nxc2 is searched → 3 nodes.
@@ -1209,7 +1209,7 @@ fn capture_futility_prunes_a_futile_capture_at_its_margin() {
     // Both SEE-safe → capture SEE cannot prune (isolates futility).
     let depth: Depth = 1;
     let ch = Worker::new(board(fen)).histories.capture_value(&b, nxc2);
-    assert_eq!(ch, -699, "fresh capture history is CAPTURE_INIT");
+    assert_eq!(ch, -742, "fresh capture history is CAPTURE_INIT");
     assert!(
         b.see_ge(nxc2, -capture_see_margin(depth, ch)),
         "Nxc2 must clear the capture-SEE margin (SEE cannot be the pruner)"
@@ -3930,18 +3930,21 @@ fn warm_tt_searches_fewer_nodes_at_equal_depth() {
     // against the warmed table must cost fewer nodes — the ttMove-
     // first ordering and the eval cache are actually doing work.
     //
-    // Depth 5 (was 4): doc 10 §3.5's LMP shrinks the startpos tree so
-    // hard at depth 4 (~370 nodes) that the ttMove ordering can no
-    // longer beat it — a warm table actually reshaped the LMP-pruned
-    // tree LARGER there. From depth 5 on the TT cutoffs dominate again
-    // and the shrink is robust. The fresh-vs-warm VALUE equality is no
+    // Depth 6 (was 5, and 4 before that): doc 10 §3.5's LMP shrinks the
+    // startpos tree so hard at small depths that the ttMove ordering can
+    // no longer beat it — a warm table actually reshapes the LMP-pruned
+    // tree LARGER there. The SF `ebcea3ef` tunable refresh (2026-08-01)
+    // shrank the tree again and pulled depth 5 back into that regime
+    // (fresh 956 / warm 1583); measured over depths 4..9 the crossover is
+    // at 6, where the margin is wide and stable (fresh 5410 / warm 1250,
+    // and still 3:2 at depth 9). The fresh-vs-warm VALUE equality is no
     // longer asserted: as with `fresh_startpos_search_is_bit_reproducible`
     // (LMR) and now LMP, a warm table's richer move info legitimately
     // drifts the lossy fixed-depth score a few cp — the node shrink is
     // the invariant this test owns.
     let tt = test_tt();
-    let fresh = go_depth_on(START_FEN, 5, &tt);
-    let warm = go_depth_on(START_FEN, 5, &tt);
+    let fresh = go_depth_on(START_FEN, 6, &tt);
+    let warm = go_depth_on(START_FEN, 6, &tt);
     assert!(
         warm.nodes < fresh.nodes,
         "warm TT must shrink the tree: {} !< {}",

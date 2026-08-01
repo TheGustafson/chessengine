@@ -173,13 +173,13 @@ const CORR_SIZE: usize = 65536; // power of two, masked by each correction key
 // Like the bounds above, these are the tables' defined reset state rather than
 // scoring multipliers, so they stay here with their catalogue.
 const MAIN_INIT: i16 = -5;
-const CAPTURE_INIT: i16 = -699;
-const CONT_INIT: i16 = -552;
-const PAWN_INIT: i16 = -1262;
-const CORR_INIT: i16 = -6;
+const CAPTURE_INIT: i16 = -742;
+const CONT_INIT: i16 = -586;
+const PAWN_INIT: i16 = -1338;
+const CORR_INIT: i16 = -5;
 const CONT_CORR_INIT: i16 = 5;
-const LOW_PLY_REFILL: i16 = 100; // per-`go` fill; low-ply has no new-game init
-const MAIN_DECAY_NUM: i32 = 789; // per-`go` butterfly decay: e = e * 789 / 1024
+const LOW_PLY_REFILL: i16 = 102; // per-`go` fill; low-ply has no new-game init
+const MAIN_DECAY_NUM: i32 = 729; // per-`go` butterfly decay: e = e * 729 / 1024
 const MAIN_DECAY_DEN: i32 = 1024;
 
 /// One `[piece × to]` slab of the continuation-history tensor — the innermost
@@ -534,7 +534,7 @@ impl Histories {
     }
 
     /// The per-`go` refresh (design/09 §3.4, the "Per-go" column): decay the
-    /// butterfly history toward zero (`e = e * 789 / 1024`, so recent searches
+    /// butterfly history toward zero (`e = e * 729 / 1024`, so recent searches
     /// dominate) and refill the low-ply history to `LOW_PLY_REFILL`.
     pub fn new_search(&mut self) {
         for row in self.main.iter_mut() {
@@ -1375,7 +1375,7 @@ mod tests {
         assert_eq!(h.tt_move.get(), 0);
     }
 
-    // `new_search` decays the butterfly history by 789/1024 (1024 -> 789,
+    // `new_search` decays the butterfly history by 729/1024 (1024 -> 729,
     // truncating toward zero on negatives) and refills low-ply to 100, leaving
     // every other table alone.
     #[test]
@@ -1387,8 +1387,8 @@ mod tests {
 
         h.new_search();
 
-        assert_eq!(h.main[0][7].get(), 789); // 1024 * 789 / 1024
-        assert_eq!(h.main[1][9].get(), -789); // truncates toward zero
+        assert_eq!(h.main[0][7].get(), 729); // 1024 * 729 / 1024
+        assert_eq!(h.main[1][9].get(), -729); // truncates toward zero
         for ply in 0..LOW_PLY_SIZE {
             assert_eq!(h.low_ply[ply][0].get(), LOW_PLY_REFILL as i32);
             assert_eq!(
