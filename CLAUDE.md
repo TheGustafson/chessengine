@@ -181,14 +181,23 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   from `engines/canonical/` (see below) and pins two numbers, both reproduced
   by a from-source non-PGO build: the **eval hash**
   `2e1ede95…79c4` (sha256 of the forward-pass score for all 50
-  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1739588**
+  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1743308**
   (`bench 16 1 13 <fens> depth <net>` — the net is the optional **6th arg**;
-  omit it and you silently measure PSQT, 3441859). Both were re-pinned on
+  omit it and you silently measure PSQT, 3441859). The d13 total moved on
+  2026-08-01 with the SF `ebcea3ef` tunable refresh (1739588 → 1743308, +0.21%)
+  while **the eval hash did NOT move** — positive evidence that a 154-value
+  pure-search change reshaped the tree and left the forward pass bit-identical.
+  **Note the regime gap:** the same refresh moved the depth-6 PSQT `Bench:`
+  −17.2% (587683 → 486897) but the depth-13 NNUE total only +0.21%. The
+  headline `Bench:` number is measured in a regime we do NOT play in — do not
+  quote it as a strength-relevant node reduction.
+  The eval hash was pinned on
   2026-07-30 by the **`network_scale` 600 canonical promotion** (`859a442`,
   +14.78 ± 5.45 over 5880 games) — a four-byte header change with the payload
   byte-identical from offset 64, so the existing binary loads it with no
   rebuild; the −12.4% node drop is the hardcoded SF pruning margins biting
   correctly once the eval spread is right. Preceding pins, newest first:
+  `2e1ede95…79c4` / `1739588` (the same promotion, before the tunable refresh),
   `eb981b11…4f4f37` / `1985398` (perf study 32's i8 HalfKA feature
   transformer — the 57.7 MB i16 weight table quantised to i8 at load with a
   per-column integer scale, −6.8% cycles/node and +3.6 ± 7.7 Elo over 2932
