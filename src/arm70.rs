@@ -76,6 +76,11 @@ pub struct Arm {
     /// turns it off, which is how the landed change is A/B'd against its own
     /// predecessor inside one binary.
     pub qs_def: i32,
+    /// Use a PAWN-ONLY recapture map instead of the full threat map. The full
+    /// map is `Board::compute_threats`, which is lazy precisely because
+    /// quiescence never needed it — arming it there costs a fill per qsearch
+    /// node. Pawn defenders are two shifts.
+    pub def_pawn: bool,
     /// Restore the pre-study evasion capture score: the raw victim value with
     /// no capture history. The OFF switch for the other landed change.
     pub evasion_mvv: bool,
@@ -104,6 +109,7 @@ pub const SHIPPED: Arm = Arm {
     tt_bonus: -1,
     def_cap: 0,
     qs_def: -1,
+    def_pawn: false,
     evasion_mvv: false,
     cross_malus: 0,
 };
@@ -134,6 +140,7 @@ fn parse(spec: &str) -> Arm {
             "crossmalus" => a.cross_malus = n,
             "defcap" => a.def_cap = n,
             "qsdef" => a.qs_def = n,
+            "defpawn" => a.def_pawn = n != 0,
             "evmvv" => a.evasion_mvv = n != 0,
             other => panic!("arm70: unknown knob {other:?}"),
         }

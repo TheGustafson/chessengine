@@ -404,6 +404,11 @@ fn score_capture(board: &Board, hist: &Histories, m: Move, defended: Bitboard) -
 #[inline]
 fn recapture_map(board: &Board, depth: Depth) -> Bitboard {
     if depth <= DEPTH_QS {
+        #[cfg(feature = "arm70")]
+        if crate::arm70::arm().def_pawn {
+            let them = board.side_to_move().flip();
+            return crate::attacks::pawn_attacks_bb(them, board.pieces(them, PieceType::Pawn));
+        }
         board.all_threats()
     } else {
         Bitboard::EMPTY

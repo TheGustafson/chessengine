@@ -245,6 +245,45 @@ left alone here.
 
 ---
 
+### 3.4 What the landed change COSTS, and the cheaper variant it leaves on the table
+
+A move-ordering change owes the speed side exactly one number: **instructions
+per node**, since a functional change moves nodes and total instructions for
+two reasons at once. `tools/perf70/ipn70.sh`, both PGO, uho300 @ d11, five
+alternating rounds with **zero spread** (`instructions:u` is deterministic):
+
+| | i/node | nodes | total instructions |
+|---|---|---|---|
+| baseline | 7009.30 | 4,644,479 | 32.564 G |
+| landed | **7092.21** (+1.18 %) | 4,565,705 (−1.70 %) | **32.383 G (−0.56 %)** |
+
+The +1.18 % has a named cause and it is not the arithmetic. `Board::threats` is
+**lazy on purpose** — `compute_threats` walks every enemy slider, knight and
+king, and its own doc comment says "every qsearch node ... threw the result
+away". Arming `all_threats()` in the quiescence capture scorer makes every
+qsearch node pay that fill.
+
+A **pawn-only** recapture map (`attacks::pawn_attacks_bb`, two shifts, no fill)
+was measured as the alternative:
+
+| recapture map | Δ fhf qsearch | Δ fhf in-check | Δ nodes |
+|---|---|---|---|
+| full threat map, 56/16 (**shipped**) | **+3.51 pp** | +0.64 | −1.31 % |
+| pawn-only, 56/16 | +1.58 pp | +0.42 | **−1.97 %** |
+| pawn-only, 80/16 | +1.56 pp | +0.62 | −0.03 % |
+| pawn-only, 112/16 | +1.69 pp | +0.66 | −0.11 % |
+
+Pawn defenders alone carry **~45 % of the ordering signal** and the pawn-only
+variant *saturates* — the constant stops mattering past 56, which is what a
+subset-of-the-truth map should do. It is left as a measured option rather than
+shipped: the full map wins on the statistic this change exists to move, its
+extra per-node cost is more than repaid in the same run (−0.56 % total
+instructions), and the games are already running on it. If a future study finds
+the qsearch threat fill expensive in wall clock, the swap is one line and its
+cost/benefit is already priced here.
+
+---
+
 ## 4. What the study did NOT close, with numbers
 
 The census points at one block far larger than anything landed here, and it is
