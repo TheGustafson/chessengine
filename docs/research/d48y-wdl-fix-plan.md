@@ -16995,3 +16995,37 @@ c2 +9.50); tunables **neutral** (−1.39 ± 10.43, NNUE-verified); eval frame ha
 **interior optimum we are already on**; per-node microarch surface **closed** by
 studies 65–69; the SF-net teacher pipeline **works** (`sf-eval`, 96 % sign
 agreement, slope 0.7604 ours/teacher) and its calibration must be **per corpus**.
+
+---
+
+## 2026-08-01 12:32 — SF-teacher calibration COMMISSIONED (CPU-only, the gate on the 60/40 blend)
+
+**D49 continuation at sb1632**, 177.4k pos/s, self-restarting. `d49ab2` packed
+cycle-3 (**stdev 601.7**, right in canonical's 610 band — the pack is frame-sane)
+and is waiting for the matcher to idle before running the anchor A/B. Memory
+5968 MB, all units green.
+
+**Commissioned the per-corpus teacher calibration.** It is the gate on the
+owner's 60/40 blend, it is **CPU-only** — so it does not contend with the
+500-superbatch GPU run — and it is the highest-value unblocked work now that the
+per-node microarch surface is closed.
+
+Handed it everything already established so it cannot re-derive or reopen:
+- the working invocation (`sf-eval`, 50/50 verified, 7/7 vs SF's own eval),
+- the two conventions that silently ruin the fit (stm-vs-White; SF's
+  material-dependent `a = p_a(material)`),
+- the measured teacher-vs-net numbers (slope 0.7604, 96 % sign agreement) **with
+  the warning that teacher-vs-LABELS is a different quantity**,
+- **the fit direction as SETTLED** — teacher → our frame, with the four-arm
+  6000-game interior-optimum table attached so it cannot argue for SF parity,
+- **the derived prediction ≈1.023** framed as *a hypothesis to test*, not an
+  answer to assume.
+
+**The core requirement is PER CORPUS**: twelve `per_corpus_target` pairs whose
+`a` term spans **1.73×**, so a pooled slope would be wrong for most shards. It
+must also produce the **corpus ↔ index mapping**, which nobody has written down
+and which the blend will need.
+
+Told explicitly that "the frames are close enough" and "this needs the training
+loop to verify" are not findings — the entire purpose is to catch a bad
+conversion in a regression rather than twelve superbatches later.
