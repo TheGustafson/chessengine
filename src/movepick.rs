@@ -2205,8 +2205,8 @@ mod tests {
 
     #[test]
     fn quiet_scoring_matches_hand_computed_values() {
-        // Fresh-history base: 2·main(−5) + 2·pawn(−1338) + 5·cont(−586).
-        const BASE: i32 = 2 * -5 + 2 * -1338 + 5 * -586; // −5616
+        // Fresh-history base: 2·main(−5) + 2·pawn(−1262) + 5·cont(−552).
+        const BASE: i32 = 2 * -5 + 2 * -1262 + 5 * -552; // −5294
         let fresh = Histories::new();
 
         // (a) Plain quiet at ply ≥ 5 (no low-ply term): a pawn push gives no
@@ -2253,7 +2253,7 @@ mod tests {
         // determinism/mate smoke tests never touch.
         //
         // Fresh-history base (same as quiet_scoring_matches_hand_computed_values).
-        const BASE: i32 = 2 * -5 + 2 * -1338 + 5 * -586; // −5616
+        const BASE: i32 = 2 * -5 + 2 * -1262 + 5 * -552; // −5294
         let fresh = Histories::new();
         let nc6 = Move::normal(Square::E5, Square::C6);
 
@@ -2302,7 +2302,7 @@ mod tests {
     /// other test in the suite. This is the only place either is pinned.
     #[test]
     fn offense_reverse_fan_pins_the_pawn_flip_and_slider_blockers() {
-        const BASE: i32 = 2 * -5 + 2 * -1338 + 5 * -586; // −5616, as above
+        const BASE: i32 = 2 * -5 + 2 * -1262 + 5 * -552; // −5294, as above
         let fresh = Histories::new();
 
         // PAWN. b3–b4 attacks the undefended rook on c5: b4 ∈ pawn_attacks(us=White, c5)
@@ -2345,13 +2345,13 @@ mod tests {
 
     #[test]
     fn capture_scoring_matches_hand_computed_values() {
-        // 7·victim_value + capture_history; a fresh capture cell is −742.
+        // 7·victim_value + capture_history; a fresh capture cell is −699.
         let b = board("4k3/8/8/3n4/4P3/8/8/4K3 w - - 0 1");
         let exd5 = Move::normal(Square::E4, Square::D5);
         assert!(b.is_capture(exd5));
-        let expect = CAPTURE_MVV_FACTOR() * PieceType::Knight.value() - 742;
+        let expect = CAPTURE_MVV_FACTOR() * PieceType::Knight.value() - 699;
         assert_eq!(score_capture(&b, &Histories::new(), exd5), expect);
-        assert_eq!(expect, 4725); // 7·781 − 742
+        assert_eq!(expect, 4768); // 7·781 − 699
     }
 
     #[test]

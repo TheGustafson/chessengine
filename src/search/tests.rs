@@ -272,9 +272,9 @@ fn reduction_table_matches_the_closed_form() {
     // 0 is never read and stays 0.
     assert_eq!(w.reductions[0], 0);
     assert_eq!(w.reductions[1], 0);
-    // Concrete golden anchors: int(22.4375 * ln(i)).
+    // Concrete golden anchors: int(22.140625 * ln(i)).
     assert_eq!(w.reductions[2], 15);
-    assert_eq!(w.reductions[64], 93);
+    assert_eq!(w.reductions[64], 92);
     // Every entry equals the closed form.
     for i in 1..MAX_MOVES {
         assert_eq!(w.reductions[i], red_table(i), "reductions[{i}]");
@@ -364,20 +364,20 @@ fn reduction_equals_the_full_formula() {
 #[test]
 fn rfp_margin_matches_the_hand_computed_formula() {
     // (depth, tt_hit, improving, opponent_worsening, expected). Values
-    // are `futility_mult·depth - (2789·imp + 335·opp)·futility_mult/1024`
-    // with `futility_mult = min(45 + 4·depth, 85) - 20·(!tt_hit)`,
+    // are `futility_mult·depth - (2934·imp + 343·opp)·futility_mult/1024`
+    // with `futility_mult = min(40 + 4·depth, 80) - 20·(!tt_hit)`,
     // computed by hand — the truncating divide is the point.
     let cases: &[(Depth, bool, bool, bool, Value)] = &[
-        // fm = min(49,85) = 49; 49·1 - 0 = 49
-        (1, true, false, false, 49),
-        // fm = min(61,85) = 61; 61·4 - 0 = 244
-        (4, true, false, false, 244),
-        // fm = 61 - 20 = 41; 41·4 - 335·41/1024 = 164 - 13 = 151
-        (4, false, false, true, 151),
-        // fm = min(85,85) = 85; 85·10 - (2789+335)·85/1024 = 850 - 259 = 591
-        (10, true, true, true, 591),
-        // fm = min(109,85) = 85 (cap); 85·16 - 2789·85/1024 = 1360 - 231 = 1129
-        (16, true, true, false, 1129),
+        // fm = min(44,80) = 44; 44·1 - 0 = 44
+        (1, true, false, false, 44),
+        // fm = min(56,80) = 56; 56·4 - 0 = 224
+        (4, true, false, false, 224),
+        // fm = 56 - 20 = 36; 36·4 - 343·36/1024 = 144 - 12 = 132
+        (4, false, false, true, 132),
+        // fm = min(80,80) = 80; 80·10 - (2934+343)·80/1024 = 800 - 256 = 544
+        (10, true, true, true, 544),
+        // fm = min(104,80) = 80 (cap); 80·16 - 2934·80/1024 = 1280 - 229 = 1051
+        (16, true, true, false, 1051),
     ];
     for &(d, hit, imp, opp, want) in cases {
         assert_eq!(
@@ -793,13 +793,13 @@ fn lmp_caps_a_wide_quiet_nonpv_node_at_the_threshold() {
     // The window must sit ABOVE every quiet's value (so nothing fails
     // high and the loop runs to the LMP cap) yet BELOW the item-7
     // parent-futility bound `parent_futility_value(eval, no_bestmove=true,
-    // lmr_depth=0, eval>alpha=false) = eval + 166` at this depth, so
+    // lmr_depth=-1, eval>alpha=false) = eval + 61` at this depth, so
     // parent futility stays dormant and LMP alone caps the node. `eval +
     // 40` is comfortably inside that band; below the depth-1 razoring
-    // margin (801) too. (Pre-item-7 this test used `eval + 400`; parent
+    // margin (765) too. (Pre-item-7 this test used `eval + 400`; parent
     // futility now prunes there, so the window tightened — the LMP cap
     // itself is unchanged.)
-    let fut = parent_futility_value(eval, true, 0, false);
+    let fut = parent_futility_value(eval, true, -1, false);
     let alpha = eval + 40;
     assert!(alpha < fut, "window must keep parent futility dormant");
     let beta = alpha + 1;
@@ -815,17 +815,17 @@ fn lmp_caps_a_wide_quiet_nonpv_node_at_the_threshold() {
 #[test]
 fn parent_futility_value_matches_the_hand_computed_bound() {
     // (static_eval, no_best_move, lmr_depth, eval_above_alpha, expected),
-    // `static_eval + 39 + 127·no_best_move + 119·lmr_depth
+    // `static_eval + 40 + 138·no_best_move + 117·lmr_depth
     //  + 90·eval_above_alpha`, computed by hand — including the negative
     // `lmr_depth` term that LOWERS the bound at shallow nodes.
     let cases: &[(Value, bool, i32, bool, Value)] = &[
-        (0, true, -1, false, 47),      // 39 + 127 - 119
-        (0, false, -1, false, -80),    // 39 - 119
-        (0, false, 0, false, 39),      // the flat base alone
-        (100, true, 0, true, 356),     // 100 + 39 + 127 + 90
-        (100, true, 5, false, 861),    // 100 + 39 + 127 + 595
-        (-50, true, 3, true, 563),     // -50 + 39 + 127 + 357 + 90
-        (200, false, 11, false, 1548), // 200 + 39 + 1309
+        (0, true, -1, false, 61),      // 40 + 138 - 117
+        (0, false, -1, false, -77),    // 40 - 117
+        (0, false, 0, false, 40),      // the flat base alone
+        (100, true, 0, true, 368),     // 100 + 40 + 138 + 90
+        (100, true, 5, false, 863),    // 100 + 40 + 138 + 585
+        (-50, true, 3, true, 569),     // -50 + 40 + 138 + 351 + 90
+        (200, false, 11, false, 1527), // 200 + 40 + 1287
     ];
     for &(ev, nbm, lmr, eaa, want) in cases {
         assert_eq!(
@@ -841,8 +841,8 @@ fn parent_futility_prunes_a_quiet_only_at_or_below_its_margin() {
     // Same wide-quiet KN-vs-K node as the LMP test: at depth 1 the loop
     // searches move 1 (fails low, no best move raised), then reaches the
     // second quiet. Its parent-futility bound is
-    // `parent_futility_value(eval, no_bestmove=true, lmr_depth=0,
-    // eval>alpha=false) = eval + 166`. The move is pruned iff that bound
+    // `parent_futility_value(eval, no_bestmove=true, lmr_depth=-1,
+    // eval>alpha=false) = eval + 61`. The move is pruned iff that bound
     // `<= alpha`, so the boundary is sharp:
     //   - alpha = bound - 1: NOT pruned → the second quiet is searched,
     //     move 3+ are LMP-skipped → exactly 2 nodes.
@@ -854,7 +854,7 @@ fn parent_futility_prunes_a_quiet_only_at_or_below_its_margin() {
     let fen = "7k/8/8/8/8/2N5/8/K7 w - - 0 1";
     let eval = corrected_eval(&board(fen), None);
     assert!(!is_decisive(eval), "a knight edge is not a decisive score");
-    let bound = parent_futility_value(eval, true, 0, false);
+    let bound = parent_futility_value(eval, true, -1, false);
     let depth: Depth = 1;
 
     // Just below the margin: parent futility dormant, the second quiet is
@@ -901,12 +901,12 @@ fn quiet_see_pruning_drops_a_hanging_quiet() {
 
     let eval = static_eval(&b);
     let depth: Depth = 1;
-    // lmr_depth = 0 at depth 1, so the SEE bar is `-23·max(0,0)² = 0`:
+    // lmr_depth = -1 at depth 1, so the SEE bar is `-25·max(0,-1)² = 0`:
     // any SEE < 0 quiet is dropped. Pitch alpha above Nc2's value (so it
     // fails low and we reach Nb3) yet below the parent-futility bound
-    // `eval + 166` (so parent futility stays dormant and quiet SEE is the
+    // `eval + 61` (so parent futility stays dormant and quiet SEE is the
     // sole pruner of Nb3).
-    let bound = parent_futility_value(eval, true, 0, false);
+    let bound = parent_futility_value(eval, true, -1, false);
     let alpha = eval + 40;
     assert!(alpha < bound, "window must keep parent futility dormant");
     let mut w = Worker::new(board(fen));
@@ -989,7 +989,7 @@ fn continuation_history_pruning_drops_a_distrusted_quiet() {
     // offset-2 continuation slab (the SENTINEL predecessor frames below the
     // root, which the ply-1 node reads for both offsets) to a large
     // negative drives every quiet's
-    // `cont_history = 2·(−8000) + pawnHistory(−1338) = −17338 < −4136·1`,
+    // `cont_history = 2·(−8000) + pawnHistory(−1262) = −17262 < −4313·1`,
     // so the gate fires and the second quiet is pruned outright — 1 node.
     let fen = "7k/8/8/8/8/2N5/8/K7 w - - 0 1";
     let eval = corrected_eval(&board(fen), None);
@@ -997,7 +997,7 @@ fn continuation_history_pruning_drops_a_distrusted_quiet() {
     // Below the parent-futility bound (that gate stays dormant) and just
     // above the quiets' values (move 1 fails low) — the parent-futility
     // test pins this exact window at 2 nodes.
-    let bound = parent_futility_value(eval, true, 0, false);
+    let bound = parent_futility_value(eval, true, -1, false);
     let depth: Depth = 1;
 
     // Fresh: cont-hist dormant, the second quiet is searched (2 nodes).
@@ -1067,17 +1067,17 @@ fn continuation_history_pruning_preserves_a_forced_mate() {
 #[test]
 fn capture_futility_value_matches_the_hand_computed_bound() {
     // (static_eval, lmr_depth, captured_value, capt_hist, expected):
-    // `static_eval + 234 + 247·lmr_depth + captured_value
-    //  + 134·capt_hist/1024`, computed by hand — including the negative
+    // `static_eval + 231 + 232·lmr_depth + captured_value
+    //  + 131·capt_hist/1024`, computed by hand — including the negative
     // `lmr_depth` term that LOWERS the bound at shallow nodes and the
-    // truncation of `134·capt_hist/1024` (formed before the divide).
+    // truncation of `131·capt_hist/1024` (formed before the divide).
     let cases: &[(Value, i32, Value, i32, Value)] = &[
-        (0, 0, 0, 0, 234),             // the flat base alone
-        (0, -1, 208, -742, 98),        // depth-1 pawn capture, fresh capt_hist: 234-247+208-97
-        (0, 0, 0, -1, 234),            // -134/1024 truncates toward zero to 0
-        (0, 0, 0, -1024, 100),         // -134·1024/1024 = -134 → 234-134
-        (100, 3, 208, 1024, 1417),     // 100+234+741+208+134
-        (-1412, -1, 208, -742, -1314), // the search-level fixture's bound
+        (0, 0, 0, 0, 231),             // the flat base alone
+        (0, -1, 208, -699, 118),       // depth-1 pawn capture, fresh capt_hist: 231-232+208-89
+        (0, 0, 0, -1, 231),            // -131/1024 truncates toward zero to 0
+        (0, 0, 0, -1024, 100),         // -131·1024/1024 = -131 → 231-131
+        (100, 3, 208, 1024, 1366),     // 100+231+696+208+131
+        (-1412, -1, 208, -699, -1294), // the search-level fixture's bound
     ];
     for &(se, lmr, cap, ch, want) in cases {
         assert_eq!(
@@ -1090,14 +1090,14 @@ fn capture_futility_value_matches_the_hand_computed_bound() {
 
 #[test]
 fn capture_see_margin_matches_the_hand_computed_value() {
-    // (depth, capt_hist, expected): `177·depth + 34·capt_hist/1024`, the
+    // (depth, capt_hist, expected): `175·depth + 34·capt_hist/1024`, the
     // capture-history term formed before the truncating divide.
     let cases: &[(Depth, i32, Value)] = &[
-        (1, 0, 177),      // 177 + 0
-        (1, -742, 153),   // 177 + (34·-742)/1024 = 177 - 24
-        (2, -1, 354),     // -34/1024 truncates toward zero to 0
-        (4, 1024, 742),   // 708 + 34
-        (10, 3000, 1869), // 1770 + 102000/1024 = 1770 + 99
+        (1, 0, 175),      // 175 + 0
+        (1, -699, 152),   // 175 + (34·-699)/1024 = 175 - 23
+        (2, -1, 350),     // -34/1024 truncates toward zero to 0
+        (4, 1024, 734),   // 700 + 34
+        (10, 3000, 1849), // 1750 + 102000/1024 = 1750 + 99
     ];
     for &(d, ch, want) in cases {
         assert_eq!(
@@ -1111,16 +1111,16 @@ fn capture_see_margin_matches_the_hand_computed_value() {
 #[test]
 fn singular_verification_beta_matches_the_hand_computed_centre() {
     // (tt_value, depth, ttpv_non_pv, expected):
-    // `tt_value - (59 + 66·ttpv_non_pv)·depth / 63`, the `(…)·depth`
+    // `tt_value - (60 + 70·ttpv_non_pv)·depth / 59`, the `(…)·depth`
     // product formed before the truncating divide (D27).
     let cases: &[(Value, Depth, bool, Value)] = &[
         (0, 0, false, 0),       // no depth → no offset
-        (0, 1, false, 0),       // 59/63 = 0 truncates → 0
-        (0, 1, true, -1),       // 125/63 = 1 truncates → -1
-        (100, 8, false, 93),    // 472/63 = 7 → 100-7
-        (100, 8, true, 85),     // 1000/63 = 15 → 100-15
-        (1000, 10, false, 991), // 590/63 = 9 → 1000-9
-        (-500, 12, true, -523), // 1500/63 = 23 → -500-23
+        (0, 1, false, -1),      // 60/59 = 1 truncates → -1
+        (0, 1, true, -2),       // 130/59 = 2 truncates → -2
+        (100, 8, false, 92),    // 480/59 = 8 → 100-8
+        (100, 8, true, 83),     // 1040/59 = 17 → 100-17
+        (1000, 10, false, 990), // 600/59 = 10 → 1000-10
+        (-500, 12, true, -526), // 1560/59 = 26 → -500-26
     ];
     for &(tt, d, ttpv, want) in cases {
         assert_eq!(
@@ -1134,18 +1134,18 @@ fn singular_verification_beta_matches_the_hand_computed_centre() {
 #[test]
 fn singular_double_margin_matches_the_hand_computed_margin() {
     // (pv, tt_capture, corr_adj, tmh, deep, expected):
-    // `-2 + 204·pv - 152·(!tt_capture) - corr_adj
-    //  - 1175·tmh/114178 - 38·deep`, the `tmh` term formed before its
+    // `-3 + 201·pv - 157·(!tt_capture) - corr_adj
+    //  - 1081·tmh/117824 - 41·deep`, the `tmh` term formed before its
     // truncating divide (D27).
     let cases: &[(bool, bool, Value, i32, bool, Value)] = &[
-        (false, true, 0, 0, false, -2), // base alone (ttCapture: no !cap penalty)
-        (false, false, 0, 0, false, -154), // quiet ttMove docks 152
-        (true, false, 0, 0, false, 50), // PV bonus 204, minus 152
-        (true, true, 0, 0, true, 164),  // PV, ttCapture, deep: 204-2-38
-        (false, true, 0, 114178, false, -1177), // full tmh unit: -1175
-        (false, true, 0, 1, false, -2), // 1175·1/114178 truncates → 0
-        (false, true, 0, -1, false, -2), // negative tmh truncates toward zero → 0
-        (false, true, 500, 0, false, -502), // corr_adj subtracts directly
+        (false, true, 0, 0, false, -3), // base alone (ttCapture: no !cap penalty)
+        (false, false, 0, 0, false, -160), // quiet ttMove docks 157
+        (true, false, 0, 0, false, 41), // PV bonus 201, minus 157
+        (true, true, 0, 0, true, 157),  // PV, ttCapture, deep: 201-3-41
+        (false, true, 0, 117824, false, -1084), // full tmh unit: -1081
+        (false, true, 0, 1, false, -3), // 1081·1/117824 truncates → 0
+        (false, true, 0, -1, false, -3), // negative tmh truncates toward zero → 0
+        (false, true, 500, 0, false, -503), // corr_adj subtracts directly
     ];
     for &(pv, cap, corr, tmh, deep, want) in cases {
         assert_eq!(
@@ -1159,13 +1159,13 @@ fn singular_double_margin_matches_the_hand_computed_margin() {
 #[test]
 fn singular_triple_margin_matches_the_hand_computed_margin() {
     // (pv, tt_capture, ttpv, corr_adj, deep, expected):
-    // `70 + 279·pv - 188·(!tt_capture) + 81·ttpv - corr_adj - 43·deep`.
+    // `72 + 306·pv - 188·(!tt_capture) + 84·ttpv - corr_adj - 45·deep`.
     let cases: &[(bool, bool, bool, Value, bool, Value)] = &[
-        (false, true, false, 0, false, 70),    // base alone
-        (false, false, false, 0, false, -118), // quiet ttMove docks 188
-        (true, false, true, 0, false, 242),    // 70+279-188+81
-        (true, true, true, 0, true, 387),      // 70+279+81-43
-        (false, true, false, 100, true, -73),  // corr_adj 100, deep 43: 70-100-43
+        (false, true, false, 0, false, 72),    // base alone
+        (false, false, false, 0, false, -116), // quiet ttMove docks 188
+        (true, false, true, 0, false, 274),    // 72+306-188+84
+        (true, true, true, 0, true, 417),      // 72+306+84-45
+        (false, true, false, 100, true, -73),  // corr_adj 100, deep 45: 72-100-45
     ];
     for &(pv, cap, ttpv, corr, deep, want) in cases {
         assert_eq!(
@@ -1186,9 +1186,9 @@ fn capture_futility_prunes_a_futile_capture_at_its_margin() {
     // orders the higher-MVV Nxb3 first: it is searched (its qsearch child
     // recaptures cxb3, so move 1 costs two nodes) and fails low, leaving
     // best_value non-loss with no best move. Nxc2 then reaches the capture
-    // branch, where at depth 1 `lmr_depth == 0` and the fresh capture
-    // history is −742, so the futility bound is exactly
-    // `capture_futility_value(static_eval, 0, 208, -742)`. The boundary is
+    // branch, where at depth 1 `lmr_depth == -1` and the fresh capture
+    // history is −699, so the futility bound is exactly
+    // `capture_futility_value(static_eval, -1, 208, -699)`. The boundary is
     // sharp (`futility_value <= alpha`):
     //   - alpha = bound:     Nxc2 is pruned → 2 nodes (only move 1's pair).
     //   - alpha = bound - 1: Nxc2 is searched → 3 nodes.
@@ -1209,7 +1209,7 @@ fn capture_futility_prunes_a_futile_capture_at_its_margin() {
     // Both SEE-safe → capture SEE cannot prune (isolates futility).
     let depth: Depth = 1;
     let ch = Worker::new(board(fen)).histories.capture_value(&b, nxc2);
-    assert_eq!(ch, -742, "fresh capture history is CAPTURE_INIT");
+    assert_eq!(ch, -699, "fresh capture history is CAPTURE_INIT");
     assert!(
         b.see_ge(nxc2, -capture_see_margin(depth, ch)),
         "Nxc2 must clear the capture-SEE margin (SEE cannot be the pruner)"
@@ -1220,7 +1220,7 @@ fn capture_futility_prunes_a_futile_capture_at_its_margin() {
         !is_decisive(se),
         "the fixture's eval is not a decisive score"
     );
-    let bound = capture_futility_value(se, 0, PieceType::Pawn.value(), ch);
+    let bound = capture_futility_value(se, -1, PieceType::Pawn.value(), ch);
 
     // At the margin: Nxc2 pruned by capture futility. Move 1 (Nxb3) plus
     // its qsearch recapture are the only nodes.
@@ -1890,12 +1890,7 @@ fn qsearch_stand_pat_fail_high_blends_toward_beta() {
         params::QS_STANDPAT_BETA_W(),
         params::QS_STANDPAT_DEN(),
     );
-    // The blend runs on the CORRECTION-ADJUSTED stand pat, not the raw
-    // static eval; the TT keeps the unadjusted one (asserted below).
-    assert_eq!(
-        v,
-        (w_best * corrected_eval(&w.board, None) + w_beta * beta) / den
-    );
+    assert_eq!(v, (w_best * eval + w_beta * beta) / den);
     assert_eq!(w.nodes, 0, "a stand-pat cutoff searches nothing");
     let cached = tt.probe(w.board.key());
     assert!(cached.hit);
@@ -2087,10 +2082,7 @@ fn qsearch_fail_high_softening_blends_toward_beta() {
         params::QS_FAILHIGH_BETA_W(),
         params::QS_FAILHIGH_DEN(),
     );
-    assert_eq!(
-        v,
-        (w_best * -corrected_eval(&after, Some(exd5)) + w_beta * beta) / den
-    );
+    assert_eq!(v, (w_best * -static_eval(&after) + w_beta * beta) / den);
 }
 
 #[test]
@@ -2608,33 +2600,33 @@ fn sub_iteration_node_budget_still_completes_iteration_one() {
 
 #[test]
 fn soft_stop_falling_eval_pins_constants() {
-    // (11.48 + 2.30·Δavg + 1.1·Δiter) / 100, clamped to [0.576, 1.728].
+    // (11.87 + 2.21·Δavg + 1.0·Δiter) / 100, clamped to [0.572, 1.708].
     // Mid: Δavg = 100-50 = 50, Δiter = 60-50 = 10 →
-    //   (11.48 + 115 + 11)/100 = 1.3748.
-    assert!((Worker::falling_eval(100, 50, 60) - 1.3748).abs() < 1e-9);
+    //   (11.87 + 110.5 + 10)/100 = 1.3237.
+    assert!((Worker::falling_eval(100, 50, 60) - 1.3237).abs() < 1e-9);
     // Huge positive drop clamps to the max; huge negative to the min.
-    assert!((Worker::falling_eval(10_000, 0, 0) - 1.728).abs() < 1e-12);
-    assert!((Worker::falling_eval(0, 10_000, 0) - 0.576).abs() < 1e-12);
+    assert!((Worker::falling_eval(10_000, 0, 0) - 1.708).abs() < 1e-12);
+    assert!((Worker::falling_eval(0, 10_000, 0) - 0.572).abs() < 1e-12);
 }
 
 #[test]
 fn soft_stop_stability_reduction_pins_constants() {
     // time_reduction = lerp(iters, 2,15, 0.65,1.55) clamped [0.65,1.55];
-    // reduction = (1.468 + prev) / (2.284 · time_reduction).
+    // reduction = (1.48 + prev) / (2.157 · time_reduction).
     // Window [2,15] = SF's [5,18] shifted down by our measured ~3.3
     // iteration deficit at equal time (2026-07-26 depth-redenomination;
     // rationale at params::TIME_REDUCTION_STABILITY_LO).
     let (tr0, red0) = Worker::stability_reduction(0, 0.85); // below lo -> clamp 0.65
     assert!((tr0 - 0.65).abs() < 1e-12);
-    assert!((red0 - 1.561_363_330_189_950_3).abs() < 1e-9);
+    assert!((red0 - 1.661_852_287_721_550_7).abs() < 1e-9);
     let (tr2, _) = Worker::stability_reduction(2, 0.85); // lerp x0 -> 0.65
     assert!((tr2 - 0.65).abs() < 1e-12);
     let (tr11, red11) = Worker::stability_reduction(11, 0.85);
     assert!((tr11 - 1.273_076_923_076_923).abs() < 1e-9);
-    assert!((red11 - 0.797_191_549_251_062_3).abs() < 1e-9);
+    assert!((red11 - 0.848_498_600_075_353_7).abs() < 1e-9);
     let (tr15, red15) = Worker::stability_reduction(15, 0.85); // lerp x1 -> 1.55
     assert!((tr15 - 1.55).abs() < 1e-12);
-    assert!((red15 - 0.654_765_267_499_011_3).abs() < 1e-9);
+    assert!((red15 - 0.696_905_798_076_779_3).abs() < 1e-9);
     let (tr30, _) = Worker::stability_reduction(30, 0.85); // above hi -> clamp 1.55
     assert!((tr30 - 1.55).abs() < 1e-12);
 }
@@ -2692,11 +2684,11 @@ fn tm_reduction_numerator_is_a_per_move_constant() {
 
 #[test]
 fn soft_stop_best_move_instability_pins_constants() {
-    // 1.077 + 2.229 · changes / threads.
-    assert!((Worker::best_move_instability(0.0, 1) - 1.077).abs() < 1e-12);
-    assert!((Worker::best_move_instability(2.0, 1) - 5.535).abs() < 1e-12);
+    // 1.096 + 2.29 · changes / threads.
+    assert!((Worker::best_move_instability(0.0, 1) - 1.096).abs() < 1e-12);
+    assert!((Worker::best_move_instability(2.0, 1) - 5.676).abs() < 1e-12);
     // The /threads term averages the SMP change count (P11).
-    assert!((Worker::best_move_instability(4.0, 2) - 5.535).abs() < 1e-12);
+    assert!((Worker::best_move_instability(4.0, 2) - 5.676).abs() < 1e-12);
 }
 
 #[test]
@@ -3930,21 +3922,18 @@ fn warm_tt_searches_fewer_nodes_at_equal_depth() {
     // against the warmed table must cost fewer nodes — the ttMove-
     // first ordering and the eval cache are actually doing work.
     //
-    // Depth 6 (was 5, and 4 before that): doc 10 §3.5's LMP shrinks the
-    // startpos tree so hard at small depths that the ttMove ordering can
-    // no longer beat it — a warm table actually reshapes the LMP-pruned
-    // tree LARGER there. The SF `ebcea3ef` tunable refresh (2026-08-01)
-    // shrank the tree again and pulled depth 5 back into that regime
-    // (fresh 956 / warm 1583); measured over depths 4..9 the crossover is
-    // at 6, where the margin is wide and stable (fresh 5410 / warm 1250,
-    // and still 3:2 at depth 9). The fresh-vs-warm VALUE equality is no
+    // Depth 5 (was 4): doc 10 §3.5's LMP shrinks the startpos tree so
+    // hard at depth 4 (~370 nodes) that the ttMove ordering can no
+    // longer beat it — a warm table actually reshaped the LMP-pruned
+    // tree LARGER there. From depth 5 on the TT cutoffs dominate again
+    // and the shrink is robust. The fresh-vs-warm VALUE equality is no
     // longer asserted: as with `fresh_startpos_search_is_bit_reproducible`
     // (LMR) and now LMP, a warm table's richer move info legitimately
     // drifts the lossy fixed-depth score a few cp — the node shrink is
     // the invariant this test owns.
     let tt = test_tt();
-    let fresh = go_depth_on(START_FEN, 6, &tt);
-    let warm = go_depth_on(START_FEN, 6, &tt);
+    let fresh = go_depth_on(START_FEN, 5, &tt);
+    let warm = go_depth_on(START_FEN, 5, &tt);
     assert!(
         warm.nodes < fresh.nodes,
         "warm TT must shrink the tree: {} !< {}",
