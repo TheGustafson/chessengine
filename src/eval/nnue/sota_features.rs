@@ -461,6 +461,40 @@ fn build_threat_tables() -> ThreatTables {
 
 static THREAT_TABLES: LazyLock<ThreatTables> = LazyLock::new(build_threat_tables);
 
+/// Perf study 66 — the FullThreats index space as a list of attacker BLOCKS:
+/// `(base, num_subs, geom)` for each attacker code in [`ALL_PIECES`] order.
+///
+/// The index is `base + sub · geom + ft`, with `sub ∈ [0, num_subs)` selecting
+/// the victim relation (colour × type ordinal) and `ft ∈ [0, geom)` the
+/// `(from, to)` geometry ordinal. So **the victim relation is the SLOWEST axis
+/// and the geometry the fastest**, which is what makes two rows of one fold
+/// that share `(attacker, from)` but differ in victim sit `geom` rows apart —
+/// 336 rows (430 KB) for a knight, 1456 (1.8 MB) for a queen. Study 66's
+/// `FOLDREDUND` census measured the consequence: the modal threat fold spans
+/// **2²⁶ bytes**, i.e. the whole 77.7 MB table.
+///
+/// Transposing each block (`base + ft · num_subs + sub`) is a pure permutation
+/// of the row space, so it can be applied to the weight table at load and is
+/// **bit-exact by construction** — the accumulator sums the same vectors. It
+/// is what `ARCHON_PERM=1` builds.
+///
+/// Derived from the same `THREAT_TABLES` the resolver uses, so it cannot drift
+/// from the real layout; `threat_blocks_tile_the_space` pins that.
+pub(crate) fn threat_blocks() -> Vec<(usize, usize, usize)> {
+    let t = &*THREAT_TABLES;
+    ALL_PIECES
+        .iter()
+        .filter(|&&code| NUM_VALID_TARGETS[code] != 0)
+        .map(|&code| {
+            (
+                t.cumulative_offset[code] as usize,
+                NUM_VALID_TARGETS[code],
+                t.piece_offset[code] as usize,
+            )
+        })
+        .collect()
+}
+
 /// The FullThreats feature index of the directed relation "`attacker` on `from`
 /// threatens `attacked` on `to`", as seen from `perspective` with own king on
 /// `ksq` (design/11 §12.1). Returns `None` when the pair is excluded (kings, or
@@ -868,15 +902,17 @@ fn add_column<W: Copy + Into<i16>>(acc: &mut [i16; ACC], weights: &[W], index: u
 /// so this is a correctness path and not a speed one: it decodes lane by lane
 /// with the SAME scalar reference the SIMD kernel's tests are checked against.
 #[inline]
-fn add_threat_column(acc: &mut [i16; ACC], weights: &[i8], narrow: &[u64], index: usize) {
-    let base = index * ACC;
-    if super::sota_simd::is_narrow(narrow, base) {
+fn add_threat_column(acc: &mut [i16; ACC], weights: &[i8], row_map: &[u32], index: usize) {
+    let (base, narrow) = super::sota_simd::row_entry(row_map, index * ACC);
+    if narrow {
         let row = &weights[base..base + super::sota_simd::NARROW_BYTES];
         for (j, a) in acc.iter_mut().enumerate() {
             *a = a.wrapping_add(super::sota_simd::unpack_narrow_lane(row, j));
         }
     } else {
-        add_column(acc, weights, index);
+        for (a, &w) in acc.iter_mut().zip(&weights[base..base + ACC]) {
+            *a = a.wrapping_add(i16::from(w));
+        }
     }
 }
 
@@ -935,7 +971,7 @@ pub fn refresh_threat(threat_weights: &[i8], board: &Board, perspective: Color) 
 pub fn refresh_threat_into(
     dst: &mut [i16; ACC],
     threat_weights: &[i8],
-    threat_narrow: &[u64],
+    threat_rowmap: &[u32],
     board: &Board,
     perspective: Color,
     remap: Option<&ThreatRemap>,
@@ -943,7 +979,7 @@ pub fn refresh_threat_into(
     refresh_threat_into_at(
         dst,
         threat_weights,
-        threat_narrow,
+        threat_rowmap,
         &ThreatPosition::from_board(board),
         perspective,
         remap,
@@ -957,7 +993,7 @@ pub(super) fn refresh_threat_into_at(
     dst: &mut [i16; ACC],
     threat_weights: &[i8],
     // Perf study 65's narrow-plane bitmap; empty ⇒ every row is 8-bit.
-    threat_narrow: &[u64],
+    threat_rowmap: &[u32],
     pos: &ThreatPosition,
     perspective: Color,
     remap: Option<&ThreatRemap>,
@@ -966,21 +1002,28 @@ pub(super) fn refresh_threat_into_at(
     if threat_weights.is_empty() {
         return;
     }
-    match remap {
-        // Identity code: the weight table spans the full geometric space.
-        None => assert_eq!(
-            threat_weights.len(),
-            THREAT_DIMS * ACC,
-            "FullThreats transformer has the wrong size"
-        ),
-        // Re-coded net: the table spans `threat_rows` rows; the loader has
-        // validated every remap entry against that row count, so whole-rows
-        // is the only shape left to check here.
-        Some(_) => assert_eq!(
-            threat_weights.len() % ACC,
-            0,
-            "FullThreats transformer is not whole rows"
-        ),
+    // Perf study 66: a COMPACTED table is not whole `ACC`-byte rows any more —
+    // narrow rows are 960 B and the planes carry a trailing pad — so the shape
+    // checks below only apply to the flat layout. When a row map is present it
+    // IS the shape statement, and the loader built it from the table it also
+    // built, so there is nothing left here to disagree about.
+    if threat_rowmap.is_empty() {
+        match remap {
+            // Identity code: the weight table spans the full geometric space.
+            None => assert_eq!(
+                threat_weights.len(),
+                THREAT_DIMS * ACC,
+                "FullThreats transformer has the wrong size"
+            ),
+            // Re-coded net: the table spans `threat_rows` rows; the loader has
+            // validated every remap entry against that row count, so whole-rows
+            // is the only shape left to check here.
+            Some(_) => assert_eq!(
+                threat_weights.len() % ACC,
+                0,
+                "FullThreats transformer is not whole rows"
+            ),
+        }
     }
     // Perf study 39: count the COLUMNS this from-scratch rebuild folds. Fusion
     // makes the threat channel inherit HalfKA's refresh trigger, so this row
@@ -991,13 +1034,13 @@ pub(super) fn refresh_threat_into_at(
         let mut rows = 0usize;
         for_each_threat_at(pos, perspective, remap, |idx| {
             rows += 1;
-            add_threat_column(dst, threat_weights, threat_narrow, idx);
+            add_threat_column(dst, threat_weights, threat_rowmap, idx);
         });
         super::foldcount::THR_REFRESH.hit(rows);
     }
     #[cfg(not(feature = "foldcount"))]
     for_each_threat_at(pos, perspective, remap, |idx| {
-        add_threat_column(dst, threat_weights, threat_narrow, idx)
+        add_threat_column(dst, threat_weights, threat_rowmap, idx)
     });
 }
 
@@ -1007,7 +1050,7 @@ pub fn refresh_both(
     halfka_weights: &[i8],
     ft_bias: &[i16],
     threat_weights: &[i8],
-    threat_narrow: &[u64],
+    threat_rowmap: &[u32],
     board: &Board,
     threat_remap: Option<&ThreatRemap>,
 ) -> ([[i16; ACC]; 2], [[i16; ACC]; 2]) {
@@ -1022,7 +1065,7 @@ pub fn refresh_both(
         refresh_threat_into_at(
             &mut threat[i],
             threat_weights,
-            threat_narrow,
+            threat_rowmap,
             &pos,
             persp,
             threat_remap,

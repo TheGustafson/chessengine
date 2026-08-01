@@ -161,18 +161,20 @@ pub struct SotaNetwork {
     /// FullThreats FT weights, feature-major: `[threat_rows · ACC]` i8.
     /// Empty if the net has no threats channel.
     pub threat_weights: Aligned<i8>,
-    /// Perf study 65 — the per-feature "this row is stored narrow" bitmap over
-    /// [`threat_weights`](Self::threat_weights), or empty when the table was
-    /// left in its 8-bit form (no `narrow65` feature, or a CPU without the
-    /// AVX512_VBMI the decode needs).
+    /// Perf study 66 — the per-feature ROW MAP over
+    /// [`threat_weights`](Self::threat_weights): `map[f]` is the byte offset of
+    /// feature `f`'s row, with **bit 0 set when the row is stored narrow**
+    /// ([`row_entry`](super::sota_simd::row_entry)). Empty when the table was
+    /// left in its flat 8-bit form (no `narrow65` feature, `ARCHON_NARROW=0`, or
+    /// a CPU without the AVX512_VBMI the decode needs), in which case every
+    /// consumer falls back to `feature · ACC`.
     ///
-    /// The row keeps its 1280-byte slot either way — packing rewrites the first
-    /// [`NARROW_BYTES`](super::sota_simd::NARROW_BYTES) and abandons the rest —
-    /// so `feature * ACC` offset arithmetic, every producer and every consumer
-    /// that is not a fold kernel are untouched, and the 3.4 GB the frame stops
-    /// fetching is bought without the 243 KB permutation table study 64 §6.1
-    /// costed this route at.
-    pub threat_narrow: Vec<u64>,
+    /// It replaces study 65's narrow BITMAP. A bitmap can only say *whether* a
+    /// row is packed, which forced that study to leave every packed row inside
+    /// its unshrunk 1280-byte slot — the dead-tail layout its §2.3 measured at
+    /// +13.23 % L2 misses. A map says *where*, which is what lets the table be
+    /// compacted ([`pack_threat_plane`]).
+    pub threat_rowmap: Vec<u32>,
     /// Number of rows in [`threat_weights`](Self::threat_weights):
     /// `THREAT_DIMS` for every identity-coded net, the compressed row count
     /// for a TRM1-carrying net, 0 for a threat-less net.
@@ -223,7 +225,7 @@ impl PartialEq for SotaNetwork {
         self.halfka_weights == other.halfka_weights
             && self.head.ft_scale == other.head.ft_scale
             && self.ft_bias == other.ft_bias
-            && self.threat_weights == other.threat_weights
+            && threat_rows_equal(self, other)
             && self.threat_rows == other.threat_rows
             && self.threat_remap == other.threat_remap
             && self.psqt_weights == other.psqt_weights
@@ -239,6 +241,67 @@ impl PartialEq for SotaNetwork {
 }
 
 impl Eq for SotaNetwork {}
+
+/// Compare two nets' FullThreats tables **logically** — row by row, each
+/// through its own row map — instead of byte by byte.
+///
+/// Perf study 66: the same net can now be held in three different physical
+/// layouts (flat i8; study 65's pack-in-place; study 66's compacted two-plane),
+/// and the physical bytes differ in all three. `serialize` already unpacks
+/// through the map, so a byte comparison here would report `load ∘ serialize`
+/// as "not the identity" for a reason that has nothing to do with the net —
+/// which is precisely the false alarm a round-trip test must not raise. What
+/// the four round-trip tests are actually asserting is *these two evaluate
+/// identically*, and that is what this checks.
+fn threat_rows_equal(a: &SotaNetwork, b: &SotaNetwork) -> bool {
+    use super::sota_simd::{NARROW_BYTES, row_entry, unpack_narrow_lane};
+    let rows = |n: &SotaNetwork| {
+        if n.threat_rowmap.is_empty() {
+            n.threat_weights.len() / ACC
+        } else {
+            n.threat_rowmap.len()
+        }
+    };
+    if rows(a) != rows(b) {
+        return false;
+    }
+    for r in 0..rows(a) {
+        let (ba, na) = row_entry(&a.threat_rowmap, r * ACC);
+        let (bb, nb) = row_entry(&b.threat_rowmap, r * ACC);
+        match (na, nb) {
+            // The overwhelmingly common case in both directions: a memcmp,
+            // which keeps this O(bytes) rather than O(lanes × decode) and so
+            // keeps the round-trip tests fast in a DEBUG build.
+            (false, false) => {
+                if a.threat_weights[ba..ba + ACC] != b.threat_weights[bb..bb + ACC] {
+                    return false;
+                }
+            }
+            (true, true) => {
+                if a.threat_weights[ba..ba + NARROW_BYTES]
+                    != b.threat_weights[bb..bb + NARROW_BYTES]
+                {
+                    return false;
+                }
+            }
+            _ => {
+                let lane = |n: &SotaNetwork, base: usize, narrow: bool, j: usize| -> i16 {
+                    if narrow {
+                        unpack_narrow_lane(&n.threat_weights[base..], j)
+                    } else {
+                        i16::from(n.threat_weights[base + j])
+                    }
+                };
+                for j in 0..ACC {
+                    if lane(a, ba, na, j) != lane(b, bb, nb, j) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    true
+}
 
 /// An error from parsing a CENN-v2 container. Fallible parsing returns this,
 /// never a panic — the loader takes untrusted files.
@@ -584,13 +647,13 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         .collect();
 
     // Threats FT weights: i8[threat_rows · ACC], feature-major (if present).
-    let mut threat_weights = if has_threats {
+    let threat_weights = if has_threats {
         read_i8s_aligned(payload, &mut cur, threat_rows * ACC)
     } else {
         Aligned::from_iter_len(0, std::iter::empty())
     };
-    // Perf study 65 — pack the narrow rows in place. See `threat_narrow`.
-    let threat_narrow = pack_narrow_plane(&mut threat_weights);
+    // Perf studies 65/66 — pack the narrow rows. See `threat_rowmap`.
+    let (threat_weights, threat_rowmap) = pack_threat_plane(threat_weights);
 
     // The head's five bucket-major tables. Read as `Blocks`, not as one flat
     // aligned run: the bucket stride is fixed at load, so it belongs in the
@@ -696,7 +759,7 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         halfka_weights,
         ft_bias,
         threat_weights,
-        threat_narrow,
+        threat_rowmap,
         threat_rows: if has_threats { threat_rows } else { 0 },
         threat_remap,
         psqt_weights,
@@ -849,51 +912,184 @@ fn round_half_away_reciprocal(scale: u8) -> u64 {
 /// impossible to get wrong is to let one decision produce both.
 ///
 /// [`narrow_supported`]: super::sota_simd::narrow_supported
-fn pack_narrow_plane(weights: &mut Aligned<i8>) -> Vec<u64> {
+/// Perf study 66 — the FullThreats block transpose as a row permutation, or
+/// empty when the net's row space is not the identity-coded geometric one (a
+/// TRM1 re-coded net has already permuted it, and composing two permutations
+/// without the net's own map would be wrong).
+///
+/// `perm[f]` is the slot feature `f`'s row moves to. See
+/// [`threat_blocks`](super::sota_features::threat_blocks) for what the
+/// transpose is and why it is bit-exact.
+#[cfg(feature = "narrow65")]
+fn threat_transpose(rows: usize) -> Vec<usize> {
+    use super::sota_features::{THREAT_DIMS, threat_blocks};
+    if rows != THREAT_DIMS {
+        return Vec::new();
+    }
+    let mut perm = vec![usize::MAX; rows];
+    for (base, nsub, geom) in threat_blocks() {
+        for sub in 0..nsub {
+            for ft in 0..geom {
+                perm[base + sub * geom + ft] = base + ft * nsub + sub;
+            }
+        }
+    }
+    // A permutation or nothing: a half-built map would silently evaluate a
+    // different net, which is exactly the failure mode this whole route can
+    // produce and the gate would only catch by luck.
+    if perm.iter().any(|&t| t == usize::MAX) {
+        return Vec::new();
+    }
+    perm
+}
+
+/// Perf study 66 — **the compacted two-plane layout**, and study 65's
+/// slot-preserving one, as two DATA modes of the same binary.
+///
+/// Study 65 packed each ≤ 6-bit row into 960 B *inside its own unshrunk 1280 B
+/// slot*, which kept `feature · ACC` addressing free and left a dead 320 B tail
+/// in every narrow row. It was bit-exact and it LOST: +3.53 % L1d load misses
+/// and **+13.23 % L2 misses** against its own null, with `l2_pf_hit_l2.all`
+/// +18.90 % — the L2 streaming prefetcher fetching the tail anyway. Its own §6
+/// item 1 names the surviving version: *compact* the table so the hole is gone,
+/// and pay for it with a per-feature offset table.
+///
+/// This function builds either, selected at run time so control and arm share a
+/// `.text` byte for byte:
+///
+/// | `ARCHON_NARROW` | `ARCHON_PACK` | layout |
+/// |---|---|---|
+/// | `0` | — | none — flat i8, `map` empty, the pre-study-65 path |
+/// | else | `0` | study 65: narrow rows packed in place, 1280 B stride, dead tail |
+/// | else | else (default) | study 66: **wide plane at 1280 B, narrow plane at 960 B**, no hole |
+///
+/// In the compacted layout `960 = 15 · 64` and `1280 = 20 · 64`, so every row
+/// still starts on a cache line and a narrow row occupies **exactly 15 lines
+/// with nothing dead behind it**. The wide plane comes first so that the last
+/// narrow row's 8-byte tail overread (the last 32-byte group of a tile reads
+/// through byte 967 of a 960-byte row) lands in the trailing pad rather than
+/// past the allocation.
+///
+/// Returns the table to keep and the row map (see
+/// [`row_entry`](super::sota_simd::row_entry)).
+fn pack_threat_plane(weights: Aligned<i8>) -> (Aligned<i8>, Vec<u32>) {
     #[cfg(not(feature = "narrow65"))]
     {
-        let _ = weights;
-        return Vec::new();
+        return (weights, Vec::new());
     }
     #[cfg(feature = "narrow65")]
     {
         use super::sota_simd::{NARROW_BYTES, NARROW_MAX, narrow_supported, pack_narrow_row};
-        // `ARCHON_NARROW=0` is this arm's NULL: the same binary, the same
+        // `ARCHON_NARROW=0` is the arm's NULL: the same binary, the same
         // `.text`, the same dispatch — and no packed rows. Every instruction
         // and cache counter the arm moves is then attributable to the DATA
         // change alone, which is the only way to tell the decode's cost apart
         // from the new dispatch's. CLAUDE.md rule 1 wants the null run first,
         // and the only null that cannot drift from the arm is one inside it.
         if std::env::var("ARCHON_NARROW").is_ok_and(|v| v == "0") {
-            return Vec::new();
+            return (weights, Vec::new());
         }
         if weights.is_empty() || !narrow_supported() {
-            return Vec::new();
+            return (weights, Vec::new());
         }
         let rows = weights.len() / ACC;
-        let mut bits = vec![0u64; rows.div_ceil(64)];
+
+        // ── Perf study 66's SECOND arm: the block TRANSPOSE. ────────────────
+        //
+        // `ARCHON_PERM=id` builds an identity map with no packing at all — the
+        // null that isolates the map LOOKUP's cost. `ARCHON_PERM=1` permutes
+        // the table by [`threat_blocks`]'s transpose, which moves the victim
+        // relation from the slowest axis of each attacker block to the fastest
+        // and so collapses the address span of a fold's rows. Neither packs, so
+        // the decode is out of the comparison and only the LAYOUT differs.
+        if let Ok(mode) = std::env::var("ARCHON_PERM") {
+            let perm = threat_transpose(rows);
+            let mut map = vec![0u32; rows];
+            if mode == "id" || perm.is_empty() {
+                for (f, slot) in map.iter_mut().enumerate() {
+                    *slot = (f * ACC) as u32;
+                }
+                return (weights, map);
+            }
+            let mut out = Aligned::from_iter_len(rows * ACC, std::iter::repeat_n(0i8, rows * ACC));
+            for (f, &t) in perm.iter().enumerate() {
+                out[t * ACC..t * ACC + ACC].copy_from_slice(&weights[f * ACC..f * ACC + ACC]);
+                map[f] = (t * ACC) as u32;
+            }
+            return (out, map);
+        }
+
+        let compact = !std::env::var("ARCHON_PACK").is_ok_and(|v| v == "0");
+        let narrow: Vec<bool> = (0..rows)
+            .map(|r| {
+                weights[r * ACC..r * ACC + ACC]
+                    .iter()
+                    .map(|&w| i16::from(w).unsigned_abs())
+                    .max()
+                    .unwrap_or(0)
+                    <= NARROW_MAX as u16
+            })
+            .collect();
+
+        if !compact {
+            // Study 65's layout, rebuilt on top of the row map so the two arms
+            // differ ONLY in where rows live.
+            let mut weights = weights;
+            let mut map = vec![0u32; rows];
+            let mut packed = [0u8; NARROW_BYTES];
+            for r in 0..rows {
+                let off = (r * ACC) as u32;
+                if !narrow[r] {
+                    map[r] = off;
+                    continue;
+                }
+                let row = &mut weights[r * ACC..r * ACC + ACC];
+                pack_narrow_row(row, &mut packed);
+                // The tail of the slot is now dead. It is deliberately NOT
+                // zeroed: nothing reads it, and leaving it makes an accidental
+                // wide read of a packed row produce a WRONG evaluation the gate
+                // catches rather than a plausible one it does not.
+                for (dst, &src) in row.iter_mut().zip(packed.iter()) {
+                    *dst = src as i8;
+                }
+                map[r] = off | 1;
+            }
+            return (weights, map);
+        }
+
+        // The compacted build. One pass to size the planes, one to fill.
+        let n_wide = narrow.iter().filter(|n| !**n).count();
+        let wide_bytes = n_wide * ACC;
+        let n_narrow = rows - n_wide;
+        // 64 bytes of pad: the narrow decode's last 32-byte group of a tile
+        // reads 8 bytes past the packed region, and the final narrow row has no
+        // successor to absorb it.
+        let total = wide_bytes + n_narrow * NARROW_BYTES + 64;
+        let mut out = Aligned::from_iter_len(total, std::iter::repeat_n(0i8, total));
+        let mut map = vec![0u32; rows];
+        let (mut w_cur, mut n_cur) = (0usize, wide_bytes);
         let mut packed = [0u8; NARROW_BYTES];
         for r in 0..rows {
-            let row = &mut weights[r * ACC..r * ACC + ACC];
-            let peak = row
-                .iter()
-                .map(|&w| i16::from(w).unsigned_abs())
-                .max()
-                .unwrap_or(0);
-            if peak > NARROW_MAX as u16 {
-                continue;
+            let row = &weights[r * ACC..r * ACC + ACC];
+            if narrow[r] {
+                pack_narrow_row(row, &mut packed);
+                for (dst, &src) in out[n_cur..n_cur + NARROW_BYTES]
+                    .iter_mut()
+                    .zip(packed.iter())
+                {
+                    *dst = src as i8;
+                }
+                map[r] = n_cur as u32 | 1;
+                n_cur += NARROW_BYTES;
+            } else {
+                out[w_cur..w_cur + ACC].copy_from_slice(row);
+                map[r] = w_cur as u32;
+                w_cur += ACC;
             }
-            pack_narrow_row(row, &mut packed);
-            // The tail of the slot is now dead. It is deliberately NOT zeroed:
-            // nothing reads it, and leaving it makes an accidental wide read of
-            // a packed row produce a WRONG evaluation the gate catches rather
-            // than a plausible one it does not.
-            for (dst, &src) in row.iter_mut().zip(packed.iter()) {
-                *dst = src as i8;
-            }
-            bits[r >> 6] |= 1 << (r & 63);
         }
-        bits
+        debug_assert_eq!(w_cur, wide_bytes, "wide plane must be exactly filled");
+        debug_assert_eq!(n_cur + 64, total, "narrow plane must be exactly filled");
+        (out, map)
     }
 }
 
@@ -1243,21 +1439,31 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
     }
     // Threats FT weights (if present).
     //
-    // Perf study 65: a loaded net's threat table may be PACKED in place (rows
-    // whose peak fits six signed bits are rewritten into 960 bytes of their own
-    // 1280-byte slot). Serialisation has to undo that, or `serialize ∘ load`
-    // would stop being the identity and every net-surgery tool that
+    // Perf studies 65/66: a loaded net's threat table may be PACKED (rows whose
+    // peak fits six signed bits are rewritten into 960 bytes) and, under study
+    // 66's layout, COMPACTED into two planes so a row is no longer at
+    // `feature · ACC` at all. Serialisation has to undo both, or `serialize ∘
+    // load` would stop being the identity and every net-surgery tool that
     // round-trips a net — `uci.rs`'s `EvalFile` rewrite among them — would
     // silently write a corrupt file. The round-trip test is what caught this,
     // and it is the reason the unpack lives here rather than in a comment.
+    // Walking the ROW MAP rather than the table is what makes the same loop
+    // correct for all three layouts.
     if has_threats {
-        for (r, row) in net.threat_weights.chunks_exact(ACC).enumerate() {
-            if super::sota_simd::is_narrow(&net.threat_narrow, r * ACC) {
+        let rows = if net.threat_rowmap.is_empty() {
+            net.threat_weights.len() / ACC
+        } else {
+            net.threat_rowmap.len()
+        };
+        for r in 0..rows {
+            let (base, narrow) = super::sota_simd::row_entry(&net.threat_rowmap, r * ACC);
+            if narrow {
+                let row = &net.threat_weights[base..base + super::sota_simd::NARROW_BYTES];
                 for j in 0..ACC {
                     payload.push(super::sota_simd::unpack_narrow_lane(row, j) as i8 as u8);
                 }
             } else {
-                for &w in row {
+                for &w in &net.threat_weights[base..base + ACC] {
                     payload.push(w as u8);
                 }
             }
@@ -1565,7 +1771,7 @@ pub(crate) mod tests {
             halfka_weights,
             ft_bias,
             threat_weights,
-            threat_narrow: Vec::new(),
+            threat_rowmap: Vec::new(),
             threat_rows: THREAT_DIMS,
             threat_remap: None,
             psqt_weights: Vec::new().into(),
@@ -1756,7 +1962,7 @@ pub(crate) mod tests {
             refresh_threat_into(
                 &mut a,
                 &compressed.threat_weights,
-                &compressed.threat_narrow,
+                &compressed.threat_rowmap,
                 &board,
                 persp,
                 compressed.threat_remap.as_deref(),
@@ -1764,7 +1970,7 @@ pub(crate) mod tests {
             refresh_threat_into(
                 &mut b,
                 &scattered.threat_weights,
-                &scattered.threat_narrow,
+                &scattered.threat_rowmap,
                 &board,
                 persp,
                 scattered.threat_remap.as_deref(),

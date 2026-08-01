@@ -940,11 +940,11 @@ impl Default for ThreatEntry {
 /// [`evaluate`]: super::sota_context::SotaContext::evaluate
 pub struct ThreatContext<'a> {
     weights: &'a [i8],
-    /// Perf study 65 — the per-feature "this row is stored narrow" bitmap, or
-    /// empty when the loader left the table in its 8-bit form. Set by
-    /// [`with_narrow`](Self::with_narrow) so the five constructors and every
-    /// test keep their signatures.
-    narrow: &'a [u64],
+    /// Perf study 66 — the loader's per-feature ROW MAP (byte offset, bit 0 =
+    /// stored narrow), or empty when the table was left in its flat 8-bit form.
+    /// Set by [`with_row_map`](Self::with_row_map) so the five constructors and
+    /// every test keep their signatures.
+    row_map: &'a [u32],
     /// T6c PSQ1 rows for the THREAT feature space (`threat_rows · BUCKETS`
     /// i32, row-major, indexed by the resolved threat feature index), or
     /// empty ⇒ the skip channel is inert.
@@ -1139,11 +1139,11 @@ impl<'a> ThreatContext<'a> {
     /// A fresh context over `weights` (the `i8` FullThreats weight slice) plus
     /// the net's threat PSQ1 rows (`&[]` when it has none). Call
     /// [`refresh`](Self::refresh) to seed the root before any [`apply`](Self::apply).
-    /// Install the loader's narrow-plane bitmap (perf study 65). Empty — the
-    /// default — means every row is stored 8-bit and the fold takes exactly the
-    /// path it took before this study.
-    pub fn with_narrow(mut self, narrow: &'a [u64]) -> Self {
-        self.narrow = narrow;
+    /// Install the loader's threat row map (perf studies 65/66). Empty — the
+    /// default — means every row is flat 8-bit at `feature · ACC` and the fold
+    /// takes exactly the path it took before those studies.
+    pub fn with_row_map(mut self, row_map: &'a [u32]) -> Self {
+        self.row_map = row_map;
         self
     }
 
@@ -1181,7 +1181,7 @@ impl<'a> ThreatContext<'a> {
         #[allow(unused_mut)]
         let mut me = ThreatContext {
             weights,
-            narrow: &[],
+            row_map: &[],
             psqt_weights,
             remap,
             // `try_into` rather than `expect`: `ThreatEntry` is not `Debug`
@@ -1240,7 +1240,7 @@ impl<'a> ThreatContext<'a> {
             self.stack[0].psqt = [[0i32; BUCKETS]; 2];
         } else {
             let weights = self.weights;
-            let narrow = self.narrow;
+            let row_map = self.row_map;
             let psqt_weights = self.psqt_weights;
             let remap = self.remap;
             // One snapshot for all four rebuilds, not four.
@@ -1249,7 +1249,7 @@ impl<'a> ThreatContext<'a> {
                 refresh_threat_into_at(
                     &mut self.stack[0].acc[i],
                     weights,
-                    narrow,
+                    row_map,
                     &pos,
                     persp,
                     remap,
@@ -1465,7 +1465,7 @@ impl<'a> ThreatContext<'a> {
             return;
         }
         let weights = self.weights;
-        let narrow = self.narrow;
+        let row_map = self.row_map;
         let psqt_weights = self.psqt_weights;
         // Nearest ancestor per perspective that is not a fold-from-parent ply.
         // `Refresh` stops the walk exactly like `Done` does — it is a ply whose
@@ -1498,7 +1498,7 @@ impl<'a> ThreatContext<'a> {
                     &mut self.stack[*a],
                     &self.push[*a].position,
                     weights,
-                    narrow,
+                    row_map,
                     psqt_weights,
                     p,
                     self.remap,
@@ -1778,7 +1778,7 @@ impl<'a> ThreatContext<'a> {
                     weights,
                     &self.add_scratch[p][..add_len],
                     &self.sub_scratch[p][..sub_len],
-                    narrow,
+                    row_map,
                 );
                 // T6c: apply the resolve-time psqt delta (zero for a
                 // psqt-less net, so this is `parent + 0` — the copy).
@@ -1845,7 +1845,7 @@ fn discharge_refresh(
     entry: &mut ThreatEntry,
     position: &ThreatPosition,
     weights: &[i8],
-    narrow: &[u64],
+    row_map: &[u32],
     psqt_weights: &[i32],
     p: usize,
     remap: Option<&ThreatRemap>,
@@ -1859,7 +1859,7 @@ fn discharge_refresh(
     // 17 5.2's six-register rule costs what it costs only at a hot call rate;
     // this one is cold, which is exactly why it carries `#[cold]`).
     let persp = Color::ALL[p];
-    refresh_threat_into_at(&mut entry.acc[p], weights, narrow, position, persp, remap);
+    refresh_threat_into_at(&mut entry.acc[p], weights, row_map, position, persp, remap);
     entry.psqt[p] = refresh_psqt_threat_at(psqt_weights, position, persp, remap);
 }
 

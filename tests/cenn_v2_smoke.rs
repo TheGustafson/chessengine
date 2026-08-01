@@ -36,7 +36,7 @@ fn cenn_v2_round_trip_and_evaluate() {
         halfka_weights,
         ft_bias,
         threat_weights,
-        threat_narrow: Vec::new(),
+        threat_rowmap: Vec::new(),
         threat_rows: THREAT_DIMS,
         threat_remap: None,
         psqt_weights: Vec::new().into(),

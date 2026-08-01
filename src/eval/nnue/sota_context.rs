@@ -231,7 +231,7 @@ impl SotaContext {
                 large.threat_psqt(),
                 large.threat_remap.as_deref(),
             )
-            .with_narrow(&large.threat_narrow)
+            .with_row_map(&large.threat_rowmap)
         });
         SotaContext {
             net,
@@ -242,7 +242,7 @@ impl SotaContext {
                 net.threat_psqt(),
                 net.threat_remap.as_deref(),
             )
-            .with_narrow(&net.threat_narrow),
+            .with_row_map(&net.threat_rowmap),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -311,7 +311,7 @@ impl SotaContext {
                 net.threat_psqt(),
                 net.threat_remap.as_deref(),
             )
-            .with_narrow(&net.threat_narrow),
+            .with_row_map(&net.threat_rowmap),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -353,7 +353,7 @@ impl SotaContext {
                 net.threat_psqt(),
                 net.threat_remap.as_deref(),
             )
-            .with_narrow(&net.threat_narrow),
+            .with_row_map(&net.threat_rowmap),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -376,7 +376,7 @@ impl SotaContext {
                     largenet.threat_psqt(),
                     largenet.threat_remap.as_deref(),
                 )
-                .with_narrow(&largenet.threat_narrow),
+                .with_row_map(&largenet.threat_rowmap),
             ),
             largenet_sigma_gate: sigma_gate,
             tiers_armed: false, // recomputed by `with_tier_flag`
@@ -685,7 +685,7 @@ impl SotaContext {
             &self.net.halfka_weights,
             &self.net.ft_bias,
             &self.net.threat_weights,
-            &self.net.threat_narrow,
+            &self.net.threat_rowmap,
             board,
             self.net.threat_remap.as_deref(),
         );
