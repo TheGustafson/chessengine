@@ -15214,3 +15214,36 @@ fills/node, 120.3 KB hot code vs a 32 KB L1i, 40.5 % decoder delivery).
 3. Study 68 (frontend) in flight.
 4. Optional: re-test the tunables at long TC if the VVLTC hypothesis is worth
    spending on.
+
+---
+
+## 2026-08-01 05:50 — 31 GB reclaimed; and my disk projection was wrong twice over
+
+**D49:** sb1457, 188.6k pos/s, heldout ema 0.010447. `d49xml` screening sb1450
+(stdev 598.6). Study 68 in flight.
+
+**Disk went 137 -> 114 GB in six hours and I had blamed CHECKPOINTS. Wrong.**
+
+The reaper is working correctly: **18 checkpoints kept** (multiples of 100, plus
+sb400/700, plus a rolling latest-4), directory 20 GB. **So my earlier projection
+"~26 exports x 1.14 GB = ~27 GB more, ending ~88 GB" was wrong** — it assumed
+every export is retained. Only three 100-multiples remain before sb1700, i.e.
+**~3 GB, not 27.**
+
+**The real consumer was AGENT WORKTREES: 37 GB, each carrying its own multi-GB
+`target/`.** Nine merged/finished studies were holding 31.6 GB of build output.
+
+**Reclaimed 31 GB — free space 114 -> 145 GB.** Method chosen for safety:
+**deleted only the `target/` directories, never the worktrees themselves.** That
+is reversible (cargo rebuilds) and cannot lose a commit — which matters because a
+worktree prune earlier in this project destroyed the main worktree, since "is
+merged" is the wrong test for a working tree. Study 68's worktree was excluded by
+name and verified intact WITH its target afterwards; all 26 worktree registrations
+survive.
+
+Checked before deleting that no build was live in any target worktree (the single
+`pgrep` hit was a process that had already exited).
+
+**Standing note for future sessions: agent worktrees are the dominant disk
+consumer on this box, not training artifacts.** Nine studies = 37 GB. Clean
+`target/` between studies, and never prune the worktree list to do it.
