@@ -14021,3 +14021,27 @@ Next brief is staged to fire when 65 lands.
 uncommitted files, no commit since `77cc4813`. Watch item: the standing rule is
 COMMIT TEST FIXES AS THEY GO — study 20 died leaving them uncommitted and main
 did not compile.
+
+**STAGED BRIEF (fires when 65 lands) — grounded against the code, not memory:**
+Verified this tick that **both FT weight tables are ALREADY i8** —
+`sota_loader.rs:158 halfka_weights: Aligned<i8>` and
+`:163 threat_weights: Aligned<i8>`. The precision lever on the feature
+transformer is SPENT (study 32 took HalfKA; threats already there). Any brief
+saying "quantise the FT" would burn a day rediscovering that.
+
+Tables are ~28.8 MB (HalfKA 22528x1280) + ~77.7 MB (threats 60720x1280) = ~106 MB,
+so every row touched is a cold read of 1280 B = 20 cache lines. The remaining
+lever is therefore **LOCALITY / rows-touched, not precision**:
+`i16_deltas_into` 13.14% + `finny_refresh_into` 9.15% = 22.3% of profile, and the
+three fold kernels hold **65.75% of all cache misses**. `finny_refresh_into`
+moves 234 lines per refresh of which **114 (49%) are HalfKA weight rows, not
+Finny slots**. Attack surface: visit rows in address order, software-prefetch the
+next row while folding the current, restructure the Finny table so those 114
+lines are not scattered. Complementary to study 65 (which cuts bytes-per-ROW for
+threats) — this cuts ROW-TOUCH COUNT and ordering, so no overlap.
+
+Gate on `instructions:u` (0.000 null, load-robust) plus a cache-miss counter;
+`cycles:u` is unusable while a match runs (+49.9% under load). Note the standing
+finding that instruction cuts have converted at ~zero because the engine is
+memory-bound — so this study is judged on MISSES and wall-clock, not i/n.
+User ruling: the 1280 accumulator STAYS; do not propose narrowing L1.
