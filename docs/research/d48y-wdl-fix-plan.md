@@ -14202,3 +14202,168 @@ saturation check (2386 vs the 15000 boundary) does not capture.
 **This does not change the standing plan** — the whole screen is re-run after the
 tunable transcription lands, because the margins these frames are measured
 against are themselves about to move. Tonight's arms become the BEFORE half.
+
+---
+
+## 2026-08-01 01:00 — TUNABLE REFRESH LANDED, and it was built on a STALE BASE
+
+**The transcription itself looks strong:** 154 values re-read from
+`ebcea3ef` hunk-by-hunk (`git show <rev>:src/search.cpp` at both revisions, never
+a bare grep), covering correction history, razoring (465/300 -> **483/318**), RFP,
+NMP, ProbCut, the whole LMR family, singular, qsearch, `update_all_stats`, the
+16-entry LMR divisor and TM. **Bench 587683 -> 486897 (-17.2%)**. A machine audit
+found exactly 5 new integers >=20 in the diff absent from our sources — precisely
+its own not-adopted list, so nothing was missed. It correctly REFUSED to overwrite
+four documented ARCHON deviations (`ASPIRATION_MSS_DIVISOR`, `OPTIMISM_*`,
+`TIME_REDUCTION_STABILITY_*`) and skipped 8 structural changes.
+
+**BUT: it branched off `ef9756ec` — the session-start commit — and
+`859a4422` (the canonical network_scale 600 promotion) is NOT AN ANCESTOR OF
+IT.** That commit reached main only via my study-65 merge an hour ago. Verified:
+
+| | eval pin | d13 pin |
+|---|---|---|
+| `ef9756ec` (its base) | `5ca978e0…8b38` | 1922947 |
+| **current main** | **`2e1ede95…79c4`** | **1739588** |
+
+So its gate ran against **the OLD canonical net**, and its "eval hash UNCHANGED"
+is internally consistent for its own base but **not comparable to main**. A naive
+merge would have **reverted main's gate pins to stale values** — the exact class
+of mistake `859a442` itself made and that CLAUDE.md warns about ("when you move a
+pin, check that the doc's CURRENT slot moved, not its history").
+
+**This is why the perf loop says verify the agent yourself.** The claim "gate
+passes" was true and still not usable.
+
+**HANDLING:** the 154 VALUES are base-independent and are the deliverable. Branch
+`tunables-on-main`: cherry-picked its two VALUE commits (`aa6874df` params,
+`4514d108` history) onto `c4b271a8`, **deliberately skipping its pin commit
+`ecb7cf03`**. Cherry-picks applied clean. Post-pick check.sh correctly holds
+main's `2e1ede95…79c4` / 1739588 with its new `BENCH_PIN=486897`.
+`gatetune.service` is now re-deriving the real numbers on THIS base — the d13 pin
+must move (a -17% tree change moves it) and I will take the value the gate prints
+rather than the agent's 1789781, which was measured against the wrong net.
+
+**Two honest findings it flagged, both retained:** two qsearch golden tests
+compared the blend against the RAW static eval where the search blends the
+CORRECTION-ADJUSTED one — they passed at the old weights only because truncation
+landed on the same integer. And `warm_tt_searches_fewer_nodes_at_equal_depth`
+needed depth 5 -> 6 (crossover probed at 4-9; fresh 5410 / warm 1250 at 6). It
+labelled the second a fixture judgement call and asked for re-examination —
+correct call, flagged here.
+
+**STRENGTH TESTING IS OWED AND NOT RUN.** A -17.2% node change is functional by
+definition. Per the user's standing instruction the frame screen re-runs on top
+of this (`frame_rerun.sh`), and tonight's frame arms become the BEFORE half.
+
+---
+
+## 2026-08-01 01:05 — PARITY IS FINAL AND LOSES. The frame curve is MONOTONIC, against the theory.
+
+**D49:** sb1327, 185.2k pos/s, heldout ema 0.010474.
+
+**Frame arms, D49 sb1300 vs canonical, 25k fixed nodes, eca43a97 tunables:**
+
+| pack scale | slope vs SF internal | Elo vs canonical | n |
+|---:|---:|---:|---:|
+| **756** (shipped) | 0.477 | **+3.24 +/- 10.65** | 1500 FINAL |
+| 1068 | 0.672 | -4.22 +/- 13.4 | 823, running |
+| **1585 (PARITY)** | **0.995** | **-18.08 +/- 10.79** | **1500 FINAL** |
+
+Parity vs shipped: **21.32 Elo apart against a combined 95% bar of +/-15.16** —
+outside the bar, both arms at full n=1500. **The frame theory is wrong in SIGN.**
+Our margins ARE Stockfish's raw internal constants, and matching Stockfish's eval
+frame makes us ~21 Elo WORSE. The relationship is monotonic: further from parity
+is better.
+
+**PRE-REGISTERED, written before the result (`d49f535.service` queued):** if the
+trend is real, **scale 535 (slope 0.339) beats +3.24**. If it turns DOWN instead,
+756 is a genuine interior optimum and the monotonic reading is wrong. Recording
+the prediction first so the outcome cannot be narrated either way after the fact.
+
+**What is NOT concluded:** the mechanism. The depth hypothesis is already refuted
+(13.209 vs 13.204 ply, identical). I am not substituting a second story. Note
+also that every arm here is at FIXED 25k NODES; a frame that changes pruning
+aggressiveness trades nodes against tree shape differently at real TC, and
+[[nodestime-not-a-real-clock-proxy]] is the standing receipt for that class of
+error (+52.6 at fixed nodes vs -31.4 on the real clock). **Any frame decision
+needs a real-TC confirmation before it ships.**
+
+**And all of it re-runs under the new tunables** (user instruction): these arms
+are the BEFORE half. `gatetune.service` still running on `tunables-on-main`.
+
+---
+
+## 2026-08-01 01:17 — the frame curve is COMPLETE and monotonic; gate failed on ENVIRONMENT, not code
+
+**D49:** sb1333, 185.3k pos/s, heldout ema **0.010468** — a new run low.
+
+**FRAME CURVE, all three arms now FINAL at n=1500** (D49 sb1300 vs canonical,
+25k fixed nodes, eca43a97 tunables):
+
+| pack scale | slope vs SF internal | Elo vs canonical |
+|---:|---:|---:|
+| **756** (shipped) | 0.477 | **+3.24 +/- 10.65** |
+| 1068 | 0.672 | **-8.57 +/- 10.57** |
+| 1585 (parity) | 0.995 | **-18.08 +/- 10.79** |
+
+**Perfectly monotonic across the whole range, and every step is the WRONG
+direction for the frame theory.** Parity vs shipped is 21.3 Elo apart on a
+combined bar of +/-15.2. Matching Stockfish's internal eval frame — the frame our
+transcribed margins were literally tuned in — costs ~21 Elo. `d49f535` is testing
+the pre-registered downward extension (535, slope 0.339).
+
+**`gatetune` FAILED, and the cause was MY environment, not the code:**
+`FAIL: CHECK_NNUE_GATE=1 but the net is missing: engines/canonical/net.cenn`.
+I ran it in `chessengine-mainwt`, whose `engines/` is GITIGNORED and therefore
+empty — the nets live only in the primary checkout. This is the same trap that
+bit earlier in the session when a worktree prune left `engines/bin/` empty.
+Everything before the net check passed (full test suite, clippy, perft).
+
+**Fixed durably:** `chessengine-mainwt/engines/canonical` is now a symlink to
+`/home/nick/projects/chessengine/engines/canonical`, so any future gate run from
+the main worktree resolves the canonical pair. Re-running as `gatetune2`.
+
+**Note for whoever gates next:** a `CHECK_NNUE_GATE=1` run from a fresh worktree
+will fail this way every time until that symlink exists. It is not a code
+regression and should not be diagnosed as one.
+
+---
+
+## 2026-08-01 01:35 — the tunable refresh GATES CLEAN, and the -17.2% headline does NOT mean what it looks like
+
+**D49:** sb1340 exported (the recurring matcher `d49xml` picked it up
+automatically at 01:31 and is screening it at the frame-fair scale 1068).
+heldout ema **0.010467**, another run low.
+
+**Gate numbers, measured by me on `tunables-on-main`, not inherited:**
+
+| | before | after |
+|---|---:|---:|
+| eval hash | `2e1ede95…79c4` | **`2e1ede95…79c4` (UNCHANGED)** |
+| d13 NNUE nodes (depth 13, canonical net, wl50) | 1739588 | **1743308 (+0.21%)** |
+| `Bench:` (depth 6, PSQT, default) | 587683 | **486897 (-17.2%)** |
+
+The **unchanged eval hash is the correctness proof**: a 154-value pure-search
+change reshaped the tree and left the forward pass bit-identical.
+
+**THE REGIME GAP IS THE REAL FINDING.** The same change is **-17.2% at depth 6
+with PSQT** and **+0.21% at depth 13 with the NNUE net**. Our headline `Bench:`
+metric is measured in a regime WE DO NOT PLAY IN — no net, depth 6. Quoting
+"-17.2% nodes" as a strength-relevant tree reduction would be wrong by two orders
+of magnitude. Recorded in CLAUDE.md next to the pin so it cannot be misread
+later.
+
+**I verified Bench myself rather than trusting the number:** built the release
+binary on this base and ran the pinned invocation directly — 486897, matching the
+agent exactly. So the values did take effect; it is the INTERPRETATION that was
+the trap, not the transcription.
+
+**Pins moved in the CURRENT slot, with history preserved** — the exact discipline
+CLAUDE.md demands ("when you move a pin, check that the doc's CURRENT slot moved,
+not its history"), and the exact thing `859a442` got wrong. `gatetune3` is
+confirming a clean pass.
+
+**Still owed before this can ship:** a PGO build and the full frame re-run under
+these margins (`frame_rerun.sh`), plus strength testing — a -17.2% depth-6 change
+is functional by definition.

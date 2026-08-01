@@ -4380,7 +4380,10 @@ impl Worker {
                 let bonus_scale = (params::FL_SCALE_BASE()
                     - self.stack[cur - 1].stat_score / params::FL_STATSCORE_DIV()
                     + (params::FL_DEPTH_MULT() * depth).min(params::FL_DEPTH_CAP())
-                    + params::FL_LATE_PARENT() * i32::from(self.stack[cur - 1].move_count > 8)
+                    // The `> 9` late-parent gate is SF's own literal
+                    // (`(ss - 1)->moveCount > 9` at ebcea3ef; it was `> 8` at
+                    // eca43a97) — a bare literal here, like SF's.
+                    + params::FL_LATE_PARENT() * i32::from(self.stack[cur - 1].move_count > 9)
                     + params::FL_BELOW_EVAL()
                         * i32::from(
                             !in_check

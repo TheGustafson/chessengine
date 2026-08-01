@@ -177,18 +177,27 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   `sota` — verified 2026-07-27 by `nm` finding zero threat symbols in the
   default release binary. A no-net `bench` is a PSQT run (empty `EvalFile`
   ⇒ NNUE off). So an incremental-accumulator rewrite can be arbitrarily
-  wrong and leave 587683 untouched. The gate reads the CANONICAL net and arch
+  wrong and leave 486897 untouched. The gate reads the CANONICAL net and arch
   from `engines/canonical/` (see below) and pins two numbers, both reproduced
   by a from-source non-PGO build: the **eval hash**
   `2e1ede95…79c4` (sha256 of the forward-pass score for all 50
-  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1739588**
+  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1743308**
   (`bench 16 1 13 <fens> depth <net>` — the net is the optional **6th arg**;
-  omit it and you silently measure PSQT, 3441859). Both were re-pinned on
+  omit it and you silently measure PSQT, 3441859). The d13 total moved on
+  2026-08-01 with the SF `ebcea3ef` tunable refresh (1739588 → 1743308, +0.21%)
+  while **the eval hash did NOT move** — positive evidence that a 154-value
+  pure-search change reshaped the tree and left the forward pass bit-identical.
+  **Note the regime gap:** the same refresh moved the depth-6 PSQT `Bench:`
+  −17.2% (587683 → 486897) but the depth-13 NNUE total only +0.21%. The
+  headline `Bench:` number is measured in a regime we do NOT play in — do not
+  quote it as a strength-relevant node reduction.
+  The eval hash was pinned on
   2026-07-30 by the **`network_scale` 600 canonical promotion** (`859a442`,
   +14.78 ± 5.45 over 5880 games) — a four-byte header change with the payload
   byte-identical from offset 64, so the existing binary loads it with no
   rebuild; the −12.4% node drop is the hardcoded SF pruning margins biting
   correctly once the eval spread is right. Preceding pins, newest first:
+  `2e1ede95…79c4` / `1739588` (the same promotion, before the tunable refresh),
   `eb981b11…4f4f37` / `1985398` (perf study 32's i8 HalfKA feature
   transformer — the 57.7 MB i16 weight table quantised to i8 at load with a
   per-column integer scale, −6.8% cycles/node and +3.6 ± 7.7 Elo over 2932
@@ -293,7 +302,9 @@ arm**; **stay on ONE position, no aggregates during diagnosis**.
 2026-07-28: 371 files (206 one-shot campaign scripts, 129 per-session research
 docs, raw perf artifacts) were moved to `old/` because nothing live referenced
 them. Verified: no live file references any moved path, and
-`CHECK_NNUE_GATE=1 bash tools/check.sh` still exits 0 with `Bench: 587683`.
+`CHECK_NNUE_GATE=1 bash tools/check.sh` still exits 0 with `Bench: 587683`
+(the pin of that day; it is 486897 since the 2026-08-01 SF `ebcea3ef`
+tunable refresh).
 **Nothing in `old/` is loaded or trusted**; several of its documents contain
 conclusions that were later refuted.
 
@@ -371,14 +382,14 @@ then write a distilled markdown note in `stockfish_reference/` (tracked; index
 in `NOTES.md`) so the insight isn't lost. **Never copy Stockfish code** — it's
 GPLv3; take ideas, reimplement idiomatically in Rust.
 
-**For CONSTANTS, the reference is `eca43a97` — never the checkout, and never
-a release tag.** Our tunables were transcribed from Stockfish master at
-`eca43a97` (2026-07-06), which is **223 commits NEWER than the `sf_18` tag**
-(2026-01-31). Verified 2026-07-27: a full screen of all 260 tunables found
-every value ≥20 present at eca43a97 except two known ARCHON originals, and
-in-place spot checks (razoring, both ProbCut betas, the whole movepick
-scoring family) match exactly. **The transcription is faithful; there is no
-drift Elo to harvest.**
+**For CONSTANTS, the reference is `ebcea3ef` — never the checkout, and never
+a release tag.** Our tunables were re-transcribed on 2026-08-01 from
+Stockfish master at `ebcea3ef` ("VVLTC parameters tweak", 2026-07-16), which
+is 20 commits newer than the previous reference `eca43a97` (2026-07-06) and
+far newer than the `sf_18` tag (2026-01-31). 147 values moved; nothing was
+rescaled. Five families were deliberately NOT refreshed (ARCHON deviations,
+or SF shape changes we cannot express without new parameters) — the exhaustive
+list with reasons is the header of `src/search/params.rs`.
 
 Razoring is the canary, and it moved in BOTH directions:
 
@@ -386,24 +397,26 @@ Razoring is the canary, and it moved in BOTH directions:
 |---|---|
 | `sf_16` | `alpha − 456 − 252·d²` |
 | `sf_18` (tag) | `alpha − 485 − 281·d²` |
-| **`eca43a97` (our source)** | **`alpha − 465 − 300·d²`** ← what ARCHON ships |
+| `eca43a97` (2026-07-06 source) | `alpha − 465 − 300·d²` |
+| **`ebcea3ef` (our source)** | **`alpha − 483 − 318·d²`** ← what ARCHON ships |
 
 So reading a release tag for a parameter comparison is the SAME mistake as
 the old `sf_16` checkout, just in the other direction: the clone sat at
 `sf_16` until 2026-07-27 (bare greps silently returned SF16 constants), and
 it now sits at `sf_18`, which is *older* than our source. On 2026-07-27 this
-made the frame study report "razor 465 vs 485" as a deviation when 465 is an
-exact match to our real reference. **Read the reference explicitly:**
-`git -C stockfish_reference/Stockfish show eca43a97:src/search.cpp`.
+made the frame study report "razor 465 vs 485" as a deviation when 465 was an
+exact match to the reference of the day. **Read the reference explicitly:**
+`git -C stockfish_reference/Stockfish show ebcea3ef:src/search.cpp`.
 
 `python3 tools/spsa/param_provenance.py` checks all of this — reference
 canaries, the transcription screen, and SPSA campaign coverage (121 of 260
 tunables are in no campaign) — and exits non-zero on a mismatch or a stale
 campaign entry. Run it before quoting an SF constant as "ours" or "theirs".
 
-**Any distilled note written before 2026-07-27 was read against SF16** —
-check the era before quoting one as current. Shape/mechanism questions ("does
-SF do X") are fine against the checkout; only VALUES need eca43a97.
+**Any distilled note written before 2026-07-27 was read against SF16, and any
+VALUE quoted before 2026-08-01 was read against `eca43a97`** — check the era
+before quoting one as current. Shape/mechanism questions ("does SF do X") are
+fine against the checkout; only VALUES need `ebcea3ef`.
 
 `reckless_reference/Reckless/` similarly holds a clone of Reckless (a top-2
 Rust engine, ~3833 SPCC; **AGPLv3**, gitignored). Its distilled study notes
@@ -454,7 +467,7 @@ Concurrently: **stage-A SPSA** (12 params, V net + PGO tune binary,
 fn20k, 8 games × 2400 iters, exchange on DISK not tmpfs) — measured
 zero training interference.
 Engine: S0 search program COMPLETE (all six audit items; **depth-6
-bench pin now 587683**; tripwires clean); **PGO is THE
+bench pin now 486897**; tripwires clean); **PGO is THE
 standard build** (tools/build_pgo.sh WITH eval-file; pairs both-PGO;
 Bench: trailer stays portable-default); freebies landed (+~6% both
 arches); distributed-SPSA kit built+parked (D36 amended — no

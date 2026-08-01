@@ -173,13 +173,13 @@ const CORR_SIZE: usize = 65536; // power of two, masked by each correction key
 // Like the bounds above, these are the tables' defined reset state rather than
 // scoring multipliers, so they stay here with their catalogue.
 const MAIN_INIT: i16 = -5;
-const CAPTURE_INIT: i16 = -699;
-const CONT_INIT: i16 = -552;
-const PAWN_INIT: i16 = -1262;
-const CORR_INIT: i16 = -6;
+const CAPTURE_INIT: i16 = -742;
+const CONT_INIT: i16 = -586;
+const PAWN_INIT: i16 = -1338;
+const CORR_INIT: i16 = -5;
 const CONT_CORR_INIT: i16 = 5;
-const LOW_PLY_REFILL: i16 = 100; // per-`go` fill; low-ply has no new-game init
-const MAIN_DECAY_NUM: i32 = 789; // per-`go` butterfly decay: e = e * 789 / 1024
+const LOW_PLY_REFILL: i16 = 102; // per-`go` fill; low-ply has no new-game init
+const MAIN_DECAY_NUM: i32 = 729; // per-`go` butterfly decay: e = e * 729 / 1024
 const MAIN_DECAY_DEN: i32 = 1024;
 
 /// One `[piece × to]` slab of the continuation-history tensor — the innermost
@@ -534,7 +534,7 @@ impl Histories {
     }
 
     /// The per-`go` refresh (design/09 §3.4, the "Per-go" column): decay the
-    /// butterfly history toward zero (`e = e * 789 / 1024`, so recent searches
+    /// butterfly history toward zero (`e = e * 729 / 1024`, so recent searches
     /// dominate) and refill the low-ply history to `LOW_PLY_REFILL`.
     pub fn new_search(&mut self) {
         for row in self.main.iter_mut() {
@@ -1375,7 +1375,7 @@ mod tests {
         assert_eq!(h.tt_move.get(), 0);
     }
 
-    // `new_search` decays the butterfly history by 789/1024 (1024 -> 789,
+    // `new_search` decays the butterfly history by 729/1024 (1024 -> 729,
     // truncating toward zero on negatives) and refills low-ply to 100, leaving
     // every other table alone.
     #[test]
@@ -1387,8 +1387,8 @@ mod tests {
 
         h.new_search();
 
-        assert_eq!(h.main[0][7].get(), 789); // 1024 * 789 / 1024
-        assert_eq!(h.main[1][9].get(), -789); // truncates toward zero
+        assert_eq!(h.main[0][7].get(), 729); // 1024 * 729 / 1024
+        assert_eq!(h.main[1][9].get(), -729); // truncates toward zero
         for ply in 0..LOW_PLY_SIZE {
             assert_eq!(h.low_ply[ply][0].get(), LOW_PLY_REFILL as i32);
             assert_eq!(
@@ -1476,8 +1476,8 @@ mod tests {
             .collect()
     }
 
-    // §3.9: offset weights {1040,780,300,537,129,423}, consistency mult 96 at
-    // count 0 (no pre-positive entries), flat +71 at offset 1, ÷131072.
+    // §3.9: offset weights {1040,780,290,502,132,418}, consistency mult 94 at
+    // count 0 (no pre-positive entries), flat +73 at offset 1, ÷131072.
     #[test]
     fn cont_update_offset_weights_and_flat_bonus() {
         let mut h = Histories::new();
@@ -1489,7 +1489,7 @@ mod tests {
 
         h.update_continuation_histories(&stack, cur, pc, Square::E4, 1024);
 
-        let want = [851, 585, 225, 402, 96, 317];
+        let want = [836, 572, 212, 368, 96, 306];
         for (idx, id) in ids.iter().enumerate() {
             assert_eq!(
                 h.cont_ref(*id)[pci][toi].get(),
@@ -1513,7 +1513,7 @@ mod tests {
 
         h.update_continuation_histories(&stack, cur, pc, Square::E4, 1024);
 
-        let want = [851, 585, 0, 0, 0, 0];
+        let want = [836, 572, 0, 0, 0, 0];
         for (idx, id) in ids.iter().enumerate() {
             assert_eq!(
                 h.cont_ref(*id)[pci][toi].get(),
@@ -1539,8 +1539,8 @@ mod tests {
 
         h.update_continuation_histories(&stack, cur, pc, Square::E4, 1024);
 
-        // CMHC = {_,113,101,105,127,121,126} at counts 1..6.
-        let want = [990, 616, 247, 533, 122, 417];
+        // CMHC = {_,103,110,106,119,126,121} at counts 1..6.
+        let want = [910, 671, 241, 467, 130, 396];
         for (idx, id) in ids.iter().enumerate() {
             assert_eq!(
                 h.cont_ref(*id)[pci][toi].get(),
@@ -1553,8 +1553,8 @@ mod tests {
 
     const PAWN_FEN: &str = "4k3/8/8/8/8/8/4P3/4K3 w - - 0 1";
 
-    // §3.9 update_quiet_histories: main ×1, low-ply ×663/1024 (ply < 5),
-    // pawn ×1038/1024 (bonus). Null predecessors ⇒ the cont chain is skipped.
+    // §3.9 update_quiet_histories: main ×1, low-ply ×712/1024 (ply < 5),
+    // pawn ×1104/1024 (bonus). Null predecessors ⇒ the cont chain is skipped.
     #[test]
     fn quiet_update_writes_all_tables() {
         let mut h = Histories::new();
@@ -1576,11 +1576,11 @@ mod tests {
         h.update_quiet_histories(&b, &stack, cur, m, 2048);
 
         assert_eq!(h.main[us][raw].get(), 2048); // ×1
-        assert_eq!(h.low_ply[ply][raw].get(), 1326); // 2048·663/1024
-        assert_eq!(h.pawn[slot][pci][toi].get(), 2076); // 2048·1038/1024
+        assert_eq!(h.low_ply[ply][raw].get(), 1424); // 2048·712/1024
+        assert_eq!(h.pawn[slot][pci][toi].get(), 2208); // 2048·1104/1024
     }
 
-    // §3.9: the pawn-history bonus/malus asymmetry pivots at `bonus > -7`.
+    // §3.9: the pawn-history bonus/malus asymmetry pivots at `bonus > -4`.
     #[test]
     fn quiet_update_pawn_history_bonus_malus_asymmetry() {
         let b = Board::from_fen(PAWN_FEN).unwrap();
@@ -1598,13 +1598,13 @@ mod tests {
             h.pawn[slot][pci][toi].get()
         };
 
-        assert_eq!(pawn_after(-2048), -1050); // malus weight 525: -2048·525/1024
-        assert_eq!(pawn_after(-7), -3); //  -7 is NOT > -7 ⇒ 525: -7·525/1024
-        assert_eq!(pawn_after(-6), -6); //  -6 IS  > -7 ⇒ 1038: -6·1038/1024
+        assert_eq!(pawn_after(-2048), -918); // malus weight 459: -2048·459/1024
+        assert_eq!(pawn_after(-4), -1); //  -4 is NOT > -4 ⇒ 459: -4·459/1024
+        assert_eq!(pawn_after(-3), -3); //  -3 IS  > -4 ⇒ 1104: -3·1104/1024
     }
 
-    // §3.9 update_all_stats: best-quiet bonus (×824/1024) and the geometrically
-    // decaying malus over tried quiets (start ×1136/1024, ×956/1024 per move).
+    // §3.9 update_all_stats: best-quiet bonus (×899/1024) and the geometrically
+    // decaying malus over tried quiets (start ×1159/1024, ×921/1024 per move).
     #[test]
     fn all_stats_best_quiet_and_geometric_malus() {
         let mut h = Histories::new();
@@ -1622,20 +1622,20 @@ mod tests {
             h.main[us][m.raw16() as usize] = StatEntry::new(0);
         }
 
-        // depth 8, PV node (no breadth), tt_move ≠ best: bonus 993, malus 2218.
+        // depth 8, PV node (no breadth), tt_move ≠ best: bonus 983, malus 2244.
         h.update_all_stats(&b, &stack, cur, bq, None, &quiets, &[], 8, Move::NULL, true);
 
-        assert_eq!(h.main[us][bq.raw16() as usize].get(), 799); // 993·824/1024
-        // 2218·1136/1024 = 2460, then ×956/1024 before each use.
-        assert_eq!(h.main[us][quiets[0].raw16() as usize].get(), -2296);
-        assert_eq!(h.main[us][quiets[1].raw16() as usize].get(), -2143);
-        assert_eq!(h.main[us][quiets[2].raw16() as usize].get(), -2000);
-        // Ratio pinned: each successive malus ≈ 956/1024 of the last.
-        assert_eq!(2143 * 1024 / 2296, 955); // ≈ 956/1024 (truncation)
+        assert_eq!(h.main[us][bq.raw16() as usize].get(), 863); // 983·899/1024
+        // 2244·1159/1024 = 2539, then ×921/1024 before each use.
+        assert_eq!(h.main[us][quiets[0].raw16() as usize].get(), -2283);
+        assert_eq!(h.main[us][quiets[1].raw16() as usize].get(), -2053);
+        assert_eq!(h.main[us][quiets[2].raw16() as usize].get(), -1846);
+        // Ratio pinned: each successive malus ≈ 921/1024 of the last.
+        assert_eq!(2053 * 1024 / 2283, 920); // ≈ 921/1024 (truncation)
     }
 
-    // §3.9: best-capture bonus (×1366/1024) and non-best-capture malus
-    // (×1518/1024), addressed by [moved][to][victim].
+    // §3.9: best-capture bonus (×1427/1024) and non-best-capture malus
+    // (×1489/1024), addressed by [moved][to][victim].
     #[test]
     fn all_stats_best_capture_and_nonbest_capture_malus() {
         let mut h = Histories::new();
@@ -1664,8 +1664,8 @@ mod tests {
             true,
         );
 
-        assert_eq!(h.capture[wq][d8][PieceType::Queen as usize].get(), 1324); // 993·1366/1024
-        assert_eq!(h.capture[wn][b8][PieceType::Knight as usize].get(), -3288); // -2218·1518/1024
+        assert_eq!(h.capture[wq][d8][PieceType::Queen as usize].get(), 1369); // 983·1427/1024
+        assert_eq!(h.capture[wn][b8][PieceType::Knight as usize].get(), -3263); // -2244·1489/1024
     }
 
     // §3.9: the refutation malus fires only when the parent played its first
@@ -1703,9 +1703,9 @@ mod tests {
             h.cont_ref(refut_id)[rpci][rto].get()
         };
 
-        // Gate satisfied (move_count 1 == 1 + tt_hit 0): -malus·683/1024 = -1479,
-        // then the offset-1 cont update = -1479·1040·96/131072 + 71 = -1055.
-        assert_eq!(run(&build(1), Some(prev_sq)), -1055);
+        // Gate satisfied (move_count 1 == 1 + tt_hit 0): -malus·713/1024 = -1562,
+        // then the offset-1 cont update = -1562·1040·94/131072 + 73 = -1092.
+        assert_eq!(run(&build(1), Some(prev_sq)), -1092);
         // Parent tried more than one move ⇒ no refutation write.
         assert_eq!(run(&build(2), Some(prev_sq)), 0);
         // No parent square ⇒ no refutation write.
@@ -1713,7 +1713,7 @@ mod tests {
     }
 
     // §3.10 correction_value: the linear combiner over the six inputs, with a
-    // real previous move so the continuation term (×8363) is read.
+    // real previous move so the continuation term (×8761) is read.
     #[test]
     fn correction_value_combiner_matches_hand_computed() {
         let mut h = Histories::new();
@@ -1750,7 +1750,7 @@ mod tests {
         h.cont_corr[id2.piece_to()][pci][toi] = StatEntry::new(4);
         h.cont_corr[id4.piece_to()][pci][toi] = StatEntry::new(6);
 
-        let want = 13345 * 3 + 9280 * -5 + 11840 * (7 + -11) + 8363 * (4 + 6);
+        let want = 15341 * 3 + 10569 * -5 + 12906 * (7 + -11) + 8761 * (4 + 6);
         assert_eq!(h.correction_value(&b, &stack, cur), want);
     }
 
@@ -1773,7 +1773,7 @@ mod tests {
             .corr_slot(b.non_pawn_key(Color::Black), us)
             .non_pawn_black
             .get();
-        let want = 13345 * pcv + 9280 * micv + 11840 * (wnp + bnp) + 64549;
+        let want = 15341 * pcv + 10569 * micv + 12906 * (wnp + bnp) + 64049;
         assert_eq!(h.correction_value(&b, &stack, cur), want);
     }
 
@@ -1798,14 +1798,14 @@ mod tests {
     fn correction_bonus_respects_direction_gate() {
         let real = Move::normal(Square::E2, Square::E4);
         // Best move + improved eval: fires. err 40, depth 8 ⇒ 40·8·12/128 = 30,
-        // then 1114·30/1024 = 32.
-        assert_eq!(correction_bonus(100, 60, false, real, false, 8), Some(32));
+        // then 1061·30/1024 = 31.
+        assert_eq!(correction_bonus(100, 60, false, real, false, 8), Some(31));
         // Best move but eval fell ⇒ direction mismatch.
         assert_eq!(correction_bonus(50, 60, false, real, false, 8), None);
         // Fail-low (no best move) with a fallen eval: directions agree ⇒ fires.
         assert_eq!(
             correction_bonus(40, 60, false, Move::NULL, false, 8),
-            Some(-23)
+            Some(-22)
         );
         // Fail-low but eval rose ⇒ mismatch.
         assert_eq!(correction_bonus(80, 60, false, Move::NULL, false, 8), None);
@@ -1813,8 +1813,8 @@ mod tests {
         assert_eq!(correction_bonus(100, 60, true, real, false, 8), None);
         // Best move is a real capture ⇒ never fires.
         assert_eq!(correction_bonus(100, 60, false, real, true, 8), None);
-        // The raw bonus is clamped to ±256 before scaling: 1114·256/1024 = 278.
-        assert_eq!(correction_bonus(5000, 0, false, real, false, 20), Some(278));
+        // The raw bonus is clamped to ±256 before scaling: 1061·256/1024 = 265.
+        assert_eq!(correction_bonus(5000, 0, false, real, false, 20), Some(265));
     }
 
     // §3.10 update_correction_history: per-table weights over pawn/minor/
@@ -1858,7 +1858,7 @@ mod tests {
         h.update_correction_history(&b, &stack, cur, 512);
 
         assert_eq!(h.corr_slot(b.pawn_key(), us).pawn.get(), 512); // ×1
-        assert_eq!(h.corr_slot(b.minor_key(), us).minor.get(), 608); // ·152/128
+        assert_eq!(h.corr_slot(b.minor_key(), us).minor.get(), 600); // ·150/128
         assert_eq!(
             h.corr_slot(b.non_pawn_key(Color::White), us)
                 .non_pawn_white
@@ -1871,7 +1871,7 @@ mod tests {
                 .get(),
             744
         );
-        assert_eq!(h.cont_corr[id2.piece_to()][pci][toi].get(), 544); // ·136/128
-        assert_eq!(h.cont_corr[id4.piece_to()][pci][toi].get(), 272); // ·68/128
+        assert_eq!(h.cont_corr[id2.piece_to()][pci][toi].get(), 520); // ·130/128
+        assert_eq!(h.cont_corr[id4.piece_to()][pci][toi].get(), 280); // ·70/128
     }
 }

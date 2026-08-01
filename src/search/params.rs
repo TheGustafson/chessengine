@@ -1,9 +1,35 @@
 //! Tuned search parameters — every SPSA-movable constant, named and
 //! greppable in one file (D20; conventions: design/01 §3.8).
 //!
-//! Values are SF-current starting points from Stockfish commit `eca43a97`
-//! (2026-07-06) unless noted. See
+//! Values are SF-current starting points from Stockfish commit `ebcea3ef`
+//! ("VVLTC parameters tweak", 2026-07-16) unless noted. See
 //! `stockfish_reference/stockfish_search_notes.md`.
+//!
+//! **Reference refresh 2026-08-01: `eca43a97` → `ebcea3ef`.** 147 values were
+//! re-transcribed verbatim from the newer reference; NOTHING was rescaled (our
+//! eval frame sits at ~0.67× SF's internal frame, and that correction is a
+//! separate, independently-tested lever — mixing the two would confound both).
+//! Five families were deliberately NOT refreshed, each for a stated reason:
+//!
+//! * [`ASPIRATION_MSS_DIVISOR`], [`OPTIMISM_NUM`], [`OPTIMISM_DEN_BASE`],
+//!   [`TIME_REDUCTION_STABILITY_LO`], [`TIME_REDUCTION_STABILITY_HI`] — already
+//!   ARCHON deviations derived from measurements of OUR frame / OUR iteration
+//!   counts. Overwriting them with SF's raw new numbers would silently revert a
+//!   documented correction, which is the same confound in the other direction.
+//! * [`RED_TTMOVE_SUB`] (SF 2016 → 2179) — SF removed the `max(0, ·)` clamp
+//!   around it in the same commit that retuned it (924d29d3). Values only.
+//! * [`TIME_REDUCTION_MIN`]/[`TIME_REDUCTION_MAX`] and
+//!   [`EFFORT_LERP_LO`]/[`EFFORT_LERP_HI`]/[`EFFORT_SCALE_AT_LO`]/
+//!   [`EFFORT_SCALE_AT_HI`] — SF split the lerp ENDPOINTS from the clamp
+//!   BOUNDS (four distinct numbers where there used to be two); ours are still
+//!   dual-duty, so adopting needs two new parameters per family.
+//! * [`PROBCUT_DEPTH_SUB`]/[`PROBCUT_IMPROVING_SUB`] — SF's
+//!   `depth - 4 - improving` became `depth - (improving ? 5 : 3)`, which our
+//!   shape CAN express as 3/2 — except `PROBCUT_DEPTH_SUB` is deliberately
+//!   shared with the in-check small-ProbCut TT slack (`depth - 4`), which SF
+//!   did NOT change. Splitting it is a new parameter.
+//! * `ss.stat_score` for quiets — SF replaced `2·main + ch1 + ch2` with
+//!   `(2252·main + 1126·ch1 + 1093·ch2) / 1024`. Two new weights.
 //!
 //! What does NOT live here: *structural* constants (bit widths,
 //! `VALUE_MATE`, array sizes) are semantics and live with their types;
@@ -34,17 +60,17 @@ use crate::types::{Depth, Value};
 pub const VOTE_TEMPO: crate::types::Value = 14;
 /// Per-offset weights of the continuation-history update, offsets 1..=6
 /// (÷[`CONT_UPDATE_DIVISOR`] with the bonus).
-pub const CONT_OFFSET_WEIGHTS: [i32; 6] = [1040, 780, 300, 537, 129, 423];
+pub const CONT_OFFSET_WEIGHTS: [i32; 6] = [1040, 780, 290, 502, 132, 418];
 /// Consistency multipliers indexed by the running count of already-positive
 /// entries along the chain: an agreeing chain amplifies the update.
-pub const CONT_CONSISTENCY_MULT: [i32; 7] = [96, 113, 101, 105, 127, 121, 126];
+pub const CONT_CONSISTENCY_MULT: [i32; 7] = [94, 103, 110, 106, 119, 126, 121];
 
 /// History-buys-lmr_depth divisor by depth (design/10 §3.5, item 11's
 /// second half, S0): `lmr_depth += history / LMR_DIVISOR[min(depth,16)-1]`
 /// where `history` is the quiet's combined continuation/pawn score plus
 /// `2·main_history`. A tuned per-depth table (SF-current shape).
 pub const LMR_DIVISOR: [i32; 16] = [
-    3307, 2930, 2874, 2818, 3215, 3225, 3224, 2782, 2858, 2919, 3088, 3275, 3180, 2868, 3006, 3599,
+    3637, 2787, 2761, 2939, 3171, 3347, 3147, 2762, 2772, 3106, 3107, 3060, 3112, 2991, 3090, 3542,
 ];
 
 /// Cadence of the search's clock poll: every `CHECK_TIME_CALLS` calls.
@@ -159,8 +185,8 @@ crate::tunables! {
     pub OPTIMISM_NUM: Value = 75;
     /// Optimism half-saturation denominator base (see OPTIMISM_NUM).
     pub OPTIMISM_DEN_BASE: Value = 45;
-    /// Numerator of the per-re-search widening `delta += delta * 44 / 128`.
-    pub ASPIRATION_WIDEN_NUM: Value = 44;
+    /// Numerator of the per-re-search widening `delta += delta * 47 / 128`.
+    pub ASPIRATION_WIDEN_NUM: Value = 47;
     /// Denominator of the per-re-search widening (~x1.34 per fail).
     pub ASPIRATION_WIDEN_DEN: Value = 128;
     /// Numerator of the search-again depth damping term
@@ -236,9 +262,9 @@ crate::tunables! {
     // --- Quiescence search (design/07 §3.8) ---
 
     /// Futility headroom over the corrected static eval:
-    /// `futility_base = static_eval + 335` (§3.8 step 5). A capture whose
+    /// `futility_base = static_eval + 306` (§3.8 step 5). A capture whose
     /// victim cannot lift this base above alpha is skipped.
-    pub QS_FUTILITY_MARGIN: Value = 335;
+    pub QS_FUTILITY_MARGIN: Value = 306;
     /// **Class-4 converter for the qsearch futility bound**, in 1024ths.
     /// `1024` = identity, so the shipped engine is unchanged.
     ///
@@ -284,9 +310,9 @@ crate::tunables! {
     // --- Razoring (design/10 §3.1; node step N9) ---
 
     /// Flat margin below alpha at which shallow nodes drop to qsearch.
-    pub RAZOR_BASE: Value = 465;
+    pub RAZOR_BASE: Value = 483;
     /// Depth-quadratic term of the razoring margin (`* depth^2`).
-    pub RAZOR_DEPTH_MULT: Value = 300;
+    pub RAZOR_DEPTH_MULT: Value = 318;
     /// **Eval-uncertainty coupling for razoring** — margin widens by
     /// `|correction_value| / RAZOR_CORR_DIV`. Effectively OFF at the default
     /// (the term floors to 0), so the shipped engine is unchanged.
@@ -315,28 +341,28 @@ crate::tunables! {
     // `futility_mult·depth - (RFP_IMPROVING·improving + RFP_OPP_WORSENING·
     // opponent_worsening)·futility_mult / RFP_TREND_DEN` shrinks when the
     // trend flags say the fail-high is well-supported. The Wave-F correction
-    // term (`|correction_value| / 182069`) is deliberately absent until
+    // term (`|correction_value| / 198435`) is deliberately absent until
     // correction history is plumbed into this suite (design/10 §4 Wave F).
 
     /// Exclusive depth ceiling: RFP only runs while `depth < RFP_MAX_DEPTH`
     /// (the depth condition matters for mate finding — deep nodes never RFP).
-    pub RFP_MAX_DEPTH: Depth = 17;
+    pub RFP_MAX_DEPTH: Depth = 19;
     /// Base of the per-ply futility multiplier `min(RFP_MULT_BASE +
     /// RFP_MULT_SLOPE·depth, RFP_MULT_CAP)`.
-    pub RFP_MULT_BASE: Value = 40;
+    pub RFP_MULT_BASE: Value = 45;
     /// Per-ply slope of the futility multiplier.
     pub RFP_MULT_SLOPE: Value = 4;
     /// Cap of the futility multiplier.
-    pub RFP_MULT_CAP: Value = 80;
+    pub RFP_MULT_CAP: Value = 85;
     /// Subtracted from the futility multiplier on a TT miss (a node with no TT
     /// data prunes a little more cautiously).
     pub RFP_MULT_NO_TTHIT: Value = 20;
     /// Weight (÷[`RFP_TREND_DEN`] of `futility_mult`) by which an *improving*
     /// node shrinks the margin — the fail-high is better supported.
-    pub RFP_IMPROVING: Value = 2934;
+    pub RFP_IMPROVING: Value = 2789;
     /// Weight (÷[`RFP_TREND_DEN`] of `futility_mult`) by which a *worsening*
     /// opponent shrinks the margin.
-    pub RFP_OPP_WORSENING: Value = 343;
+    pub RFP_OPP_WORSENING: Value = 335;
     /// Denominator of the improving/opponent-worsening margin discounts.
     pub RFP_TREND_DEN: Value = 1024;
     /// Threat-coupled RFP relaxation (Wave-G item 23, D30): when NO own piece
@@ -351,9 +377,9 @@ crate::tunables! {
     /// eval) / RFP_RET_DEN` — a value ≥ beta, pulled toward beta to damp
     /// static-eval noise (the same instability-damping idiom as the node-exit
     /// fail-high soften).
-    pub RFP_RET_BETA_W: Value = 716;
+    pub RFP_RET_BETA_W: Value = 661;
     /// Eval weight of the return blend.
-    pub RFP_RET_EVAL_W: Value = 308;
+    pub RFP_RET_EVAL_W: Value = 363;
     /// Denominator of the return blend (`RFP_RET_BETA_W + RFP_RET_EVAL_W`).
     pub RFP_RET_DEN: Value = 1024;
 
@@ -375,12 +401,12 @@ crate::tunables! {
     /// Per-ply slope of the NMP static-eval bar `beta - NMP_EVAL_DEPTH·depth -
     /// NMP_EVAL_IMPROVING·improving + NMP_EVAL_BASE`: deeper nodes need less
     /// headroom (a deeper fail-high is better supported).
-    pub NMP_EVAL_DEPTH: Value = 14;
+    pub NMP_EVAL_DEPTH: Value = 13;
     /// Improving discount of the NMP static-eval bar.
-    pub NMP_EVAL_IMPROVING: Value = 45;
+    pub NMP_EVAL_IMPROVING: Value = 47;
     /// Flat base of the NMP static-eval bar (dominates at shallow depth, so the
     /// bar sits well above beta there).
-    pub NMP_EVAL_BASE: Value = 374;
+    pub NMP_EVAL_BASE: Value = 365;
     /// **Eval-uncertainty coupling for the null-move bar** — the bar rises by
     /// `|correction_value| / NMP_CORR_DIV`, so NMP fires less readily where
     /// our eval has been unreliable. Effectively OFF at the default.
@@ -411,22 +437,22 @@ crate::tunables! {
     // wired in this Wave-A item but stay UNUSED until Wave-A item 4 applies LMR
     // in the move loop (design/10 §4).
 
-    /// Numerator of the log reduction table `int(2834 / 128 * ln(i))`; the
+    /// Numerator of the log reduction table `int(2872 / 128 * ln(i))`; the
     /// division is done in floating point once, at table-build time.
-    pub RED_TABLE_NUM: i32 = 2834;
+    pub RED_TABLE_NUM: i32 = 2872;
     /// Denominator of the log reduction table (a power of two — exactly
     /// representable, so the built table is bit-reproducible).
     pub RED_TABLE_DEN: i32 = 128;
     /// Wide-window damping of the base reduction: a wider local window `delta`
     /// reduces less, via `- delta * RED_DELTA_MULT / root_delta`.
-    pub RED_DELTA_MULT: i32 = 617;
+    pub RED_DELTA_MULT: i32 = 577;
     /// Not-improving surcharge numerator: a not-improving node reduces more, by
     /// `+ scale * RED_NON_IMPROVING / RED_NON_IMPROVING_DEN` (~38% extra).
-    pub RED_NON_IMPROVING: i32 = 194;
+    pub RED_NON_IMPROVING: i32 = 197;
     /// Not-improving surcharge denominator (the `/512` of the term above).
     pub RED_NON_IMPROVING_DEN: i32 = 512;
     /// Flat base added to every base reduction (in 1024ths of a ply).
-    pub RED_BASE: i32 = 1027;
+    pub RED_BASE: i32 = 982;
 
     // --- LMR reduction finalization + search mechanics (design/10 §3.7/§3.8) ---
     //
@@ -437,7 +463,7 @@ crate::tunables! {
     // `d = max(1, min(new_depth - r/RED_UNIT, new_depth + RED_MAX_DEEPER)) + PV`,
     // with the deeper/shallower re-search rule and the non-LMR dock path. Wave-C
     // item 10 adds the `ss.stat_score` combined-history term below. The ttPv,
-    // correction (`/26131`), tt_capture, cutoffCnt and all-node terms are still
+    // correction (`/26310`), tt_capture, cutoffCnt and all-node terms are still
     // deferred to their later waves (design/10 §4 Waves C/D/F), so those
     // constants are absent here.
 
@@ -446,7 +472,7 @@ crate::tunables! {
     /// depth (`new_depth - r / RED_UNIT`, §3.8 — the suite's unit convention).
     pub RED_UNIT: i32 = 1024;
     /// Flat rebase added to every finalized reduction (§3.7).
-    pub RED_FLAT: i32 = 714;
+    pub RED_FLAT: i32 = 697;
     /// Reduction rebate (in 1024ths of a ply) for a move that GIVES CHECK.
     ///
     /// **Status: UNVALIDATED. Default 0 — leave it there unless a game result
@@ -484,13 +510,13 @@ crate::tunables! {
     /// Per-move-count reduction discount `r -= RED_MOVECOUNT * move_count`: later
     /// moves in the list reduce a little less than the raw log table implies
     /// (they were tried later precisely because ordering distrusted them, §3.7).
-    pub RED_MOVECOUNT: i32 = 62;
+    pub RED_MOVECOUNT: i32 = 65;
     /// Cut-node reduction surcharge: an expected-fail-high node reduces its late
     /// moves harder — it wants a cheap refutation, not a thorough search (§3.7).
-    pub RED_CUTNODE: i32 = 3995;
+    pub RED_CUTNODE: i32 = 4026;
     /// Extra cut-node surcharge when the node has no TT move: nothing trustworthy
     /// to search near full depth, so reduce even more (§3.7).
-    pub RED_CUTNODE_NO_TTMOVE: i32 = 1059;
+    pub RED_CUTNODE_NO_TTMOVE: i32 = 933;
     /// TT-move reduction rebate `r = max(0, r - RED_TTMOVE_SUB)`: the move the TT
     /// records as best is searched close to full depth (§3.7). In Wave A this is
     /// a plain `if m == tt.mv`; the cutoffCnt `if/else` wrapper is Wave D.
@@ -501,20 +527,20 @@ crate::tunables! {
     pub RED_MAX_DEEPER: Depth = 2;
     /// Deeper-re-search margin: after a reduced scout beats alpha, re-search one
     /// ply DEEPER when it beat the running best by more than this (§3.8).
-    pub LMR_DEEPER_MARGIN: Value = 52;
+    pub LMR_DEEPER_MARGIN: Value = 53;
     /// Shallower-re-search margin: re-search one ply SHALLOWER when the scout only
     /// barely cleared the running best (`value < best_value + this`, §3.8).
-    pub LMR_SHALLOWER_MARGIN: Value = 9;
+    pub LMR_SHALLOWER_MARGIN: Value = 8;
     /// Non-LMR path: a node with no TT move adds this to `r` before the depth
     /// docks below — the full-depth analogue of the cut-node no-ttMove surcharge
     /// (§3.8).
-    pub RED_FULLDEPTH_NO_TTMOVE: i32 = 1085;
+    pub RED_FULLDEPTH_NO_TTMOVE: i32 = 1127;
     /// Non-LMR path first depth dock: an `r` above this costs one ply even for a
     /// move that does not qualify for LMR proper (§3.8).
-    pub RED_FULLDEPTH_DOCK1: i32 = 5039;
+    pub RED_FULLDEPTH_DOCK1: i32 = 5234;
     /// Non-LMR path second depth dock: an `r` above this (and `new_depth > 2`)
     /// costs a second ply (§3.8).
-    pub RED_FULLDEPTH_DOCK2: i32 = 5223;
+    pub RED_FULLDEPTH_DOCK2: i32 = 5487;
 
     // --- LMR statScore: combined-history reduction + post-LMR bonus (design/10
     //     §3.7/§3.8; Wave-C item 10) ---
@@ -540,19 +566,19 @@ crate::tunables! {
     pub STATSCORE_MAIN_WEIGHT: i32 = 2;
     /// Victim-value multiplier of the capture `stat_score`
     /// (`STATSCORE_CAPT_NUM·piece_value(captured) / STATSCORE_CAPT_DEN`).
-    pub STATSCORE_CAPT_NUM: i32 = 809;
+    pub STATSCORE_CAPT_NUM: i32 = 873;
     /// Divisor of the capture `stat_score` victim term.
     pub STATSCORE_CAPT_DEN: i32 = 128;
     /// Numerator of the reduction dock `r -= stat_score·RED_STATSCORE_NUM /
     /// RED_STATSCORE_DEN`: positive `stat_score` LOWERS the reduction (search
     /// fuller), negative RAISES it.
-    pub RED_STATSCORE_NUM: i32 = 445;
+    pub RED_STATSCORE_NUM: i32 = 439;
     /// Divisor of the reduction dock (a power of two — the truncation toward zero
     /// on a negative `stat_score` is intended, not to be "fixed" to floor).
     pub RED_STATSCORE_DEN: i32 = 4096;
     /// Flat continuation-history bonus a move earns when its reduced LMR scout
     /// beats alpha (design/10 §3.8): applied along the offset-1..6 chain.
-    pub LMR_CONTHIST_BONUS: i32 = 1415;
+    pub LMR_CONTHIST_BONUS: i32 = 1334;
 
     // --- LMR reduction finalization: ttPv rebate / tt_capture / all-node
     //     (design/10 §3.5/§3.7) ---
@@ -570,26 +596,26 @@ crate::tunables! {
     //   * tt_capture surcharge and the all-node scaling close the balance.
 
     /// §3.5 provisional ttPv reduction bump (mostly cancelled by the rebate).
-    pub RED_TTPV_ENTRY: i32 = 1006;
+    pub RED_TTPV_ENTRY: i32 = 929;
     /// ttPv rebate: base.
-    pub RED_TTPV_BASE: i32 = 2766;
+    pub RED_TTPV_BASE: i32 = 3023;
     /// ttPv rebate: PV bonus.
-    pub RED_TTPV_PV: i32 = 1017;
+    pub RED_TTPV_PV: i32 = 1004;
     /// ttPv rebate: `tt.value > alpha` bonus.
-    pub RED_TTPV_TTVALUE: i32 = 838;
+    pub RED_TTPV_TTVALUE: i32 = 885;
     /// ttPv rebate: `tt.depth >= depth` base bonus.
-    pub RED_TTPV_TTDEPTH_BASE: i32 = 923;
+    pub RED_TTPV_TTDEPTH_BASE: i32 = 816;
     /// ttPv rebate: extra `tt.depth >= depth` bonus at a cut node.
-    pub RED_TTPV_TTDEPTH_CUT: i32 = 955;
+    pub RED_TTPV_TTDEPTH_CUT: i32 = 940;
     /// tt_capture reduction surcharge (a capturing ttMove distrusts quiet siblings).
-    pub RED_TTCAPTURE: i32 = 1039;
+    pub RED_TTCAPTURE: i32 = 1079;
     /// All-node reduction scaling numerator `r += r·RED_ALLNODE_NUM /
     /// (RED_ALLNODE_DEPTH_MULT·depth + RED_ALLNODE_DEPTH_BASE)`.
-    pub RED_ALLNODE_NUM: i32 = 272;
+    pub RED_ALLNODE_NUM: i32 = 276;
     /// All-node scaling depth multiplier.
     pub RED_ALLNODE_DEPTH_MULT: i32 = 256;
     /// All-node scaling depth base.
-    pub RED_ALLNODE_DEPTH_BASE: i32 = 285;
+    pub RED_ALLNODE_DEPTH_BASE: i32 = 268;
 
     // --- Internal iterative reduction (N12, design/10 §3.4; S0) ---
 
@@ -752,7 +778,7 @@ crate::tunables! {
     /// Exclusive lmr-depth ceiling of capture futility (`lmr_depth <
     /// CFUT_MAX_LMRDEPTH`); deeper predicted searches are trusted to see the
     /// tactic themselves.
-    pub CFUT_MAX_LMRDEPTH: Depth = 7;
+    pub CFUT_MAX_LMRDEPTH: Depth = 8;
     /// **Class-4 converter: material units → eval units, in 1024ths.**
     /// `1024` = 1.0 = exact identity, so the shipped engine is unchanged.
     ///
@@ -793,18 +819,18 @@ crate::tunables! {
     /// 1600 (= 1/0.64).
     pub SEE_THRESH_MULT: i32 = 1024;
     /// Flat base of the capture-futility optimistic value over the static eval.
-    pub CFUT_BASE: Value = 231;
+    pub CFUT_BASE: Value = 234;
     /// Per-lmr-depth slope of the capture-futility value (can be negative at
     /// shallow nodes, LOWERING the bound).
-    pub CFUT_LMRDEPTH_MULT: Value = 232;
+    pub CFUT_LMRDEPTH_MULT: Value = 247;
     /// Capture-history nudge numerator of the capture-futility value
     /// (`CFUT_HIST_MULT·capt_hist / CAPT_HIST_DEN`): a capture the history likes
     /// is written off a little less readily.
-    pub CFUT_HIST_MULT: i32 = 131;
+    pub CFUT_HIST_MULT: i32 = 134;
     /// Depth multiplier of the capture/check SEE margin
     /// (`CAP_SEE_DEPTH_MULT·depth + CAP_SEE_HIST_MULT·capt_hist/CAPT_HIST_DEN`):
     /// deeper nodes tolerate a bigger static-exchange loss before pruning.
-    pub CAP_SEE_DEPTH_MULT: Value = 175;
+    pub CAP_SEE_DEPTH_MULT: Value = 177;
     /// Capture-history numerator of the capture/check SEE margin.
     pub CAP_SEE_HIST_MULT: i32 = 34;
     /// Shared `/1024` divisor of the capture-history reads in both capture gates
@@ -838,7 +864,7 @@ crate::tunables! {
     /// `history < -QHIST_PRUNE_MULT·depth` (design/10 §3.5): a quiet whose
     /// offset-1/offset-2 continuation histories plus its pawn history fall below
     /// this depth-scaled bar is pruned before it is searched.
-    pub QHIST_PRUNE_MULT: i32 = 4313;
+    pub QHIST_PRUNE_MULT: i32 = 4136;
 
     // --- Move-loop pruning: parent futility (design/10 §3.5) ---
     //
@@ -861,13 +887,13 @@ crate::tunables! {
     // first is Wave-C item 11 — this item uses the plain derivation.
 
     /// Flat base of the parent-futility bound over the static eval.
-    pub PFUT_BASE: Value = 40;
+    pub PFUT_BASE: Value = 39;
     /// Bound surcharge while no best move has been found yet: a node with no
     /// established alpha-raiser writes moves off a little more optimistically.
-    pub PFUT_NO_BESTMOVE: Value = 138;
+    pub PFUT_NO_BESTMOVE: Value = 127;
     /// Per-lmr-depth slope of the bound: a deeper predicted search must clear
     /// more headroom before its quiets are futile.
-    pub PFUT_LMRDEPTH_MULT: Value = 117;
+    pub PFUT_LMRDEPTH_MULT: Value = 119;
     /// Bound surcharge when the static eval already clears alpha.
     pub PFUT_EVAL_ABOVE_ALPHA: Value = 90;
     /// Exclusive lmr-depth ceiling: parent futility runs only while
@@ -884,7 +910,7 @@ crate::tunables! {
 
     /// Quadratic coefficient of the quiet SEE margin `-QSEE_MULT·lmr_depth²`
     /// (`lmr_depth` clamped to `>= 0` first).
-    pub QSEE_MULT: Value = 25;
+    pub QSEE_MULT: Value = 23;
 
     // --- Transposition-table interaction (design/07 §3.7.2 steps 7/14) ---
 
@@ -907,15 +933,15 @@ crate::tunables! {
     // was refutable.
 
     /// Depth multiplier of the TT-cutoff quiet-ttMove bonus.
-    pub TTCUT_BONUS_MULT: i32 = 114;
+    pub TTCUT_BONUS_MULT: i32 = 112;
     /// Cap of the TT-cutoff quiet-ttMove bonus.
-    pub TTCUT_BONUS_CAP: i32 = 724;
+    pub TTCUT_BONUS_CAP: i32 = 695;
     /// Continuation-history malus applied to the parent's early quiet move on a
     /// beta-side TT cutoff.
-    pub TTCUT_PARENT_MALUS: i32 = -2187;
+    pub TTCUT_PARENT_MALUS: i32 = -2210;
     /// The parent's `move_count` must be below this for the TT-cutoff parent
     /// penalty to fire (an "early" quiet the cutoff just refuted).
-    pub TTCUT_PARENT_MOVECOUNT: i32 = 4;
+    pub TTCUT_PARENT_MOVECOUNT: i32 = 5;
 
     // --- Singular extensions + multicut (design/10 §3.6; Wave-D items 13/14) ---
     //
@@ -938,40 +964,40 @@ crate::tunables! {
     /// The ttMove's stored depth must be within this of the node depth.
     pub SE_TT_DEPTH_SLACK: Depth = 3;
     /// Base per-ply multiplier of the singular-beta margin.
-    pub SE_BETA_MULT: Value = 60;
+    pub SE_BETA_MULT: Value = 59;
     /// Extra singular-beta multiplier when `tt_pv && !PV`.
-    pub SE_BETA_TTPV_MULT: Value = 70;
+    pub SE_BETA_TTPV_MULT: Value = 66;
     /// Divisor of the singular-beta margin.
-    pub SE_BETA_DIV: Value = 59;
+    pub SE_BETA_DIV: Value = 63;
     /// Divisor of the correction adjustment folded into the extension margins
     /// (Wave F item 21; `corr_adj = |correction_value| / SE_CORR_DIV`).
-    pub SE_CORR_DIV: i32 = 194_822;
+    pub SE_CORR_DIV: i32 = 198_368;
     /// Double-extension margin: base.
-    pub SE_DOUBLE_BASE: Value = -3;
+    pub SE_DOUBLE_BASE: Value = -2;
     /// Double-extension margin: PV bonus.
-    pub SE_DOUBLE_PV: Value = 201;
+    pub SE_DOUBLE_PV: Value = 204;
     /// Double-extension margin: non-tt-capture discount.
-    pub SE_DOUBLE_NON_TTCAP: Value = 157;
+    pub SE_DOUBLE_NON_TTCAP: Value = 152;
     /// Double-extension margin: tt_move_history numerator.
-    pub SE_DOUBLE_TMH_NUM: i32 = 1081;
+    pub SE_DOUBLE_TMH_NUM: i32 = 1175;
     /// Double-extension margin: tt_move_history divisor.
-    pub SE_DOUBLE_TMH_DEN: i32 = 117_824;
+    pub SE_DOUBLE_TMH_DEN: i32 = 114_178;
     /// Double-extension margin: deep-node (`ply > root_depth`) discount.
-    pub SE_DOUBLE_DEEP: Value = 41;
+    pub SE_DOUBLE_DEEP: Value = 38;
     /// Triple-extension margin: base.
-    pub SE_TRIPLE_BASE: Value = 72;
+    pub SE_TRIPLE_BASE: Value = 70;
     /// Triple-extension margin: PV bonus.
-    pub SE_TRIPLE_PV: Value = 306;
+    pub SE_TRIPLE_PV: Value = 279;
     /// Triple-extension margin: non-tt-capture discount.
     pub SE_TRIPLE_NON_TTCAP: Value = 188;
     /// Triple-extension margin: tt_pv bonus.
-    pub SE_TRIPLE_TTPV: Value = 84;
+    pub SE_TRIPLE_TTPV: Value = 81;
     /// Triple-extension margin: deep-node discount.
-    pub SE_TRIPLE_DEEP: Value = 45;
+    pub SE_TRIPLE_DEEP: Value = 43;
     /// Multicut tt_move_history dock: base (`<< MULTICUT_TMH_BASE + MULTICUT_TMH_DEPTH·depth`).
-    pub MULTICUT_TMH_BASE: i32 = -442;
+    pub MULTICUT_TMH_BASE: i32 = -421;
     /// Multicut tt_move_history dock: depth multiplier.
-    pub MULTICUT_TMH_DEPTH: i32 = -108;
+    pub MULTICUT_TMH_DEPTH: i32 = -110;
     /// `is_shuffling`: minimum halfmove clock.
     pub SHUFFLE_RULE50: i32 = 10;
     /// `is_shuffling`: minimum plies since the last null move.
@@ -982,17 +1008,17 @@ crate::tunables! {
     // --- tt_move_history node-result update (design/10 §3.10; Wave-D item 14) ---
 
     /// tt_move_history bonus when the best move was the ttMove (non-PV nodes).
-    pub TMH_HIT: i32 = 792;
+    pub TMH_HIT: i32 = 918;
     /// tt_move_history malus when the best move was NOT the ttMove (non-PV nodes).
-    pub TMH_MISS: i32 = -779;
+    pub TMH_MISS: i32 = -747;
 
     // --- Sibling depth reduction on alpha raise (design/10 §3.9; Wave-D item 15) ---
 
     /// A quiet alpha-raise (no cutoff) at `SIBLING_DEPTH_MIN < depth <
     /// SIBLING_DEPTH_MAX` searches remaining siblings two plies shallower.
-    pub SIBLING_DEPTH_MIN: Depth = 2;
+    pub SIBLING_DEPTH_MIN: Depth = 3;
     /// Upper (exclusive) depth of the sibling depth reduction.
-    pub SIBLING_DEPTH_MAX: Depth = 13;
+    pub SIBLING_DEPTH_MAX: Depth = 12;
 
     // --- cutoffCnt reduction gates (design/10 §3.7; Wave-D item 15) ---
 
@@ -1002,11 +1028,11 @@ crate::tunables! {
     /// Above this child cutoff count, the surcharge adds RED_CUTOFFCNT_MANY.
     pub RED_CUTOFFCNT_MANY_GATE: i32 = 2;
     /// Base cutoffCnt reduction surcharge (child slot has been failing high).
-    pub RED_CUTOFFCNT_BASE: i32 = 236;
+    pub RED_CUTOFFCNT_BASE: i32 = 264;
     /// Extra surcharge when the child cutoff count exceeds RED_CUTOFFCNT_MANY_GATE.
-    pub RED_CUTOFFCNT_MANY: i32 = 1079;
+    pub RED_CUTOFFCNT_MANY: i32 = 1095;
     /// Extra surcharge when the current node is an all-node (`!PV && !cut_node`).
-    pub RED_CUTOFFCNT_ALLNODE: i32 = 1143;
+    pub RED_CUTOFFCNT_ALLNODE: i32 = 1138;
 
     // --- ProbCut (N13, design/10 §3.4; Wave-E item 16) ---
     //
@@ -1019,9 +1045,9 @@ crate::tunables! {
     // `value - (probcut_beta - beta)`.
 
     /// Flat base of the ProbCut beta margin.
-    pub PROBCUT_BETA_BASE: Value = 214;
+    pub PROBCUT_BETA_BASE: Value = 241;
     /// Improving discount of the ProbCut beta margin.
-    pub PROBCUT_BETA_IMPROVING: Value = 59;
+    pub PROBCUT_BETA_IMPROVING: Value = 64;
     /// Minimum depth at which ProbCut runs (`depth >= PROBCUT_MIN_DEPTH`).
     pub PROBCUT_MIN_DEPTH: Depth = 3;
     /// Depth subtracted (with `improving`) for the ProbCut re-verification search;
@@ -1042,9 +1068,9 @@ crate::tunables! {
     // (`correction_bonus` + `update_correction_history`) learns the eval error.
 
     /// Divisor of the RFP margin correction-widening term.
-    pub RFP_CORR_DIV: i32 = 182_069;
+    pub RFP_CORR_DIV: i32 = 198_435;
     /// Divisor of the reduction correction-slackening term.
-    pub RED_CORR_DIV: i32 = 26_131;
+    pub RED_CORR_DIV: i32 = 26_310;
 
     // --- Hindsight depth adjustments (N6, design/10 §3.4; Wave-E item 17) ---
     //
@@ -1060,7 +1086,7 @@ crate::tunables! {
     /// `depth -= 1`.
     pub HINDSIGHT_RED_DOWN: i32 = 2;
     /// The `ss.static_eval + (ss-1).static_eval` threshold of the depth-down arm.
-    pub HINDSIGHT_EVAL_SUM: Value = 173;
+    pub HINDSIGHT_EVAL_SUM: Value = 166;
 
     // --- TT-cutoff hardening (N6b, design/10 §3.4; Wave-E item 20) ---
     //
@@ -1091,43 +1117,43 @@ crate::tunables! {
     // under a parent capture instead flat-rewards capture history (FL_CAPTURE_BONUS).
 
     /// Flat base (negative) of `bonus_scale`.
-    pub FL_SCALE_BASE: i32 = -245;
+    pub FL_SCALE_BASE: i32 = -241;
     /// Divisor of the `(ss-1).stat_score` term subtracted from `bonus_scale`.
     pub FL_STATSCORE_DIV: i32 = 98;
     /// Depth multiplier of the `min(FL_DEPTH_MULT·depth, FL_DEPTH_CAP)` term.
     pub FL_DEPTH_MULT: i32 = 59;
     /// Cap of the depth term.
-    pub FL_DEPTH_CAP: i32 = 430;
+    pub FL_DEPTH_CAP: i32 = 420;
     /// `bonus_scale` bump when the parent tried many moves (`(ss-1).move_count > 8`).
-    pub FL_LATE_PARENT: i32 = 191;
+    pub FL_LATE_PARENT: i32 = 186;
     /// `bonus_scale` bump when `!ss.in_check && best_value <= ss.static_eval - 103`.
-    pub FL_BELOW_EVAL: i32 = 143;
+    pub FL_BELOW_EVAL: i32 = 142;
     /// Margin of the below-own-eval bump.
-    pub FL_BELOW_EVAL_MARGIN: Value = 103;
+    pub FL_BELOW_EVAL_MARGIN: Value = 106;
     /// `bonus_scale` bump when `!(ss-1).in_check && best_value <= -(ss-1).static_eval - 78`.
-    pub FL_BELOW_PARENT_EVAL: i32 = 151;
+    pub FL_BELOW_PARENT_EVAL: i32 = 159;
     /// Margin of the below-parent-eval bump.
-    pub FL_BELOW_PARENT_EVAL_MARGIN: Value = 78;
+    pub FL_BELOW_PARENT_EVAL_MARGIN: Value = 68;
     /// Depth multiplier of `scaled_bonus`.
-    pub FL_BONUS_MULT: i32 = 141;
+    pub FL_BONUS_MULT: i32 = 150;
     /// Depth-linear subtrahend of `scaled_bonus`.
-    pub FL_BONUS_SUB: i32 = 82;
+    pub FL_BONUS_SUB: i32 = 85;
     /// Cap of the `scaled_bonus` depth factor.
-    pub FL_BONUS_CAP: i32 = 1472;
+    pub FL_BONUS_CAP: i32 = 1337;
     /// Parent-conthist weight of the fail-low bonus (`scaled_bonus·236/16384`).
-    pub FL_CONTHIST_NUM: i32 = 236;
+    pub FL_CONTHIST_NUM: i32 = 263;
     /// Parent-conthist divisor.
     pub FL_CONTHIST_DEN: i32 = 16384;
     /// Main-history weight of the fail-low bonus (`scaled_bonus·234/32768`).
-    pub FL_MAIN_NUM: i32 = 234;
+    pub FL_MAIN_NUM: i32 = 215;
     /// Main-history divisor.
     pub FL_MAIN_DEN: i32 = 32768;
     /// Pawn-history weight of the fail-low bonus (`scaled_bonus·322/8192`).
-    pub FL_PAWN_NUM: i32 = 322;
+    pub FL_PAWN_NUM: i32 = 324;
     /// Pawn-history divisor.
     pub FL_PAWN_DEN: i32 = 8192;
     /// Flat capture-history bonus on a fail low under a parent capture.
-    pub FL_CAPTURE_BONUS: i32 = 901;
+    pub FL_CAPTURE_BONUS: i32 = 892;
 
     // --- Eval-diff parent nudge (N8, design/10 §3.4; Wave-C item 12) ---
     //
@@ -1139,25 +1165,25 @@ crate::tunables! {
     // slot takes `<< EVALDIFF_PAWN_MULT·eval_diff`.
 
     /// Low clamp of the eval swing feeding the eval-diff nudge.
-    pub EVALDIFF_CLAMP_LO: Value = -183;
+    pub EVALDIFF_CLAMP_LO: Value = -189;
     /// High clamp of the eval swing.
-    pub EVALDIFF_CLAMP_HI: Value = 180;
+    pub EVALDIFF_CLAMP_HI: Value = 194;
     /// Flat offset added to the clamped eval swing.
-    pub EVALDIFF_OFFSET: Value = 62;
+    pub EVALDIFF_OFFSET: Value = 60;
     /// Main-history multiplier of the eval-diff nudge.
-    pub EVALDIFF_MAIN_MULT: i32 = 10;
+    pub EVALDIFF_MAIN_MULT: i32 = 11;
     /// Pawn-history multiplier of the eval-diff nudge (TT-miss, non-pawn mover).
     pub EVALDIFF_PAWN_MULT: i32 = 13;
 
     // --- Time management: soft stop (design/12 §3.9) ---
 
-    /// Single-reply cap on the soft time budget (`min(561.7, total_time)`,
+    /// Single-reply cap on the soft time budget (`min(500.0, total_time)`,
     /// design/12 §3.9): with exactly one legal move at the root the search
     /// result cannot change the move played, so never sit on it longer than
     /// this — a viewer-experience cap, not a strength knob. In TM units:
     /// milliseconds, or nodes under `nodestime` (doc 12 §3.11), like every
     /// budget the soft stop compares against.
-    pub ONE_REPLY_TOTAL_TIME_CAP: f64 = 561.7;
+    pub ONE_REPLY_TOTAL_TIME_CAP: f64 = 500.0;
 
     // ── Head-free decisiveness scale on the soft stop (2026-07-28, searchopt) ──
     //
@@ -1207,19 +1233,19 @@ crate::tunables! {
     // (design/12 §3.9, step 8). Each is an SF-current fitted value (D20); the
     // formula SHAPES are documented at the use site in `search::soft_stop`.
 
-    /// fallingEval factor 1: constant term of `(11.87 + 2.21·Δavg + 1.0·Δiter)
-    /// / 100`, clamped to `[0.572, 1.708]` — think longer when the score drops.
-    pub FALLING_EVAL_BASE: f64 = 11.87;
+    /// fallingEval factor 1: constant term of `(11.48 + 2.30·Δavg + 1.1·Δiter)
+    /// / 100`, clamped to `[0.576, 1.728]` — think longer when the score drops.
+    pub FALLING_EVAL_BASE: f64 = 11.48;
     /// fallingEval: weight on `best_previous_average_score − best_value`.
-    pub FALLING_EVAL_PREV_AVG_COEFF: f64 = 2.21;
+    pub FALLING_EVAL_PREV_AVG_COEFF: f64 = 2.30;
     /// fallingEval: weight on `iter_value[iter_idx] − best_value`.
-    pub FALLING_EVAL_ITER_COEFF: f64 = 1.0;
+    pub FALLING_EVAL_ITER_COEFF: f64 = 1.1;
     /// fallingEval: the `/100` scale.
     pub FALLING_EVAL_DIV: f64 = 100.0;
     /// fallingEval lower clamp.
-    pub FALLING_EVAL_MIN: f64 = 0.572;
+    pub FALLING_EVAL_MIN: f64 = 0.576;
     /// fallingEval upper clamp.
-    pub FALLING_EVAL_MAX: f64 = 1.708;
+    pub FALLING_EVAL_MAX: f64 = 1.728;
 
     /// reduction factor 2, stability lerp x0: best-move-stability in iterations
     /// `root_depth − last_best_move_depth`, mapped LO→[TIME_REDUCTION_MIN].
@@ -1240,18 +1266,18 @@ crate::tunables! {
     pub TIME_REDUCTION_MIN: f64 = 0.65;
     /// reduction: `time_reduction` upper clamp (and lerp y at high stability).
     pub TIME_REDUCTION_MAX: f64 = 1.55;
-    /// reduction: constant term of `(1.48 + prev_time_reduction) / (2.157 ·
+    /// reduction: constant term of `(1.468 + prev_time_reduction) / (2.284 ·
     /// time_reduction)` — partially gives back last move's stability savings.
-    pub REDUCTION_BASE: f64 = 1.48;
+    pub REDUCTION_BASE: f64 = 1.468;
     /// reduction: divisor coefficient scaling `time_reduction`.
-    pub REDUCTION_DEN_COEFF: f64 = 2.157;
+    pub REDUCTION_DEN_COEFF: f64 = 2.284;
 
-    /// bestMoveInstability factor 3: constant term of `1.096 + 2.29 ·
+    /// bestMoveInstability factor 3: constant term of `1.077 + 2.229 ·
     /// tot_best_move_changes / threads` — think longer when the best move
     /// keeps flipping.
-    pub INSTABILITY_BASE: f64 = 1.096;
+    pub INSTABILITY_BASE: f64 = 1.077;
     /// bestMoveInstability: weight on the per-thread-averaged change count.
-    pub INSTABILITY_CHANGES_COEFF: f64 = 2.29;
+    pub INSTABILITY_CHANGES_COEFF: f64 = 2.229;
     /// bestMoveInstability: per-iteration aging divisor of the accumulated
     /// root best-move-change count (SF: `totBestMoveChanges /= 2`).
     ///
@@ -1336,22 +1362,22 @@ crate::tunables! {
 
     /// Depth multiplier of the stat bonus `min(STAT_BONUS_DEPTH_MULT·depth −
     /// STAT_BONUS_DEPTH_SUB, STAT_BONUS_MAX)`.
-    pub STAT_BONUS_DEPTH_MULT: i32 = 134;
+    pub STAT_BONUS_DEPTH_MULT: i32 = 133;
     /// Depth-linear subtrahend of the stat bonus.
-    pub STAT_BONUS_DEPTH_SUB: i32 = 79;
+    pub STAT_BONUS_DEPTH_SUB: i32 = 81;
     /// Ceiling of the stat bonus.
-    pub STAT_BONUS_MAX: i32 = 1572;
+    pub STAT_BONUS_MAX: i32 = 1487;
     /// Extra bonus when the best move equals the TT move (it was predicted).
-    pub STAT_BONUS_TTMOVE: i32 = 382;
+    pub STAT_BONUS_TTMOVE: i32 = 364;
     /// Divisor of the parent `stat_score` contribution to the bonus.
-    pub STAT_BONUS_STATSCORE_DIV: i32 = 30;
+    pub STAT_BONUS_STATSCORE_DIV: i32 = 28;
     /// Depth multiplier of the stat malus `min(STAT_MALUS_DEPTH_MULT·depth −
     /// STAT_MALUS_DEPTH_SUB, STAT_MALUS_MAX)`.
-    pub STAT_MALUS_DEPTH_MULT: i32 = 1005;
+    pub STAT_MALUS_DEPTH_MULT: i32 = 968;
     /// Depth-linear subtrahend of the stat malus.
-    pub STAT_MALUS_DEPTH_SUB: i32 = 205;
+    pub STAT_MALUS_DEPTH_SUB: i32 = 235;
     /// Ceiling of the stat malus.
-    pub STAT_MALUS_MAX: i32 = 2218;
+    pub STAT_MALUS_MAX: i32 = 2244;
     /// Divisor of the non-PV breadth multiplier `bonus += bonus·tried /
     /// STAT_BREADTH_DIVISOR` (a wide node that tried many moves taught us more).
     /// `i64`: the product is widened to avoid the 32-bit overflow SF guards
@@ -1360,35 +1386,35 @@ crate::tunables! {
     /// Shared `/1024` denominator of every history-update weight below.
     pub STAT_WEIGHT_DEN: i32 = 1024;
     /// Best-quiet bonus weight (`bonus·824/1024`).
-    pub QUIET_BEST_BONUS_NUM: i32 = 824;
+    pub QUIET_BEST_BONUS_NUM: i32 = 899;
     /// Geometric quiet-malus start weight (`malus·1136/1024`), decayed by
     /// [`QUIET_MALUS_DECAY_NUM`] before each successive non-best quiet — earliest
     /// failures punished hardest.
-    pub QUIET_MALUS_START_NUM: i32 = 1136;
+    pub QUIET_MALUS_START_NUM: i32 = 1159;
     /// Per-move decay of the geometric quiet malus (`m·956/1024` each step).
-    pub QUIET_MALUS_DECAY_NUM: i32 = 956;
+    pub QUIET_MALUS_DECAY_NUM: i32 = 921;
     /// Best-capture bonus weight (`bonus·1366/1024`).
-    pub CAPTURE_BEST_BONUS_NUM: i32 = 1366;
+    pub CAPTURE_BEST_BONUS_NUM: i32 = 1427;
     /// Non-best-capture malus weight (`−malus·1518/1024`).
-    pub CAPTURE_MALUS_NUM: i32 = 1518;
+    pub CAPTURE_MALUS_NUM: i32 = 1489;
     /// Refutation malus weight for the parent's refuted first-try quiet
     /// (`−malus·683/1024`).
-    pub REFUTATION_MALUS_NUM: i32 = 683;
+    pub REFUTATION_MALUS_NUM: i32 = 713;
 
     // --- History updates: per-quiet-table weights (design/09 §3.9) ---
 
     /// Low-ply history update weight (`bonus·663/1024`, plies < 5 only).
-    pub QUIET_LOW_PLY_UPDATE_NUM: i32 = 663;
+    pub QUIET_LOW_PLY_UPDATE_NUM: i32 = 712;
     /// Continuation-history update weight (`bonus·820/1024`).
-    pub QUIET_CONT_UPDATE_NUM: i32 = 820;
+    pub QUIET_CONT_UPDATE_NUM: i32 = 750;
     /// Pawn-history update weight for bonuses (`bonus·1038/1024`).
-    pub PAWN_HIST_BONUS_NUM: i32 = 1038;
+    pub PAWN_HIST_BONUS_NUM: i32 = 1104;
     /// Pawn-history update weight for maluses (`bonus·525/1024`) — maluses are
     /// roughly halved relative to bonuses.
-    pub PAWN_HIST_MALUS_NUM: i32 = 525;
+    pub PAWN_HIST_MALUS_NUM: i32 = 459;
     /// The pawn-history bonus/malus split point: `> -7` takes the bonus weight,
     /// `<= -7` the malus weight (deliberately not `> 0`).
-    pub PAWN_HIST_ASYMMETRY_THRESHOLD: i32 = -7;
+    pub PAWN_HIST_ASYMMETRY_THRESHOLD: i32 = -4;
 
     // --- History updates: continuation chain (design/09 §3.9) ---
 
@@ -1396,7 +1422,7 @@ crate::tunables! {
     /// `i64`: the triple product is widened before the divide.
     pub CONT_UPDATE_DIVISOR: i64 = 131072;
     /// Flat bonus added to the offset-1 continuation update (even for maluses).
-    pub CONT_OFFSET1_FLAT_BONUS: i32 = 71;
+    pub CONT_OFFSET1_FLAT_BONUS: i32 = 73;
     /// In check, only offsets `<= 2` update (the position before the check bears
     /// little relation to the current one).
     pub CONT_IN_CHECK_MAX_OFFSET: usize = 2;
@@ -1407,15 +1433,15 @@ crate::tunables! {
     // 1/131072-pawn units; [`CORR_VALUE_DIVISOR`] converts back to centipawns.
 
     /// Weight on the pawn-structure correction.
-    pub CORR_PAWN_WEIGHT: i32 = 13345;
+    pub CORR_PAWN_WEIGHT: i32 = 15341;
     /// Weight on the minor-piece correction.
-    pub CORR_MINOR_WEIGHT: i32 = 9280;
+    pub CORR_MINOR_WEIGHT: i32 = 10569;
     /// Weight on each non-pawn (white/black) correction.
-    pub CORR_NONPAWN_WEIGHT: i32 = 11840;
+    pub CORR_NONPAWN_WEIGHT: i32 = 12906;
     /// Weight on the summed continuation corrections (offsets 2 and 4).
-    pub CORR_CONT_WEIGHT: i32 = 8363;
+    pub CORR_CONT_WEIGHT: i32 = 8761;
     /// Flat continuation-correction prior used after a null previous move.
-    pub CORR_CONT_NULL_PRIOR: i32 = 64549;
+    pub CORR_CONT_NULL_PRIOR: i32 = 64049;
     /// Divisor turning the correction sum back into a centipawn adjustment.
     pub CORR_VALUE_DIVISOR: i32 = 131072;
 
@@ -1424,13 +1450,13 @@ crate::tunables! {
     /// Shared `/128` denominator of the correction-update weights below.
     pub CORR_UPDATE_DEN: i32 = 128;
     /// Minor-piece correction update weight (`bonus·152/128`).
-    pub CORR_MINOR_UPDATE_NUM: i32 = 152;
+    pub CORR_MINOR_UPDATE_NUM: i32 = 150;
     /// Non-pawn (white and black) correction update weight (`bonus·186/128`).
     pub CORR_NONPAWN_UPDATE_NUM: i32 = 186;
     /// Offset-2 continuation-correction update weight (`bonus·136/128`).
-    pub CORR_CONT2_UPDATE_NUM: i32 = 136;
+    pub CORR_CONT2_UPDATE_NUM: i32 = 130;
     /// Offset-4 continuation-correction update weight (`bonus·68/128`).
-    pub CORR_CONT4_UPDATE_NUM: i32 = 68;
+    pub CORR_CONT4_UPDATE_NUM: i32 = 70;
 
     // --- Correction history: bonus computation (call site, design/10 §4.6) ---
     //
@@ -1447,8 +1473,8 @@ crate::tunables! {
     pub CORR_BONUS_DIVISOR: i32 = 128;
     /// Symmetric clamp on the raw correction bonus (`CORRECTION_HISTORY_LIMIT/4`).
     pub CORR_BONUS_CLAMP: i32 = 256;
-    /// Numerator of the outer correction-bonus scaling (`·1114/1024`).
-    pub CORR_BONUS_SCALE_NUM: i32 = 1114;
+    /// Numerator of the outer correction-bonus scaling (`·1061/1024`).
+    pub CORR_BONUS_SCALE_NUM: i32 = 1061;
     /// Denominator of the outer correction-bonus scaling.
     pub CORR_BONUS_SCALE_DEN: i32 = 1024;
 
@@ -1501,17 +1527,17 @@ crate::tunables! {
     /// Stand-pat fail-high softening `(BEST_W·best + BETA_W·beta) / DEN` —
     /// applied to non-decisive stand pats at or above beta (§3.8 step 5).
     /// Every qsearch stand-pat cutoff returns through this blend.
-    pub QS_STANDPAT_BEST_W: Value = 467;
+    pub QS_STANDPAT_BEST_W: Value = 441;
     /// Beta weight of the stand-pat blend.
-    pub QS_STANDPAT_BETA_W: Value = 557;
+    pub QS_STANDPAT_BETA_W: Value = 583;
     /// Denominator of the stand-pat blend.
     pub QS_STANDPAT_DEN: Value = 1024;
     /// Node-exit fail-high softening `(BEST_W·best + BETA_W·beta) / DEN` —
     /// applied to non-decisive qsearch best values strictly above beta
     /// (§3.8 step 11). Every qsearch fail-high returns through this blend.
-    pub QS_FAILHIGH_BEST_W: Value = 481;
+    pub QS_FAILHIGH_BEST_W: Value = 462;
     /// Beta weight of the qsearch fail-high blend.
-    pub QS_FAILHIGH_BETA_W: Value = 543;
+    pub QS_FAILHIGH_BETA_W: Value = 562;
     /// Denominator of the qsearch fail-high blend.
     pub QS_FAILHIGH_DEN: Value = 1024;
     /// Numerator of the verification's NMP-disable window `nmp_min_ply =
@@ -1538,7 +1564,7 @@ crate::tunables! {
     /// Numerator of the main-history term in the history-buys-lmr_depth
     /// formula `history += NUM·main / DEN` (SF writes `64·h/32`, deliberately
     /// leaving 1/32 granularity for the tuner; ours had collapsed it to `2·`).
-    pub LMRDEPTH_MAIN_NUM: i32 = 64;
+    pub LMRDEPTH_MAIN_NUM: i32 = 69;
     /// Denominator of the main-history lmr_depth term.
     pub LMRDEPTH_MAIN_DEN: i32 = 32;
     /// Additive offset of the log reduction table, in the table's own
@@ -1561,7 +1587,7 @@ crate::tunables! {
     /// raise inside the SIBLING_DEPTH_MIN..MAX window). The window was
     /// tunable; the step was not — the mechanism could only be moved by
     /// window, never softened.
-    pub SIBLING_DEPTH_STEP: Depth = 2;
+    pub SIBLING_DEPTH_STEP: Depth = 3;
 
 }
 
