@@ -84,6 +84,26 @@ pub struct Arm {
     /// Restore the pre-study evasion capture score: the raw victim value with
     /// no capture history. The OFF switch for the other landed change.
     pub evasion_mvv: bool,
+    /// **Override for the shipped `TT_FAILLOW_MOVE`** (perf study 71): store
+    /// the argmax move at a main-search fail low. `-1` keeps the shipped
+    /// value, `0` off, `1` on.
+    pub fl_move: i32,
+    /// **Override for the shipped `TT_UPPER_PRUNE_BLIND`** (perf study 71):
+    /// the pruning/reduction gates that read `ttMove == NULL` as "this node is
+    /// unresolved" read NULL on an UPPER-bound entry. `-1` shipped, `0` off,
+    /// `1` on.
+    ///
+    /// This is a knob in its OWN right, not a modifier of `fl_move`, and that
+    /// is the point: study 70's standing finding is that a node win is a
+    /// pruning win until a magnitude control says otherwise, so the fail-low
+    /// store must be screened as a 2x2 — `ttup=1` alone is the pruning-only
+    /// control, and the ORDERING effect of the store is
+    /// `(flmove=1,ttup=1) - (ttup=1)`.
+    pub tt_up_blind: i32,
+    /// Study 71: the same store in QUIESCENCE — a qsearch fail-low knows
+    /// which capture scored highest and throws it away too (21.9 % of the
+    /// NonPV moveless population, 54.6 % of the qsearch one).
+    pub qfl_move: i32,
     /// Give the tried-but-not-best CAPTURES a malus even when the best move
     /// was a QUIET, and the tried quiets a malus when the best was a capture.
     /// Shipped: each kind is only punished when the best move shares its kind,
@@ -112,6 +132,9 @@ pub const SHIPPED: Arm = Arm {
     def_pawn: false,
     evasion_mvv: false,
     cross_malus: 0,
+    fl_move: -1,
+    qfl_move: -1,
+    tt_up_blind: -1,
 };
 
 fn parse(spec: &str) -> Arm {
@@ -142,6 +165,9 @@ fn parse(spec: &str) -> Arm {
             "qsdef" => a.qs_def = n,
             "defpawn" => a.def_pawn = n != 0,
             "evmvv" => a.evasion_mvv = n != 0,
+            "flmove" => a.fl_move = n,
+            "qflmove" => a.qfl_move = n,
+            "ttup" => a.tt_up_blind = n,
             other => panic!("arm70: unknown knob {other:?}"),
         }
     }

@@ -633,6 +633,37 @@ crate::tunables! {
     /// the same mechanism worth exposing.
     pub IIR_REDUCTION: Depth = 1;
 
+    /// **Fail-low best-move store (perf study 71).** A node whose move loop
+    /// raised alpha nowhere stores `Move::NULL` today, so the position comes
+    /// back TT-less next time even though the search knows perfectly well
+    /// which move scored highest. Study 71's census priced that: of the
+    /// 435,079 NonPV node entries that arrive with a TT ENTRY but no move,
+    /// **50.6 % were written by a main-search fail-low** (34.5 % at depth
+    /// 1–3, 16.1 % deeper) — 220 k entries, 17.7 % of all NonPV nodes.
+    ///
+    /// `0` = off (Stockfish `eca43a97` and Reckless both store nothing there).
+    /// `1` = store the argmax move. It rides an UPPER-bound entry and is
+    /// therefore never a singular-extension candidate; see
+    /// [`TT_UPPER_PRUNE_BLIND`] for what it does to the gates that read
+    /// `ttMove == NULL` as "this node is unresolved".
+    pub TT_FAILLOW_MOVE: i32 = 0;
+
+    /// **The pruning gates go blind to an UPPER-bound ttMove (perf study
+    /// 71).** Four sites read `tt_data.mv == Move::NULL` as evidence that the
+    /// node is unresolved and should be reduced or pruned harder: internal
+    /// iterative reduction, reverse futility's `ttMove == NULL || ttCapture`
+    /// gate, `RED_CUTNODE_NO_TTMOVE` and `RED_FULLDEPTH_NO_TTMOVE`. A move
+    /// attached to an UPPER-bound entry never raised alpha, so it is not that
+    /// evidence — with `1` those four sites read [`Worker::search`]'s
+    /// `tt_prune_move`, which is NULL on an UPPER entry.
+    ///
+    /// It is a separate knob from [`TT_FAILLOW_MOVE`] deliberately: the two
+    /// have to be screened as a 2x2 or the store's node effect is
+    /// indistinguishable from the pruning side effect of handing 20 % of
+    /// NonPV nodes a move they did not have (study 70's standing finding,
+    /// which cost that study two retracted headline arms).
+    pub TT_UPPER_PRUNE_BLIND: i32 = 0;
+
     // --- Move-loop pruning: late move pruning (design/10 §3.5) ---
     //
     // "Movecount pruning": once the running `move_count` clears a depth-scaled

@@ -95,6 +95,35 @@ pub static ALL_BEST_IDX: [[AtomicU64; IDXS]; KINDS] = zeros!(KINDS, IDXS);
 pub static TT_YES: [[AtomicU64; DEPTHS]; KINDS] = zeros!(KINDS, DEPTHS);
 pub static TT_NO: [[AtomicU64; DEPTHS]; KINDS] = zeros!(KINDS, DEPTHS);
 
+/// **Perf study 71 — WHY a node arrived TT-less**, by \[kind\]\[depth\]\[why\].
+/// Study 70 measured the deficit; it could not say which repair applies,
+/// because three completely different failures share one symptom:
+///
+/// - [`WHY_MISS`] — the probe missed entirely. The position has never been
+///   stored, or its entry was evicted: a TT *capacity/replacement* question.
+/// - [`WHY_MOVELESS`] — the entry is there and carries no move. Every
+///   fail-low store writes `Move::NULL`, so this is the *store policy*
+///   question, and it is the only one a search change can address directly.
+/// - [`WHY_UNUSABLE`] — a move was stored but `pseudo_legal` rejected it: a
+///   key collision or a stale entry from a different position. A *validation*
+///   question, and expected to be tiny.
+pub const WHY_MISS: usize = 0;
+pub const WHY_MOVELESS: usize = 1;
+pub const WHY_UNUSABLE: usize = 2;
+pub const WHYS: usize = 3;
+pub const WHY_NAMES: [&str; WHYS] = ["miss", "moveless", "unusable"];
+pub static TT_WHY: [[[AtomicU64; WHYS]; DEPTHS]; KINDS] = zeros!(KINDS, DEPTHS, WHYS);
+
+/// For [`WHY_MOVELESS`] entries: the DEPTH the moveless entry was stored at,
+/// which names the store site that produced it. `-2` = `DEPTH_UNSEARCHED`
+/// (the eval-only cache writes in step 6 / the qsearch stand-pat cut), `0` =
+/// `DEPTH_QS` (a quiescence fail-low), `>0` = a main-search fail-low at that
+/// depth. Buckets: 0 = eval-only, 1 = qsearch, 2 = search d1..3, 3 = search
+/// d>=4.
+pub const MSRCS: usize = 4;
+pub const MSRC_NAMES: [&str; MSRCS] = ["evalonly", "qs", "search_d1_3", "search_d4up"];
+pub static TT_MOVELESS_SRC: [[AtomicU64; MSRCS]; KINDS] = zeros!(KINDS, MSRCS);
+
 /// Cutoffs at nodes that had a usable TT move vs. nodes that did not, with
 /// the first-move subset of each. Splits "our scoring is weak" from "we did
 /// not have a TT move to score with" — two completely different fixes.
@@ -162,11 +191,25 @@ pub fn allnode(kind: usize, depth: i32, moves_searched: i32, best_idx: i32) {
     ALL_BEST_IDX[kind][ibucket(best_idx)].fetch_add(1, Relaxed);
 }
 
-/// Node entry, and whether the picker got a usable TT move.
+/// Node entry, and whether the picker got a usable TT move. When it did not,
+/// `why` is one of [`WHY_MISS`] / [`WHY_MOVELESS`] / [`WHY_UNUSABLE`].
 #[inline]
-pub fn node_entry(kind: usize, depth: i32, has_tt_move: bool) {
+pub fn node_entry(kind: usize, depth: i32, has_tt_move: bool, why: usize, stored_depth: i32) {
+    let d = dbucket(depth);
     let t = if has_tt_move { &TT_YES } else { &TT_NO };
-    t[kind][dbucket(depth)].fetch_add(1, Relaxed);
+    t[kind][d].fetch_add(1, Relaxed);
+    if !has_tt_move {
+        TT_WHY[kind][d][why.min(WHYS - 1)].fetch_add(1, Relaxed);
+        if why == WHY_MOVELESS {
+            let b = match stored_depth {
+                d if d < 0 => 0,
+                0 => 1,
+                1..=3 => 2,
+                _ => 3,
+            };
+            TT_MOVELESS_SRC[kind][b].fetch_add(1, Relaxed);
+        }
+    }
 }
 
 fn row(h: &[AtomicU64]) -> Vec<u64> {
@@ -256,6 +299,52 @@ pub fn report(nodes: u64) {
                 CUT1_TT[k][0].load(Relaxed) as f64 / n0.max(1) as f64,
                 CUT1_TT[k][1].load(Relaxed) as f64 / n1.max(1) as f64,
             );
+        }
+        let mut wtot = [0u64; WHYS];
+        for depth_row in &TT_WHY[k] {
+            for (t, c) in wtot.iter_mut().zip(depth_row) {
+                *t += c.load(Relaxed);
+            }
+        }
+        if wtot.iter().sum::<u64>() > 0 {
+            let n: u64 = wtot.iter().sum();
+            let named: Vec<String> = (0..WHYS)
+                .map(|w| {
+                    format!(
+                        "{}={}({:.2}%)",
+                        WHY_NAMES[w],
+                        wtot[w],
+                        100.0 * wtot[w] as f64 / n as f64
+                    )
+                })
+                .collect();
+            eprintln!("C70 ttwhy kind={kname} n={n} {}", named.join(" "));
+            let ms: Vec<u64> = (0..MSRCS)
+                .map(|b| TT_MOVELESS_SRC[k][b].load(Relaxed))
+                .collect();
+            let mn: u64 = ms.iter().sum();
+            if mn > 0 {
+                let named: Vec<String> = (0..MSRCS)
+                    .map(|b| {
+                        format!(
+                            "{}={}({:.2}%)",
+                            MSRC_NAMES[b],
+                            ms[b],
+                            100.0 * ms[b] as f64 / mn as f64
+                        )
+                    })
+                    .collect();
+                eprintln!("C70 mlsrc kind={kname} n={mn} {}", named.join(" "));
+            }
+            for (d, depth_row) in TT_WHY[k].iter().enumerate() {
+                let r: Vec<u64> = depth_row.iter().map(|c| c.load(Relaxed)).collect();
+                if r.iter().sum::<u64>() > 0 {
+                    eprintln!(
+                        "C70 ttwhyd kind={kname} d={d} miss={} moveless={} unusable={}",
+                        r[0], r[1], r[2]
+                    );
+                }
+            }
         }
         let b = row(&ALL_BEST_IDX[k]);
         if b.iter().sum::<u64>() > 0 {

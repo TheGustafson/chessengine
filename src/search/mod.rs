@@ -2636,6 +2636,40 @@ impl Worker {
         }
         // A capturing ttMove does not veto RFP (N10) and shapes the singular
         // extension margins (§3.6); a quiet one is a standing reason to search.
+        // Perf study 71 — the fail-low best-move store. Resolved once per node
+        // so the arm bench's override costs one branch, not one per use site.
+        #[cfg(not(feature = "arm70"))]
+        let fl_mode = params::TT_FAILLOW_MOVE();
+        #[cfg(feature = "arm70")]
+        let fl_mode = match crate::arm70::arm().fl_move {
+            -1 => params::TT_FAILLOW_MOVE(),
+            v => v,
+        };
+        #[cfg(not(feature = "arm70"))]
+        let up_blind = params::TT_UPPER_PRUNE_BLIND();
+        #[cfg(feature = "arm70")]
+        let up_blind = match crate::arm70::arm().tt_up_blind {
+            -1 => params::TT_UPPER_PRUNE_BLIND(),
+            v => v,
+        };
+        // A move on an UPPER-bound entry never raised alpha, so it carries none
+        // of the "this node is resolved" information that IIR, RFP's `ttMove
+        // == NULL || ttCapture` gate and the two LMR no-ttMove terms read
+        // `tt_data.mv` for. `TT_UPPER_PRUNE_BLIND` is a BITMASK over those four
+        // sites — 1 IIR, 2 RFP, 4 LMR-cutnode, 8 LMR-fulldepth, 15 all — so the
+        // screen can name which of them owns the effect instead of reporting
+        // the bundle. `tt_capture` is deliberately NOT masked: it also shapes
+        // the singular-extension margins, and mixing that in would make the arm
+        // two changes wearing one name.
+        let tt_upper_hidden =
+            up_blind != 0 && tt_data.bound == Bound::Upper && tt_data.mv != Move::NULL;
+        let pruning_tt_move = |bit: i32| {
+            if tt_upper_hidden && (up_blind & bit) != 0 {
+                Move::NULL
+            } else {
+                tt_data.mv
+            }
+        };
         let tt_capture = tt_data.mv != Move::NULL && self.board.capture_stage(tt_data.mv);
 
         // Steps 6+7 — the static-eval slot, then the TT cutoff (doc 07
@@ -3028,7 +3062,7 @@ impl Worker {
             if fresh_eval
                 && !self.stack[cur].tt_pv
                 && depth < params::RFP_MAX_DEPTH()
-                && (tt_data.mv == Move::NULL || tt_capture)
+                && (pruning_tt_move(2) == Move::NULL || tt_capture)
                 && !is_loss(beta)
             {
                 use crate::eval::nnue::foldcount as fc;
@@ -3116,7 +3150,7 @@ impl Worker {
             if !self.stack[cur].tt_pv
                 && depth < params::RFP_MAX_DEPTH()
                 && eval >= beta
-                && (tt_data.mv == Move::NULL || tt_capture)
+                && (pruning_tt_move(2) == Move::NULL || tt_capture)
                 && !is_loss(beta)
                 && !is_win(eval)
             {
@@ -3312,7 +3346,7 @@ impl Worker {
             if !self.stack[cur].follow_pv
                 && (NT::PV || cut_node)
                 && depth >= params::IIR_MIN_DEPTH()
-                && tt_data.mv == Move::NULL
+                && pruning_tt_move(1) == Move::NULL
             {
                 depth -= params::IIR_REDUCTION();
             }
@@ -3520,13 +3554,34 @@ impl Worker {
         #[cfg(feature = "census70")]
         let c70_had_tt = matches!(mp.stage_id(), 0 | 7);
         #[cfg(feature = "census70")]
-        crate::census70::node_entry(c70_kind, depth, c70_had_tt);
+        crate::census70::node_entry(
+            c70_kind,
+            depth,
+            c70_had_tt,
+            {
+                // Study 71: which of the three TT-less failures this was.
+                if !tt_hit {
+                    crate::census70::WHY_MISS
+                } else if tt_data.mv == Move::NULL {
+                    crate::census70::WHY_MOVELESS
+                } else {
+                    crate::census70::WHY_UNUSABLE
+                }
+            },
+            i32::from(tt_data.depth),
+        );
         // Index of the move that is currently `best_move` (study 70 census).
         #[cfg(feature = "census70")]
         let mut c70_best_idx = 0i32;
 
         let mut best_value = -VALUE_INFINITE;
         let mut best_move = Move::NULL;
+        // Perf study 71: the argmax move of the whole loop, tracked even when
+        // it never raises alpha, so a fail-low node can leave the TT an
+        // ordering hint instead of `Move::NULL`. Folds away entirely when
+        // `TT_FAILLOW_MOVE` is the default 0 (a literal in the non-`tune`
+        // build), which is what keeps the shipped tree bit-identical.
+        let mut fl_move = Move::NULL;
         let mut move_count = 0;
         // Tried non-best moves, split by kind, for the node-result history
         // burst (doc 09 §3.9). Fixed 32-slot buffers — no heap on the hot
@@ -4046,7 +4101,7 @@ impl Worker {
             r -= correction_value.abs() / params::RED_CORR_DIV();
             if cut_node {
                 r += params::RED_CUTNODE()
-                    + params::RED_CUTNODE_NO_TTMOVE() * i32::from(tt_data.mv == Move::NULL);
+                    + params::RED_CUTNODE_NO_TTMOVE() * i32::from(pruning_tt_move(4) == Move::NULL);
             }
             // tt_capture surcharge (design/10 §3.7): a capturing ttMove
             // means the position is tactical — quiet siblings are searched
@@ -4236,7 +4291,7 @@ impl Worker {
                 // zero-width window). A node with no TT move reduces a little
                 // more, and a very high nominal `r` still docks 1–2 plies even
                 // without LMR proper.
-                if tt_data.mv == Move::NULL {
+                if pruning_tt_move(8) == Move::NULL {
                     r += params::RED_FULLDEPTH_NO_TTMOVE();
                 }
                 let d = new_depth
@@ -4432,6 +4487,9 @@ impl Worker {
             // Step 13 — best/alpha/beta updates (dither-biased compares).
             if value + inc > best_value {
                 best_value = value;
+                if fl_mode != 0 {
+                    fl_move = m;
+                }
                 if value + inc > alpha {
                     best_move = m;
                     #[cfg(feature = "census70")]
@@ -4688,13 +4746,22 @@ impl Worker {
                 // slack; this makes the ceiling explicit rather than incidental.
                 (depth + params::TT_NO_MOVES_DEPTH_BONUS()).min(MAX_PLY as Depth - 1)
             };
+            // Perf study 71: on a fail low `best_move` is NULL and the move
+            // that actually scored highest is thrown away. Store it. The
+            // BOUND is untouched — this is an ordering hint attached to an
+            // UPPER entry, not a claim that the move is good.
+            let store_move = if best_move != Move::NULL {
+                best_move
+            } else {
+                fl_move
+            };
             probe.writer.write(
                 key,
                 value_to_tt(best_value, ply as i32),
                 self.stack[cur].tt_pv,
                 bound,
                 store_depth,
-                best_move,
+                store_move,
                 raw_eval,
                 generation,
             );
@@ -5294,11 +5361,36 @@ impl Worker {
         #[cfg(feature = "census70")]
         let c70_had_tt = matches!(mp.stage_id(), 7 | 13);
         #[cfg(feature = "census70")]
-        crate::census70::node_entry(c70_kind, 0, c70_had_tt);
+        crate::census70::node_entry(
+            c70_kind,
+            0,
+            c70_had_tt,
+            {
+                if !tt_hit {
+                    crate::census70::WHY_MISS
+                } else if tt_data.mv == Move::NULL {
+                    crate::census70::WHY_MOVELESS
+                } else {
+                    crate::census70::WHY_UNUSABLE
+                }
+            },
+            i32::from(tt_data.depth),
+        );
         #[cfg(feature = "census70")]
         let mut c70_best_idx = 0i32;
 
         let mut best_move = Move::NULL;
+        // Perf study 71's quiescence twin (see `search`). 54.6 % of the
+        // moveless entries a qsearch node reads were written by a qsearch
+        // fail low.
+        #[cfg(not(feature = "arm70"))]
+        let qfl_mode = params::TT_FAILLOW_MOVE();
+        #[cfg(feature = "arm70")]
+        let qfl_mode = match crate::arm70::arm().qfl_move {
+            -1 => params::TT_FAILLOW_MOVE(),
+            v => v,
+        };
+        let mut fl_move = Move::NULL;
         let mut move_count = 0;
         while let Some(m) = mp.next_move(&self.board, &self.histories) {
             if !self.board.legal(m) {
@@ -5391,6 +5483,9 @@ impl Worker {
             // Step 9 — updates.
             if value > best_value {
                 best_value = value;
+                if qfl_mode != 0 {
+                    fl_move = m;
+                }
                 if value > alpha {
                     best_move = m;
                     #[cfg(feature = "census70")]
@@ -5459,6 +5554,11 @@ impl Worker {
         // Step 12 — TT store at DEPTH_QS: LOWER on a fail high, else
         // UPPER — NEVER Exact in qsearch — value through `value_to_tt`,
         // the RAW eval, and the probed PV flag only.
+        let store_move = if best_move != Move::NULL {
+            best_move
+        } else {
+            fl_move
+        };
         probe.writer.write(
             key,
             value_to_tt(best_value, ply as i32),
@@ -5469,7 +5569,7 @@ impl Worker {
                 Bound::Upper
             },
             DEPTH_QS,
-            best_move,
+            store_move,
             raw_eval,
             generation,
         );
