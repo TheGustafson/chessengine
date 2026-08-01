@@ -231,6 +231,18 @@ skidprobe = ["sota"]
 # (verified by `tools/perf34/ident34.sh`); the binary is NOT a timing
 # reference. Never shipped.
 census34 = []
+# Perf study 70's move-ordering QUALITY census: the same beta-cutoff population
+# study 34 counted, but split by NODE KIND (PV/NonPV/qsearch), REMAINING DEPTH,
+# and the `MovePicker` STAGE that emitted the cutting move, plus the all-nodes
+# study 34 never counted. Relaxed atomics on decision-free paths (tree stays
+# bit-identical, `tools/perf70/ident70.sh`); never shipped.
+census70 = []
+# Perf study 70's move-ordering ARM BENCH: every candidate ordering change
+# behind ONE runtime-configurable build (`ARCHON_A70=lva=8,...`). The study's
+# metric is nodes-to-depth, a deterministic integer that cannot see the cost of
+# the env read, so one build screens a dozen hypotheses. Never shipped; with no
+# environment set it must reproduce the shipped node count exactly.
+arm70 = []
 # Perf study 34's NULL ARM: builds the study's `GoodQuiet`/`BadQuiet` split
 # with the split DISABLED, so the binary carries the arm's struct layout,
 # fields and loop shape while doing the pre-study amount of scanning. Its

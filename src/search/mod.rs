@@ -3506,6 +3506,23 @@ impl Worker {
             }
         }
 
+        // Perf study 70's census: node kind, and whether the picker got a
+        // usable TT move to order on (the constructor's branchless skip
+        // leaves `stage_id()` on the `*Tt` discriminant only when it did).
+        #[cfg(feature = "census70")]
+        let c70_kind = match (NT::ROOT, NT::PV, in_check) {
+            (true, _, _) => crate::census70::KIND_ROOT,
+            (_, true, false) => crate::census70::KIND_PV,
+            (_, true, true) => crate::census70::KIND_PV_CHK,
+            (_, false, false) => crate::census70::KIND_NONPV,
+            (_, false, true) => crate::census70::KIND_NONPV_CHK,
+        };
+        #[cfg(feature = "census70")]
+        crate::census70::node_entry(c70_kind, depth, matches!(mp.stage_id(), 0 | 7));
+        // Index of the move that is currently `best_move` (study 70 census).
+        #[cfg(feature = "census70")]
+        let mut c70_best_idx = 0i32;
+
         let mut best_value = -VALUE_INFINITE;
         let mut best_move = Move::NULL;
         let mut move_count = 0;
@@ -3869,6 +3886,8 @@ impl Worker {
                 let singular_depth =
                     new_depth * params::SE_VERIFY_DEPTH_NUM() / params::SE_VERIFY_DEPTH_DEN();
                 self.stack[cur].excluded_move = m;
+                #[cfg(feature = "census70")]
+                let c70_sing_before = self.nodes;
                 let value = self.search::<NonPv>(
                     tt,
                     stop,
@@ -3878,6 +3897,13 @@ impl Worker {
                     cut_node,
                     ply,
                 );
+                #[cfg(feature = "census70")]
+                {
+                    use std::sync::atomic::Ordering::Relaxed;
+                    crate::census70::SING_TRY.fetch_add(1, Relaxed);
+                    crate::census70::SING_NODES
+                        .fetch_add(self.nodes - c70_sing_before, Relaxed);
+                }
                 self.stack[cur].excluded_move = Move::NULL;
 
                 if value < singular_beta {
@@ -4123,7 +4149,17 @@ impl Worker {
                 self.stack[cur].reduction = new_depth - d;
                 #[cfg(feature = "search-control")]
                 let trace_nodes_before_scout = self.nodes;
+                // Study 70: the scout/re-search split is the price of putting
+                // a good move late, so both halves are node-accounted.
+                #[cfg(feature = "census70")]
+                let c70_scout_before = self.nodes;
+                #[cfg(feature = "census70")]
+                let mut c70_research_nodes = 0u64;
+                #[cfg(feature = "census70")]
+                let mut c70_researched = false;
                 value = -self.search::<NonPv>(tt, stop, -(alpha + 1), -alpha, d, true, ply + 1);
+                #[cfg(feature = "census70")]
+                let c70_scout_nodes = self.nodes - c70_scout_before;
                 #[cfg(feature = "search-control")]
                 {
                     trace_scout_depth = d;
@@ -4151,6 +4187,8 @@ impl Worker {
                     if new_depth > d {
                         #[cfg(feature = "search-control")]
                         let trace_nodes_before_research = self.nodes;
+                        #[cfg(feature = "census70")]
+                        let c70_re_before = self.nodes;
                         value = -self.search::<NonPv>(
                             tt,
                             stop,
@@ -4160,6 +4198,11 @@ impl Worker {
                             !cut_node,
                             ply + 1,
                         );
+                        #[cfg(feature = "census70")]
+                        {
+                            c70_researched = true;
+                            c70_research_nodes = self.nodes - c70_re_before;
+                        }
                         #[cfg(feature = "search-control")]
                         {
                             trace_lmr_research = true;
@@ -4178,6 +4221,14 @@ impl Worker {
                         params::LMR_CONTHIST_BONUS(),
                     );
                 }
+                #[cfg(feature = "census70")]
+                crate::census70::lmr(
+                    c70_kind,
+                    move_count,
+                    c70_researched,
+                    c70_scout_nodes,
+                    c70_research_nodes,
+                );
             } else if !NT::PV || move_count > 1 {
                 // Non-LMR zero-window path (§3.8): depth 1, or a NonPV node's
                 // first move (where `(-(alpha+1), -alpha)` IS the node's own
@@ -4195,8 +4246,15 @@ impl Worker {
                             r > params::RED_FULLDEPTH_DOCK2()
                                 && new_depth > params::LMR_DOCK2_MIN_DEPTH(),
                         );
+                #[cfg(feature = "census70")]
+                let c70_zw_before = self.nodes;
                 value =
                     -self.search::<NonPv>(tt, stop, -(alpha + 1), -alpha, d, !cut_node, ply + 1);
+                #[cfg(feature = "census70")]
+                crate::census70::ZW_NODES[c70_kind].fetch_add(
+                    self.nodes - c70_zw_before,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
             }
 
             // ttMove min-depth clamp (design/10 §3.8, Wave-D item 15): a
@@ -4219,7 +4277,14 @@ impl Worker {
             if NT::PV && (move_count == 1 || value > alpha) {
                 #[cfg(feature = "search-control")]
                 let trace_nodes_before_pv = self.nodes;
+                #[cfg(feature = "census70")]
+                let c70_pv_before = self.nodes;
                 value = -self.search::<Pv>(tt, stop, -beta, -alpha, new_depth, false, ply + 1);
+                #[cfg(feature = "census70")]
+                crate::census70::PVRE_NODES[c70_kind].fetch_add(
+                    self.nodes - c70_pv_before,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
                 #[cfg(feature = "search-control")]
                 {
                     trace_pv_research = true;
@@ -4368,6 +4433,10 @@ impl Worker {
                 best_value = value;
                 if value + inc > alpha {
                     best_move = m;
+                    #[cfg(feature = "census70")]
+                    {
+                        c70_best_idx = move_count;
+                    }
                     if NT::PV {
                         // §3.3 freshness: the equal-value dither can
                         // promote a move whose LAST child call was a
@@ -4385,6 +4454,11 @@ impl Worker {
                     }
                     if value >= beta {
                         self.stats.fail_high(move_count);
+                        // Perf study 70: the same event, split by node kind,
+                        // remaining depth, and the picker stage that emitted
+                        // the cutting move.
+                        #[cfg(feature = "census70")]
+                        crate::census70::cutoff(c70_kind, depth, move_count, mp.stage_id());
                         // Perf study 34: the ordering-quality instrument — the
                         // index of the move that actually caused the cutoff.
                         #[cfg(feature = "census34")]
@@ -4461,6 +4535,10 @@ impl Worker {
         #[cfg(feature = "census34")]
         if best_value < beta {
             crate::census34::bump(&crate::census34::NOFH_NODES, 1);
+        }
+        #[cfg(feature = "census70")]
+        if best_value < beta {
+            crate::census70::allnode(c70_kind, depth, move_count, c70_best_idx);
         }
 
         // Step 14 — node result: ply-relative mate/stalemate terminals
@@ -5200,6 +5278,17 @@ impl Worker {
         let prev_sq = (prev_move != Move::NULL).then(|| prev_move.to());
 
         qtrace(ply, alpha, beta, best_value, Move::NULL, "LOOP_ENTERED");
+        #[cfg(feature = "census70")]
+        let c70_kind = if in_check {
+            crate::census70::KIND_QS_CHK
+        } else {
+            crate::census70::KIND_QS
+        };
+        #[cfg(feature = "census70")]
+        crate::census70::node_entry(c70_kind, 0, matches!(mp.stage_id(), 7 | 13));
+        #[cfg(feature = "census70")]
+        let mut c70_best_idx = 0i32;
+
         let mut best_move = Move::NULL;
         let mut move_count = 0;
         while let Some(m) = mp.next_move(&self.board, &self.histories) {
@@ -5295,15 +5384,25 @@ impl Worker {
                 best_value = value;
                 if value > alpha {
                     best_move = m;
+                    #[cfg(feature = "census70")]
+                    {
+                        c70_best_idx = move_count;
+                    }
                     if NT::PV {
                         update_pv(&mut self.pv_table[..], ply, m);
                     }
                     if value >= beta {
+                        #[cfg(feature = "census70")]
+                        crate::census70::cutoff(c70_kind, 0, move_count, mp.stage_id());
                         break; // fail high
                     }
                     alpha = value;
                 }
             }
+        }
+        #[cfg(feature = "census70")]
+        if best_value < beta {
+            crate::census70::allnode(c70_kind, 0, move_count, c70_best_idx);
         }
 
         // Step 10 — mate and the narrow stalemate test. Every evasion was

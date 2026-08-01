@@ -348,7 +348,18 @@ fn score_capture(board: &Board, hist: &Histories, m: Move) -> i32 {
     let victim_value = victim.map_or(0, |p| p.piece_type.value());
     let victim_slot = victim.map_or(NO_VICTIM, |p| p.piece_type as usize);
     let cap_hist = hist.capture[pc.index()][m.to().idx()][victim_slot].get();
-    CAPTURE_MVV_FACTOR() * victim_value + cap_hist
+    #[allow(unused_mut)]
+    let mut v = CAPTURE_MVV_FACTOR() * victim_value + cap_hist;
+    #[cfg(feature = "arm70")]
+    {
+        let a = crate::arm70::arm();
+        // Least-valuable-attacker tiebreak: PxQ before QxQ when MVV and
+        // capture history cannot separate them.
+        if a.lva != 0 {
+            v -= pc.piece_type.value() / a.lva;
+        }
+    }
+    v
 }
 
 /// The picker's explicit state machine (design/09 §3.5). Each pipeline is a
@@ -1037,6 +1048,20 @@ impl MovePicker {
         }
     }
 
+    /// Perf study 70's census hook: the `Stage` discriminant as the caller
+    /// observes it right after `next_move` returned. It identifies the
+    /// emitting stage uniquely without any extra state, because the two
+    /// stages that `return` do so *before* and *after* the bump respectively:
+    /// the four `*Tt` arms bump first (so the caller reads `CaptureInit`,
+    /// `EvasionInit`, `ProbcutInit`, `QcaptureInit` — none of which ever
+    /// returns a move itself), while every `select`-driven stage returns with
+    /// its own discriminant still live.
+    #[cfg(feature = "census70")]
+    #[inline]
+    pub fn stage_id(&self) -> u8 {
+        self.stage as u8
+    }
+
     /// Late-move pruning (design/09 §3.5): abandon quiet generation and
     /// emission — bad captures still come. Idempotent and callable
     /// mid-iteration; if set before `QuietInit` no quiets are ever generated,
@@ -1181,12 +1206,26 @@ impl MovePicker {
         // real six-iteration loop with four bounds checks in it (measured
         // +326 instructions per call), while the literal is six independent
         // 32-byte stores LLVM folds into vector moves.
+        #[cfg(not(feature = "arm70"))]
         let row_of = |i: usize| PtRow {
             threat: threat[i],
             offense: offense_from[i],
             check: check_squares[i],
             threat_w: PieceType::ALL[i].value() * QUIET_THREAT_FACTOR(),
             offense_w: PieceType::ALL[i].value() * QUIET_OFFENSE_FACTOR(),
+        };
+        // Study 70's arm bench folds its per-16ths weights into the same
+        // premultiplied row, so the scoring loop is untouched.
+        #[cfg(feature = "arm70")]
+        let row_of = |i: usize| {
+            let a = crate::arm70::arm();
+            PtRow {
+                threat: threat[i],
+                offense: offense_from[i],
+                check: check_squares[i],
+                threat_w: PieceType::ALL[i].value() * QUIET_THREAT_FACTOR() * a.threat_w / 16,
+                offense_w: PieceType::ALL[i].value() * QUIET_OFFENSE_FACTOR() * a.offense_w / 16,
+            }
         };
         let rows: [PtRow; 6] = [
             row_of(0),
@@ -1266,6 +1305,7 @@ impl MovePicker {
                 let raw = m.raw16() as usize;
                 let q = crate::history::piece_to(pci, to);
 
+                #[cfg(not(feature = "arm70"))]
                 let mut value = QUIET_MAIN_HISTORY_WEIGHT() * main_plane[raw].get()
                     + QUIET_PAWN_HISTORY_WEIGHT() * crate::history::at_piece_to(pawn_plane, q)
                     + crate::history::at_piece_to(c1, q)
@@ -1273,6 +1313,17 @@ impl MovePicker {
                     + crate::history::at_piece_to(c3, q)
                     + crate::history::at_piece_to(c4, q)
                     + crate::history::at_piece_to(c6, q);
+                #[cfg(feature = "arm70")]
+                let mut value = {
+                    let a = crate::arm70::arm();
+                    QUIET_MAIN_HISTORY_WEIGHT() * main_plane[raw].get() * a.main_w / 16
+                        + QUIET_PAWN_HISTORY_WEIGHT() * crate::history::at_piece_to(pawn_plane, q)
+                        + crate::history::at_piece_to(c1, q) * a.c1_w / 16
+                        + crate::history::at_piece_to(c2, q)
+                        + crate::history::at_piece_to(c3, q)
+                        + crate::history::at_piece_to(c4, q)
+                        + crate::history::at_piece_to(c6, q)
+                };
 
                 if row.check.contains(m.to()) && board.see_ge(m, QUIET_CHECK_SEE_MARGIN()) {
                     value += QUIET_CHECK_BONUS();
@@ -1298,6 +1349,11 @@ impl MovePicker {
                 #[cfg(feature = "sota")]
                 if let Some(qp) = &self.quiet_prior {
                     value += quiet_prior_bonus(qp, m);
+                }
+
+                #[cfg(feature = "arm70")]
+                {
+                    value += crate::arm70::jitter_for(crate::arm70::arm(), m.raw16());
                 }
 
                 self.set_slot(base + i, ExtMove::new(m, value));
@@ -1358,7 +1414,17 @@ impl MovePicker {
         self.cur = base;
         self.end_cur = base + n;
         self.end_generated = base + n;
-        let sort_limit = QUIET_SORT_DEPTH_FACTOR() * self.depth;
+        #[allow(unused_mut)]
+        let mut sort_limit = QUIET_SORT_DEPTH_FACTOR() * self.depth;
+        #[cfg(feature = "arm70")]
+        {
+            let a = crate::arm70::arm();
+            if a.qsort_full {
+                sort_limit = i32::MIN;
+            } else if a.qsort_factor != 0 {
+                sort_limit = a.qsort_factor * self.depth;
+            }
+        }
         // See `sorted_covers`: with the prefix limit at or below the good/bad
         // threshold, the two emission stages split the region at one index.
         //
@@ -1411,12 +1477,37 @@ impl MovePicker {
         for (i, &m) in list.iter().enumerate() {
             let value = if board.capture_stage(m) {
                 let victim_value = board.piece_on(m.to()).map_or(0, |p| p.piece_type.value());
+                #[cfg(feature = "arm70")]
+                if crate::arm70::arm().evasion_caphist {
+                    // Same capture score the main pipeline uses, lifted above
+                    // every quiet evasion: MVV *and* capture history.
+                    self.set_slot(
+                        i,
+                        ExtMove::new(m, score_capture(board, hist, m) + EVASION_CAPTURE_BONUS()),
+                    );
+                    continue;
+                }
                 victim_value + EVASION_CAPTURE_BONUS()
             } else {
                 let pc = board
                     .piece_on(m.from())
                     .expect("an evasion starts on a piece of the side to move");
-                main_plane[m.raw16() as usize].get() + c1[pc.index()][m.to().idx()].get()
+                #[allow(unused_mut)]
+                let mut v = main_plane[m.raw16() as usize].get() + c1[pc.index()][m.to().idx()].get();
+                // Study 70: give quiet evasions the SAME history stack the
+                // main pipeline gives quiets (pawn history + the deeper
+                // continuation planes), instead of main + cont1 only.
+                #[cfg(feature = "arm70")]
+                if crate::arm70::arm().evasion_full {
+                    let q = crate::history::piece_to(pc.index(), m.to().idx());
+                    let pawn_plane = hist.pawn_slot(board.pawn_key());
+                    v += QUIET_PAWN_HISTORY_WEIGHT() * crate::history::at_piece_to(pawn_plane, q)
+                        + crate::history::at_piece_to(hist.cont_ref(self.cont_hist[1]), q)
+                        + crate::history::at_piece_to(hist.cont_ref(self.cont_hist[2]), q)
+                        + crate::history::at_piece_to(hist.cont_ref(self.cont_hist[3]), q)
+                        + crate::history::at_piece_to(hist.cont_ref(self.cont_hist[5]), q);
+                }
+                v
             };
             self.set_slot(i, ExtMove::new(m, value));
         }

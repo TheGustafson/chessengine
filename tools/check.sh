@@ -48,7 +48,9 @@ if [ "${CHECK_FEATURE_MATRIX:-1}" != "0" ]; then
         "policy" \
         "search-control" \
         "sota,arch-d48x,search-stats" \
-        "sota,arch-d48x,pgonull69"
+        "sota,arch-d48x,pgonull69" \
+        "sota,arch-d48x,census70" \
+        "sota,arch-d48x,arm70"
     do
         printf '  checking --features %s\n' "$feats"
         cargo check --quiet --all-targets --features "$feats" || {
