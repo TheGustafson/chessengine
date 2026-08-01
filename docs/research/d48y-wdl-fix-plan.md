@@ -17589,3 +17589,38 @@ the mix) mispriced in **opposite directions** at low vs high material.
 **The plain continuation's own result is NOT lost** — sb1660 screened +9.50 ±
 10.88, and its checkpoints remain for a later comparison against the teacher arm
 from the same sb1630 start.
+
+---
+
+## 2026-08-01 15:02 — GPU IDLE and D49 STOPPED, deliberately; pushed the teacher agent
+
+**State: no trainer is running.** GPU 0 % util (the 3730 MiB is the agent's own
+JAX verification process), MemAvailable 5086 MB. **This is the one gap in "keep
+D49 going" and it is intentional** — the owner asked for the teacher experiment,
+and running the plain continuation instead is what I already got wrong once
+today.
+
+**Teacher agent state**, read from its worktree rather than asked for:
+`859133f1` (converter, 2050/2050 exact) committed; **four trainer files modified
+and uncommitted** (`data.py`, `spec.py`, `train.py`, `pump_train.py`); **two new
+gate tools present** — `sf_teacher_frame_check.py` and `sf_teacher_null.py`,
+which are exactly the frame-regression and alpha=0 bit-identity gates I required.
+No file activity for ~10 min.
+
+**Pushed it on three points:** commit the uncommitted wiring immediately (four
+half-edited trainer files is precisely how a predecessor left main not
+compiling); report which gates pass and which do not, with numbers; and **launch
+without checking back**.
+
+**Told it to ship the SCALAR frame path first if the per-corpus `(k,p)` wiring is
+the blocker** — with its measured cost stated, not silently. Reasoning: a
+12-superbatch probe carrying a documented worst-case **+45 %** frame error still
+answers "does distillation do anything at all", while a perfect unlaunched
+implementation answers nothing. Refine per-corpus while the probe runs.
+
+**Why I am NOT restarting the plain continuation to fill the idle GPU:** the
+teacher probe warms from **sb1630**, so any plain-run superbatches past sb1693
+are discarded. And the control arm this experiment needs — same sb1630 start,
+same LR, no teacher — **already exists**: sb1631–1693 from the run I just
+stopped. Re-running it would produce nothing new and would have to be killed
+again the moment the teacher launches.
