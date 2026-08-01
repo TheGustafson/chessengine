@@ -292,10 +292,40 @@ fingerprint against this tree's 1,739,588, so an SPRT against it would have
 confounded these changes with everything else that has landed since. A fresh
 same-source PGO baseline was built instead.)
 
-**In flight.** At 1,122 games: **+11.5 ± 12.5 Elo**, 52 % score, LLR 0.75
-against `[0, 5]` nElo bounds. Every reading since game 300 has been positive
-and the bar has not yet crossed zero; that is a trend, not a verdict, and the
-verdict belongs in `docs/strength-log.md` when the SPRT stops.
+**No SPRT verdict — the match was OOM-killed twice, and that is stated as a
+failure rather than dressed up as a result.** Pooled over both runs with
+`tools/perf70/pool_sprt.py`:
+
+| run | pairs | games | score | Elo | LOS |
+|---|---|---|---|---|---|
+| `s70-sprt` | 991 | 1,982 | 51.21 % | **+8.42 ± 9.33** | 96.16 % |
+| `s70-sprt2` | 40 | 80 | 45.00 % | −34.86 ± 39.00 | 3.83 % |
+| **pooled** | **1,031** | **2,062** | 50.97 % | **+6.74 ± 9.10** | **92.68 %** |
+
+LLR reached 0.93 of the +2.94 needed for H1 before the first kill. **The bar
+still crosses zero**: this is a positive trend at 2,062 games, not an accepted
+change. A third run (`s70-sprt3`) is accumulating.
+
+Pooling is legitimate here and the tool proves its own arithmetic: the runs
+differ only in the book's random order, so pairs are exchangeable, and pooling
+the **pentanomial** counts keeps the within-round correlation that a trinomial
+Elo bar throws away. `--verify` re-derives each run's Elo, nElo and LOS from
+its own `Ptnml(0-2)` and prints them beside what fastchess printed — they match
+to the last digit shown (the nElo constant is calibrated against fastchess and
+says so in the source; Elo and LOS need no constant).
+
+**The operational cause, because it will happen again.** Both kills were the
+OOM killer, and both were self-inflicted:
+
+- Run 1 was wrapped in `systemd-run --user --scope -p MemoryMax=4G`. **Page
+  cache counts against a cgroup limit**, and a match writing a PGN for two
+  thousand games accumulates it — so the cap that was meant to be a safety
+  margin is what fired.
+- `tools/oomlast.sh` sets `oom_score_adj=1000` **by design**, to make the
+  trainer the last thing the kernel picks. That is the standing rule and it
+  worked: the trainer lived, the match died. On a memory-tight box the lever is
+  therefore **concurrency, not a cgroup cap** — run 3 is at 2, using ~1/3 the
+  resident set of run 1's 6.
 
 `tools/sprt.sh` had to be fixed first: it passed **no `EvalFile`**, and an
 empty `EvalFile` silently evaluates PSQT — every SPRT run through that script
