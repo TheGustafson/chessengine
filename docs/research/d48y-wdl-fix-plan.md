@@ -15431,3 +15431,35 @@ claim the individual screens cannot support and the pool can.
 
 **Caveat retained:** all six ran on the OLD binary (`target-sota`, bench 587683),
 deliberately, for series consistency. The sb1700 verdict must use the PGO build.
+
+---
+
+## 2026-08-01 06:32 — tested the plateau question instead of restating it: D49 is STILL LEARNING
+
+**D49:** sb1477, 188.6k pos/s. Disk 145 GB. All units green. Study 69 running.
+
+I had been repeating "heldout ema hovering ~0.01044-0.01045" for several ticks.
+That is an impression, not a measurement, and the standing rule
+([[quote-levels-not-trends]]) is to **re-test a repeated caveat rather than
+restate it**. Regressed the EMA on superbatch:
+
+| window | slope / sb | t | verdict |
+|---|---:|---:|---|
+| sb1100–1470 (n=38) | −6.06e-07 | **−13.35** | falling |
+| sb1280–1470 (n=20) | −2.23e-07 | **−11.45** | falling |
+| **sb1360–1470 (n=12)** | **−1.43e-07** | **−3.82** | **still falling** |
+
+**No plateau.** Even the newest 110-superbatch window is significantly negative.
+But the **rate has decayed ~4x** from the sb1100 window — precisely what the
+`d49z_decay` LR ramp should produce (verified earlier: 1.579e-5 at sb1170 ->
+5.57e-6 at sb1430, 0.996/sb, interpolated on the ABSOLUTE superbatch).
+
+**So running to sb1700 is justified by the data, not just by the plan** — the run
+is neither converged nor diverging.
+
+**What this explicitly does NOT say:** anything about Elo.
+[[loss-is-not-elo]] — heldout loss is a mean over a position distribution, Elo is
+decided at decision points, and this project has a receipt of 44e-6 of loss
+sitting alongside ~30 Elo of games. This regression is an **abort-condition
+instrument**: it says training is healthy and should continue. The strength claim
+is the separate pooled one, **+9.70 +/- 4.47 over 9000 games**.
