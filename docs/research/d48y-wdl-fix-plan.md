@@ -15351,3 +15351,207 @@ since stale text now carries 486897/1743308.
 
 Also told to delete its worktree `target/` on finish — that class of leftover had
 reached 37 GB tonight.
+
+**`gate68b` PASSED — my OWN gate on merged main `18d4dcaf`**, not the agent's:
+eval hash `2e1ede95…79c4`, d13 `1739588`, **`Bench: 587683`**, all checks passed.
+All three pins unmoved — the correct signature for a −29.9 instructions/node win
+on a node-identical tree.
+
+Worth noting why I re-checked: the agent reported "both gate runs completed
+successfully" while **my** unit was still at the bench fingerprint with no pins
+printed. Its statement was true of ITS runs. Inheriting it would have meant
+reporting a pass I had not seen — the same shape as the tunable agent's "gate
+passes", which was true on its own base and useless on mine.
+
+### ENGINE STATE — main `18d4dcaf`, verified
+
+| landed tonight | measured |
+|---|---|
+| study 65 narrow row (feature OFF) | bit-exact, loses; mechanism refuted by 66 |
+| study 66 compaction/locality | closed by construction; fold is MSHR-limited |
+| study 67 `qtrace` dead-work | **−2.33 % of search time** |
+| study 68 `SearchStats` + env probes | **−0.559 % instructions, −29.9/node** |
+| SF `ebcea3ef` tunables | **REVERTED, −29.49 ± 14.88 over 1500 games** |
+
+Both landed wins are the SAME defect class — work that ships and is discarded —
+and neither is visible in `Bench:` (both node-identical). The engine's headline
+fingerprint cannot see the only two speed wins of the night; the wall-clock and
+instruction panels are what found them.
+
+**Reclaimed study 68's worktree `target/` (4.1 GB) — free 144 -> 148 GB.**
+
+**And the first attempt SKIPPED it on a self-match false positive.** I ran
+`pgrep -f "$D"` where `$D` was the worktree path — which appeared in my own
+command line, so **the pgrep matched its own caller** and reported the worktree
+busy. Re-checked with the documented guard (exclude `shell-snapshots`, `$$`,
+`$PPID`) and the only hit was a process that had already exited.
+
+This is exactly the failure mode the `pkill -f` rule exists for
+([[pkill-matches-your-own-shell]]), and it is worth recording that it bites the
+DETECTION path too, not just the kill path: here it cost a skipped cleanup, but
+the identical mistake in a kill would have killed the caller. **The guard is
+mandatory for any `pgrep -f` whose pattern can appear in the command that types
+it.**
+
+Study 69's worktree verified intact afterwards; all 27 worktree registrations
+survive.
+
+---
+
+## 2026-08-01 06:18 — POOLED: D49 is +9.70 +/- 4.47 Elo over canonical across 9000 games
+
+**D49:** sb1470, heldout ema 0.010451. **sb1700 ~9.2 h out.** All units green.
+
+**Six consecutive frame-fair screens** (scale 1068; logged stdev 595–607 against
+canonical's 610), 1500 games each at 25k fixed nodes:
+
+| checkpoint | Elo vs canonical |
+|---|---:|
+| sb1350 | +12.75 +/- 11.05 |
+| sb1410 | +15.06 +/- 10.84 |
+| sb1420 | +14.14 +/- 10.92 |
+| sb1430 | **+1.85 +/- 11.05** |
+| sb1440 | +3.71 +/- 10.51 |
+| sb1450 | +10.66 +/- 11.11 |
+
+**POOLED: +9.70 +/- 4.47 Elo over 9000 games** (sd across checkpoints 5.59,
+SE 2.28).
+
+**The reason to pool rather than quote the newest: the point-to-point swing
+(+1.85 to +15.06, 13 Elo) EXCEEDS any plausible training gain over 100
+superbatches.** A single 1500-game screen at +/-11 cannot resolve progress at this
+resolution — it is mostly sampling noise around a positive level. Quoting
+"sb1410 = +15.06" as D49's strength, as I did at 04:32, over-reads one draw;
+quoting sb1430's +1.85 would under-read it identically.
+
+**What the pool does and does not claim.** It is an average over the sb1350-1450
+RANGE, not one net's strength — six different nets. That is the right object
+here: it says **D49 in this range is solidly ahead of canonical**, which is a
+claim the individual screens cannot support and the pool can.
+
+**Caveat retained:** all six ran on the OLD binary (`target-sota`, bench 587683),
+deliberately, for series consistency. The sb1700 verdict must use the PGO build.
+
+---
+
+## 2026-08-01 06:32 — tested the plateau question instead of restating it: D49 is STILL LEARNING
+
+**D49:** sb1477, 188.6k pos/s. Disk 145 GB. All units green. Study 69 running.
+
+I had been repeating "heldout ema hovering ~0.01044-0.01045" for several ticks.
+That is an impression, not a measurement, and the standing rule
+([[quote-levels-not-trends]]) is to **re-test a repeated caveat rather than
+restate it**. Regressed the EMA on superbatch:
+
+| window | slope / sb | t | verdict |
+|---|---:|---:|---|
+| sb1100–1470 (n=38) | −6.06e-07 | **−13.35** | falling |
+| sb1280–1470 (n=20) | −2.23e-07 | **−11.45** | falling |
+| **sb1360–1470 (n=12)** | **−1.43e-07** | **−3.82** | **still falling** |
+
+**No plateau.** Even the newest 110-superbatch window is significantly negative.
+But the **rate has decayed ~4x** from the sb1100 window — precisely what the
+`d49z_decay` LR ramp should produce (verified earlier: 1.579e-5 at sb1170 ->
+5.57e-6 at sb1430, 0.996/sb, interpolated on the ABSOLUTE superbatch).
+
+**So running to sb1700 is justified by the data, not just by the plan** — the run
+is neither converged nor diverging.
+
+**What this explicitly does NOT say:** anything about Elo.
+[[loss-is-not-elo]] — heldout loss is a mean over a position distribution, Elo is
+decided at decision points, and this project has a receipt of 44e-6 of loss
+sitting alongside ~30 Elo of games. This regression is an **abort-condition
+instrument**: it says training is healthy and should continue. The strength claim
+is the separate pooled one, **+9.70 +/- 4.47 over 9000 games**.
+
+---
+
+## 2026-08-01 06:47 — measuring tonight's two landed wins in WALL-CLOCK, which fixed nodes cannot see
+
+**D49:** sb1484, 188.5k pos/s, heldout ema 0.010453. `d49xml` screening sb1470
+(stdev 602.6). Study 69 running.
+
+**The owed measurement.** Studies 67 and 68 landed the only two speed wins of the
+night — `qtrace` (**−2.33 % of measured search time**) and `SearchStats` +
+env-probe hoisting (**−0.559 % instructions, −29.9 per node**). **Neither has ever
+been measured in wall-clock on the shipped configuration**, and neither CAN be
+seen by a fixed-node match: at fixed 25k nodes a speed fix earns exactly zero.
+Both are also invisible in `Bench:` — both are node-identical.
+
+So the engine's two headline instruments — the bench fingerprint and every match
+run tonight — are structurally blind to the only two improvements that landed.
+
+**Building `archon-s69`, a clean PGO off main `18d4dcaf`** (studies 67 + 68, and
+crucially WITHOUT the reverted tunables). **`archon-s68` is NOT usable for this**:
+it was built off `fa530897`, which still carried the 154 `ebcea3ef` values that
+later measured −29.49 Elo and were reverted — panelling against it would mix a
+speed win with a 29-Elo regression.
+
+Baseline is `archon-s25` (canonical PGO, bench 587683), so the panel measures
+exactly `qtrace` + `SearchStats` + env probes.
+
+**Instrument: `tools/wallclock_panel.py`**, which interleaves its null WITHIN each
+round — the reason it survives a loaded box, where `cycles:u` (+49.9 % under
+load) and `task-clock` (fails a byte-identical null) cannot be trusted at all
+tonight.
+
+**`archon-s69` built off main `18d4dcaf`: bench 587683** — matching the pin
+exactly, confirming node-identity (both wins are pure dead-work removal, so the
+tree must not move). Panel `wc69` launched: `--base archon-s25 --arm archon-s69
+--rounds 40 --nodes 100000 --elo`.
+
+**And I looked for `tools/wallclock_panel.py` in the wrong checkout again.**
+`find` in `/home/nick/projects/chessengine` returned nothing and I was one step
+from concluding the tool had been lost with the worktree cleanup. It is on
+**main** (`c788a056`, never deleted) — but **the primary checkout sits on
+`repr-gap-study`**, so the file is simply not in that working tree. The same trap
+as the stale handoff copy earlier tonight, and the same shape as the
+`tools/nnue/train.py` path error: **a missing file in one worktree is not
+evidence the file is missing.** Check `git log --all --diff-filter=D` and the
+other checkout before believing a deletion.
+
+---
+
+## 2026-08-01 07:02 — the wall-clock panel is VOID, by its own guards. Not quoted.
+
+**D49:** sb1491, heldout ema **0.010436** — another run low.
+
+**`wc69` result, and why it does NOT go in the ledger:**
+
+```
+NULL (byte-identical): median  -1.014%  sd 11.913  sign 26/40 neg  p=0.0807
+ARM                  : median -13.120%  sd 11.395  sign 39/40 neg  p=0.0000
+LICENSED (pre-registered median-only)
+  wall-clock : -13.120%   speed 1.1510x   DERIVED Elo +24.35
+```
+
+**The panel voided itself TWICE:**
+```
+*** REGIME SHIFT mid-run: load arrived or left. Treat this panel as VOID. ***
+*** NOT QUIET: exceeds 15%. VOID and re-run on an idle box, not salvaged. ***
+```
+Box CPU busy 30.7 % -> 42.4 % during the run; base-binary drift -6.06 % between
+halves.
+
+**Three independent reasons to discard it, not one:**
+1. **The instrument disowned it.** Those guards exist because a loaded-box panel
+   cannot be salvaged; honouring them only when the number is unwelcome would
+   make them decoration.
+2. **The magnitude is not believable on mechanism.** The two landed wins are
+   **−0.559 % instructions** and **−2.33 % of SEARCH time**. −13.12 % wall-clock
+   from deleting a `to_string` and eleven counters is not a causal story — and
+   [[null-first-games-arbitrate]] rule 6 says a beautiful number is the warning,
+   not the reward.
+3. **Per-round variance is enormous**: null sd 11.9 %, arm sd 11.4 %. The
+   median-only licence was designed for a QUIET box; it is not a load-immunity
+   claim.
+
+**So tonight's two landed speed wins remain UNMEASURED in wall-clock.** That is
+the honest state. The box has carried a GPU trainer, a continuous 1500-game
+matcher and a study agent all night, and it will until D49 finishes (~8.5 h).
+**This measurement is BLOCKED on an idle box, and the right move is to wait
+rather than publish a number my own tool refused to stand behind.**
+
+Note the shape: this is the FOURTH fast instrument tonight to point somewhere
+games or mechanism would not follow — after `Bench:` −17.2 %, bench-nps +5.6 %,
+and the contaminated depth regex. The difference is that this one caught itself.
