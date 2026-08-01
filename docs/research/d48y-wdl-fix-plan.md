@@ -17415,3 +17415,35 @@ for a ~9 Elo effect.
 
 Study 71 (TT-less deficit) building. Teacher calibration delivered. Per-node
 microarch surface closed.
+
+---
+
+## 2026-08-01 14:04 — memory floor breached again; matcher stood down, study 71 already testing an arm
+
+**`MemAvailable` dipped to 1861 MB** — below the 2500 floor — with the trainer
+(3.5 GB) + study 71's build (2 `rustc`) + the matcher's screen and its 433 MB
+packing python all live.
+
+**Stood the matcher down**, not study 71: the study is doing real work, while
+**the per-checkpoint screens are individually uninformative** by my own analysis
+one tick earlier (30 sb ≈ 0.9 Elo against a ±11 bar). Recovered **1861 → 4236 MB**.
+`xmlrestore` is armed to bring it back once **no build is running AND ≥4000 MB**
+is free — gating on the build, not a timer, because the build is the bursty part.
+
+**sb1660 screened at +9.50 ± 10.88 and I am NOT reading it as progress.** The
+continuation started from sb1630's **+0.69**, so this "moved +8.8" in 30
+superbatches — worth ~0.9 Elo at the measured rate. **It is noise, and I wrote
+that rule down before the number arrived.** This is the identical shape that made
+the LR cycles look real (two +9.4 draws → A/B **−7.41**).
+
+**A near-miss worth recording: I almost killed study 71's own match.** After
+stopping the matcher, one `fastchess` remained and I assumed it was the usual
+orphaned child (the supervisor/child gap that has bitten repeatedly today).
+Reading `/proc/<pid>/cmdline` first showed **`engines/bin/s71-ttup`** — study
+71's SPRT on a TT-move arm it had already built. **A blanket kill would have
+destroyed a study's work in progress.** Always read the cmdline before killing,
+even when the pattern looks familiar.
+
+**State:** D49 continuation self-restarting under `x500watch`; study 71 testing;
+matcher down with an armed conditional restore; memory 4236 MB; zero kernel OOM
+kills since 13:00.
