@@ -14202,3 +14202,56 @@ saturation check (2386 vs the 15000 boundary) does not capture.
 **This does not change the standing plan** — the whole screen is re-run after the
 tunable transcription lands, because the margins these frames are measured
 against are themselves about to move. Tonight's arms become the BEFORE half.
+
+---
+
+## 2026-08-01 01:00 — TUNABLE REFRESH LANDED, and it was built on a STALE BASE
+
+**The transcription itself looks strong:** 154 values re-read from
+`ebcea3ef` hunk-by-hunk (`git show <rev>:src/search.cpp` at both revisions, never
+a bare grep), covering correction history, razoring (465/300 -> **483/318**), RFP,
+NMP, ProbCut, the whole LMR family, singular, qsearch, `update_all_stats`, the
+16-entry LMR divisor and TM. **Bench 587683 -> 486897 (-17.2%)**. A machine audit
+found exactly 5 new integers >=20 in the diff absent from our sources — precisely
+its own not-adopted list, so nothing was missed. It correctly REFUSED to overwrite
+four documented ARCHON deviations (`ASPIRATION_MSS_DIVISOR`, `OPTIMISM_*`,
+`TIME_REDUCTION_STABILITY_*`) and skipped 8 structural changes.
+
+**BUT: it branched off `ef9756ec` — the session-start commit — and
+`859a4422` (the canonical network_scale 600 promotion) is NOT AN ANCESTOR OF
+IT.** That commit reached main only via my study-65 merge an hour ago. Verified:
+
+| | eval pin | d13 pin |
+|---|---|---|
+| `ef9756ec` (its base) | `5ca978e0…8b38` | 1922947 |
+| **current main** | **`2e1ede95…79c4`** | **1739588** |
+
+So its gate ran against **the OLD canonical net**, and its "eval hash UNCHANGED"
+is internally consistent for its own base but **not comparable to main**. A naive
+merge would have **reverted main's gate pins to stale values** — the exact class
+of mistake `859a442` itself made and that CLAUDE.md warns about ("when you move a
+pin, check that the doc's CURRENT slot moved, not its history").
+
+**This is why the perf loop says verify the agent yourself.** The claim "gate
+passes" was true and still not usable.
+
+**HANDLING:** the 154 VALUES are base-independent and are the deliverable. Branch
+`tunables-on-main`: cherry-picked its two VALUE commits (`aa6874df` params,
+`4514d108` history) onto `c4b271a8`, **deliberately skipping its pin commit
+`ecb7cf03`**. Cherry-picks applied clean. Post-pick check.sh correctly holds
+main's `2e1ede95…79c4` / 1739588 with its new `BENCH_PIN=486897`.
+`gatetune.service` is now re-deriving the real numbers on THIS base — the d13 pin
+must move (a -17% tree change moves it) and I will take the value the gate prints
+rather than the agent's 1789781, which was measured against the wrong net.
+
+**Two honest findings it flagged, both retained:** two qsearch golden tests
+compared the blend against the RAW static eval where the search blends the
+CORRECTION-ADJUSTED one — they passed at the old weights only because truncation
+landed on the same integer. And `warm_tt_searches_fewer_nodes_at_equal_depth`
+needed depth 5 -> 6 (crossover probed at 4-9; fresh 5410 / warm 1250 at 6). It
+labelled the second a fixture judgement call and asked for re-examination —
+correct call, flagged here.
+
+**STRENGTH TESTING IS OWED AND NOT RUN.** A -17.2% node change is functional by
+definition. Per the user's standing instruction the frame screen re-runs on top
+of this (`frame_rerun.sh`), and tonight's frame arms become the BEFORE half.
