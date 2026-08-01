@@ -15039,3 +15039,211 @@ within-symbol share re-derived, no conclusion changed), and three claims written
 from plausibility are now measured or flagged as non-evidence.
 
 `gate67` verifying. New instruments in `tools/perf67/` (12 scripts).
+
+---
+
+## 2026-08-01 05:08 — study 67 MERGED; the standing cost model rewritten; study 68 commissioned
+
+**D49:** sb1437, 188.6k pos/s, heldout ema **0.010445** — another run low.
+
+**Study 67 merged (`e9c99aca`)**, gate verified BY ME: `Bench: 486897`, eval hash
+`2e1ede95…79c4`, d13 `1743308`, **all three pins UNMOVED** — the correct
+signature for a pure dead-work removal, since deleting an unused `to_string()`
+cannot change the search tree.
+
+**REWROTE THE STANDING COST-MODEL MEMORY, because it was directing studies at a
+CLOSED route.** It said *"aim new studies at cache/memory locality... the three
+accumulator-fold kernels is the place to start."* Study 66 closed exactly that by
+construction (miss-parallel, MSHR-limited). It now records the **two-halves**
+model:
+
+- **EVAL side = DATA-bound**, locality routes closed with mechanisms.
+- **SEARCH side = FRONTEND-bound**, 120.3 KB of hot code against a 32 KB L1i.
+
+plus **function size is not the icache cost**, the **3.48 cycles/L1i-fill**
+pre-registration budget, and the **dead-work-that-ships** class (`qtrace`) as a
+thing to hunt. Second memory rewritten tonight for the same reason: **a memory
+written mid-investigation records a hypothesis, and the games or the next study
+can invalidate it.**
+
+**PERF STUDY 68 COMMISSIONED — the frontend wall**, which nothing has ever
+attacked. Handed the four measured constants, both closed routes WITH their
+mechanisms (so it cannot rebuild outlining-by-size), the 3.48 cycles/fill budget
+it must pre-register against, and study 67's 12 tools with instructions to reuse
+rather than rebuild them.
+
+Four directions, in the brief's order: **code LAYOUT** (executed lines
+contiguous, after measuring what PGO already achieved); **the op cache** at
+40.5 % decoder delivery, driven by 32-byte-window density and currently
+unmeasured; **branch mispredicts**, where the search side owns 64.7 % at a
+~15-cycle penalty and nothing has attacked them directly; and **a sweep for more
+dead-work-that-ships** — cfg'd-out or no-op sinks with expensive argument
+expressions, `format!`/`to_string`/`Vec` on discarded paths. That last class is
+pure profit and was worth 2.33 % of search time in a single instance.
+
+---
+
+## 2026-08-01 05:20 — closing an OWED debt: the tunable refresh has NEVER been strength-tested
+
+**D49:** sb1443, 188.5k pos/s, heldout ema **0.010440** — another run low.
+`d49xml` screening sb1440 (stdev 598.1). Disk 118 GB, on track for ~88 GB at
+sb1700.
+
+**We merged 154 search-tunable values and a search fix with ZERO strength
+evidence.** The standing rule is GAMES ARBITRATE, and the project has a
+designated instrument for exactly this that was not used: **`tools/sprt.sh
+CANDIDATE BASELINE`** — "the merge gate for functional search/eval changes"
+(design/14 §3.8, D25). `screen.sh` cannot do it: it runs ONE binary and varies
+only the NET, so it is structurally incapable of testing a binary change. Every
+match tonight has been net-vs-net.
+
+**Setting up the arm properly, both sides PGO** (the standing rule; a
+PGO-vs-non-PGO pair measures the build, not the change):
+
+- **Baseline: `engines/bin/archon-s25`** (= `engines/canonical/archon`) —
+  verified `bench 587683`, i.e. genuinely pre-`ebcea3ef`, and it is the canonical
+  PGO engine.
+- **Candidate: `archon-s68`**, fresh PGO off main `fa530897` — carries the
+  154 tunables AND study 67's `qtrace` fix. Built with the canonical net as the
+  profile eval-file (mandatory, or PGO goes inert on the NNUE kernels).
+
+Note this arm tests the two changes TOGETHER. That is deliberate: both are
+already merged, so the question that matters is whether main is stronger than the
+last canonical build, not which half contributed. If it comes back negative, the
+halves get separated then — and the `qtrace` fix is a pure dead-work removal with
+all three gate pins unmoved, so the tunables are the likely mover either way.
+
+**What the -17.2 % `Bench:` does NOT tell us**, and why this test is needed
+regardless: that number is depth-6 PSQT, while the depth-13 NNUE total moved only
++0.21 %. A tree change measured in a regime we do not play in is not evidence of
+strength in the regime we do.
+
+**LAUNCHED `sprt68.service`** — the owed strength test, both sides PGO:
+
+  candidate  archon-s68  bench 486897  4,773,500 nps  (main fa530897: 154
+             ebcea3ef tunables + study 67's qtrace fix)
+  baseline   archon-s25  bench 587683  4,520,638 nps  (canonical PGO engine)
+
+`NODES=25000 ROUNDS=750 CONCURRENCY=3 BOOK=UHO_Lichess_4852_v1.epd` — fixed
+nodes, so the result is contention-immune while `d49xml` keeps screening D49
+alongside it. Max 1500 games (+/-10 Elo), SPRT stops earlier if decisive.
+
+**Bench nps is +5.6 % (4.52M -> 4.77M) and that is NOT the claim** — it is
+suggestive at best, since the two binaries search different trees and nps mixes
+node composition with per-node speed. Games decide.
+
+---
+
+## 2026-08-01 05:32 — THE TUNABLE REFRESH LOSES 29 ELO. REVERTED (`d5f89245`).
+
+**D49:** sb1450, heldout ema 0.010447. All units green.
+
+**`sprt68` verdict — both sides PGO, 25k fixed nodes, UHO book, 1500 games:**
+
+| | |
+|---|---:|
+| **Elo** | **-29.49 +/- 14.88** |
+| nElo | -35.03 +/- 17.58 |
+| W / L / D | 523 / 650 / 327 (45.77 %) |
+| LLR | -2.30 of (-2.94, 2.94) |
+
+**Decisively negative at 2 sigma.**
+
+**The arm ISOLATES the tunables.** At FIXED nodes a speed fix earns nothing, so
+study 67's `qtrace` change — pure dead-work removal, node-identical, all three
+gate pins unmoved — contributes ~0. The 154 values are the sole functional
+difference.
+
+**Likely mechanism, and it is named in the commit range itself: the tip commit is
+"VVLTC parameters tweak" — Very Very Long Time Control.** Stockfish tunes at
+several time controls. We adopted a VVLTC-tuned set and tested at 25k fixed
+nodes, which is very short. **The values may be neutral or positive at long TC;
+they are not at ours.** That is a testable follow-up, not a conclusion.
+
+**THIS IS THE THIRD TIME TONIGHT A FAST INSTRUMENT POINTED THE WRONG WAY.**
+- `Bench:` -17.2 % looked like a big tree win; it is depth-6 PSQT and worth
+  **+0.21 %** at depth-13 NNUE, and **-29 Elo** in games.
+- Bench nps read **+5.6 %** for the candidate. Also not strength.
+- Earlier: a contaminated depth regex "confirmed" the frame story at 0.21 ply;
+  re-derived it was 0.005.
+
+Each time the arbiter was games and each time the cheap number disagreed. **The
+-17.2 % headline is now retired as a strength signal it was never entitled to
+be.**
+
+**REVERTED as `d5f89245`.** Kept: studies 66 and 67 IN FULL, including the
+`qtrace` fix, which is a real -2.33 % of search time that fixed-node testing
+structurally cannot reward but a real clock will. Pins return to
+`Bench: 587683` / d13 `1739588`; the eval hash never moved because the net never
+changed. `gaterev` verifying.
+
+**Process note:** the revert conflicted only on THIS handoff file (later entries
+touched it); every source file reverted cleanly and CLAUDE.md kept its separately
+committed hot-symbol list and closed-routes section. Resolved by taking HEAD's
+doc, so the record of the change survives the removal of the change.
+
+**Owner's call left open:** if the VVLTC hypothesis is worth testing, the restore
+is one `git revert d5f89245` plus a long-TC arm. The values are not lost.
+
+**`gaterev` PASSED** — `Bench: 587683`, eval hash `2e1ede95…79c4`, d13 `1739588`,
+all checks passed. Main is clean and verified at `d5f89245`.
+
+### STATE AT 05:35 — what is IN main, what was measured, what is owed
+
+**In main and gated:** study 65 (narrow row, feature OFF, bit-exact null), study
+66 (compaction + locality closed by construction), study 67 (`qtrace` dead-work
+removal — a real -2.33 % of search time — plus the frontend census and 12 tools).
+**Out of main:** the 154 `ebcea3ef` tunables, reverted on a 1500-game verdict.
+
+**Settled by games tonight (6000+ games):**
+- **The eval frame is NOT a lever.** Interior optimum; the shipped scale is on
+  it; SF parity costs ~18 Elo and over-shrinking ~12.
+- **The `ebcea3ef` tunables cost ~29 Elo at our TC.** VVLTC hypothesis recorded.
+- **D49 has overtaken canonical**: sb1410 = **+15.06 +/- 10.84, LOS 99.68 %**.
+
+**Settled by construction (studies 65-67):** sub-byte FT weight formats dead in
+all layouts; locality/reordering/prefetch dead (fold is MSHR-limited); function
+size is NOT the icache cost; **the search side is FRONTEND-bound** (128 L1i
+fills/node, 120.3 KB hot code vs a 32 KB L1i, 40.5 % decoder delivery).
+
+**OWED:**
+1. **The `qtrace` win has never been measured at REAL TC** — fixed-node testing
+   structurally cannot reward a speed fix, so its ~+4 Elo is derived only.
+2. **sb1700 verdict** (~9.5 h): run the 5880-game screen with the **PGO** binary,
+   not `target-sota`.
+3. Study 68 (frontend) in flight.
+4. Optional: re-test the tunables at long TC if the VVLTC hypothesis is worth
+   spending on.
+
+---
+
+## 2026-08-01 05:50 — 31 GB reclaimed; and my disk projection was wrong twice over
+
+**D49:** sb1457, 188.6k pos/s, heldout ema 0.010447. `d49xml` screening sb1450
+(stdev 598.6). Study 68 in flight.
+
+**Disk went 137 -> 114 GB in six hours and I had blamed CHECKPOINTS. Wrong.**
+
+The reaper is working correctly: **18 checkpoints kept** (multiples of 100, plus
+sb400/700, plus a rolling latest-4), directory 20 GB. **So my earlier projection
+"~26 exports x 1.14 GB = ~27 GB more, ending ~88 GB" was wrong** — it assumed
+every export is retained. Only three 100-multiples remain before sb1700, i.e.
+**~3 GB, not 27.**
+
+**The real consumer was AGENT WORKTREES: 37 GB, each carrying its own multi-GB
+`target/`.** Nine merged/finished studies were holding 31.6 GB of build output.
+
+**Reclaimed 31 GB — free space 114 -> 145 GB.** Method chosen for safety:
+**deleted only the `target/` directories, never the worktrees themselves.** That
+is reversible (cargo rebuilds) and cannot lose a commit — which matters because a
+worktree prune earlier in this project destroyed the main worktree, since "is
+merged" is the wrong test for a working tree. Study 68's worktree was excluded by
+name and verified intact WITH its target afterwards; all 26 worktree registrations
+survive.
+
+Checked before deleting that no build was live in any target worktree (the single
+`pgrep` hit was a process that had already exited).
+
+**Standing note for future sessions: agent worktrees are the dominant disk
+consumer on this box, not training artifacts.** Nine studies = 37 GB. Clean
+`target/` between studies, and never prune the worktree list to do it.

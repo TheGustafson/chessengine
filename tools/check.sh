@@ -133,7 +133,7 @@ fi
 # in the same commit that changes the number (that is exactly what the
 # `Bench:` trailer records). Set BENCH_PIN= (empty) to skip, e.g. while
 # bisecting.
-BENCH_PIN="${BENCH_PIN-486897}"
+BENCH_PIN="${BENCH_PIN-587683}"
 if [ -n "$BENCH_PIN" ] && [ "$bench_nodes" != "$BENCH_PIN" ]; then
     printf '\nFAIL: depth-6 bench is %s, pin is %s\n' "$bench_nodes" "$BENCH_PIN" >&2
     printf '  If this change is INTENTIONALLY functional (search, eval,\n' >&2
@@ -241,7 +241,7 @@ if [ "${CHECK_NNUE_GATE:-0}" != "0" ]; then
     # an empty string and a spurious pass-turned-failure.
     nnue_nodes=$("$nnue_bin" bench 16 1 13 "$nnue_fens" depth "$nnue_net" 2>&1 >/dev/null \
         | sed -n 's/^Nodes searched  : //p')
-    NNUE_NODE_PIN="${NNUE_NODE_PIN-1743308}"
+    NNUE_NODE_PIN="${NNUE_NODE_PIN-1739588}"
     printf '  d13 nodes  : %s\n' "$nnue_nodes"
     if [ -n "$NNUE_NODE_PIN" ] && [ "$nnue_nodes" != "$NNUE_NODE_PIN" ]; then
         printf '\nFAIL: NNUE d13 wl50 node total is %s, pin is %s\n' \
