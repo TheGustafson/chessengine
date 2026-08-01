@@ -17999,3 +17999,40 @@ Box has 3.8 GB available and three queued jobs; a perf study on top is the third
 OOM of the day. Target chosen from OUR OWN profile: the fold is **MSHR-limited**,
 so the only live routes SHRINK BYTES TOUCHED — width, active-feature count, or
 one-pass row merge. Locality/prefetch/layout stay closed.
+
+## 2026-08-01 16:52 — probe COMPLETE at sb1642; the loop-service trap caught my OWN chain
+
+**`[sfb] exited rc=0`, `d49sfb-sb1642-ema-raw.bin` on disk (433,755,450 B), GPU
+and ~4.5 GB RAM released.** The 60/40 SF-teacher probe is done: 12 sb of blend on
+top of the sb1630-EMA warm.
+
+**But `d49train` still read `active`, and that deadlocked everything behind it.**
+`sfb_launch.sh` is `while :; do … done` — a loop service, so `is-active` stays
+true after the payload exits. `simplify-verify` waits for `d49train` to go
+inactive; `d49tv` waits for `simplify-verify`. **Both would have sat there until
+verify's 4 h timeout.**
+
+**This is the FOURTH time today that `is-active` on a loop service starved
+something** (535 arm, A/B twice, now the whole build->match chain). I wrote the
+warning into `teacher_verdict.sh`'s own gate this afternoon and then consumed a
+loop service's `is-active` one layer up without noticing. **The rule is not "use a
+better predicate in my script" — it is `is-active` NEVER answers "is the work
+done" for a `while :` unit, no matter who is asking.** Correct predicates: the
+ARTIFACT (checkpoint exists), or `pgrep -c` on the payload, or a rc file.
+
+Resolved by `systemctl --user stop d49train` — correct because the probe hit its
+`superbatches: 1642` and any relaunch would resume at 1642 with nothing to do.
+
+**Chain now: verify (builds, ~30 min) -> d49tv (pack + 1500 games @25k).**
+
+**Durability fixes landed this tick** (the probe was one `git worktree prune`
+from being unreproducible):
+- `sfb_launch.sh` repointed off the agent worktree to `chessengine-mainwt/jax`.
+- `d49_sfblend_probe.json` copied into `chessengine-mainwt` (`tools/nnue/runs`
+  is gitignored by convention, so it stays untracked — but it now exists outside
+  the worktree). Recipe: `distill_alpha 0.4`, 12 per-bucket `(k,p)` frame pairs,
+  `ema_decay 0.99984`, `export_every 2`.
+- Teacher CODE confirmed present in main (`teacher_kp` 18 / `sf_act` 12 /
+  `distill_alpha` 25 hits). **The agent's "git diff 962ffc3c main -- jax/ is
+  empty" was read against a stale ref** — the code merged; only its later doc
+  commits sit unmerged on the branch.
