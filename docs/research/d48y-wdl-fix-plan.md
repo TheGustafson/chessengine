@@ -17624,3 +17624,51 @@ are discarded. And the control arm this experiment needs — same sb1630 start,
 same LR, no teacher — **already exists**: sb1631–1693 from the run I just
 stopped. Re-running it would produce nothing new and would have to be killed
 again the moment the teacher launches.
+
+---
+
+## 2026-08-01 15:10 — ★ NEW STANDING GOAL (owner): SIMPLIFY SEARCH. Fable-level study commissioned, PLAN ONLY.
+
+**The loop's direction has changed.** Owner: *"greatly and significantly reduce
+the complexity of search… remain almost or as strong… code stay just as fast
+(hopefully faster since we will need to do less)… hundreds of tunables, reduce
+that number… remove heuristics and checks that add very little value…
+specifically diverge from Stockfish a bit (keeping some) but making our specialty
+a simpler and faster search system (later we will incorporate NNUE-guided search
+using specialised heads)."*
+
+**Future ticks should be read against THIS goal**, not the per-node perf
+programme, which is closed anyway (studies 42–48, 65–69).
+
+**Simplification is a PERFORMANCE argument here, and today's own measurements are
+what make it one:**
+- **The search side is FRONTEND-bound** (67): **120.3 KB of hot code against a
+  32 KB L1i**, `search::<NonPv>` alone **45,565 B**, 128 L1i fills/node, 40.5 % of
+  ops from the decoder. **Executing less code attacks the measured wall.**
+- **But code LAYOUT is closed** (67/68) — outlining, dedup and LLVM's machine
+  function splitter (30.7 % span compaction) all ≈0. **Moving code does not help;
+  executing less might.** That distinction is the study's crux and it is stated
+  in the brief.
+- **The 154-value tunable refresh measured NEUTRAL** (−1.39 ± 10.43, 1500 games)
+  — prima facie evidence of an inert tuning surface.
+- **246 of 309 tunables have never been in any SPSA campaign**; 303 are SF's
+  values verbatim.
+
+**Commissioned at Fable level, `run_in_background`, worktree-isolated, and
+explicitly PLAN-ONLY — no search code changes.** Deliverables: a measured
+complexity census (grounded in `--features search-stats`, `tools/perf70/`
+cutoff censuses and `foldcount`, **not** in reading code), a **ranked** removal
+list with a test design for each, a tunable-reduction plan, a **staged** sequence
+with abort conditions, an explicit SF divergence view, and **NNUE-head
+compatibility notes** so simplification does not foreclose the next architecture.
+
+**Armed against the obvious escape hatches:** "the search is already minimal",
+"every heuristic earns its place because Stockfish has it", and "this cannot be
+simplified without losing strength" are named as unacceptable — as is handing
+back an unranked inventory. **The value asked for is judgement, not a list.**
+
+**Also given the evidence rules** so it does not measure with a broken
+instrument: four counters fail their byte-identical null, **node counts fail a
+jitter null at +18.3 %**, census statistics (±0.11–0.16 pp) are the reliable
+metric, and a <5 Elo removal is not cheaply provable at ±10 bars — with the
+one-match A/B design named as the way to resolve it.
