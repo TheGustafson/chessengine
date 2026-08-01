@@ -15621,3 +15621,52 @@ class is now empty.**
 joins `ic_cache_fill_l2`, `de_op_queue_empty` and `task-clock` on the
 same-panel-null list. **`instructions:u` remains the only counter on this box that
 decides anything.**
+
+---
+
+## 2026-08-01 07:12 — the per-node axis is MINED OUT. Study 70 pivots to NODES PER MOVE.
+
+**D49:** sb1494, 188.5k pos/s, heldout ema 0.010436. Disk back to **148 GB**
+(study 69 reclaimed 4.2 GB itself). Seven `s69-*` binaries kept in `engines/bin/`
+so the next session can re-panel without rebuilding.
+
+**Checked before commissioning, and it changed the target.** `forward_into` — the
+last item with real mass on my list — was already closed by **study 46**
+("keep the design"). Adding that to tonight's work, the per-node
+microarchitectural surface is now comprehensively closed:
+
+| family | closed by |
+|---|---|
+| FT precision / sub-byte formats / locality / prefetch | 65, 66 (fold is MSHR-limited) |
+| code layout, every granularity incl. LLVM MFS | 67, 68 (30.7 % span for +0.001 %) |
+| branch mispredicts | 69 (6.02 % of cycles, NO concentration, 0.157 % top line) |
+| `forward_into` | 46 |
+| issue throughput | 47 (14 rewrites priced, none landed) |
+| TT / Finny / backend / loads | 42 / 43 / 44 / 48 |
+| **dead work that ships** | 67, 68, then **swept EMPTY by 69** |
+
+**That class produced the only two wins of the last 24 h, and it is now empty.**
+Continuing to commission per-node microarch studies would be commissioning
+against a closed surface.
+
+**STUDY 70 COMMISSIONED — nodes per move, via move-ordering QUALITY.**
+**Time-to-depth has two factors and only one has ever been attacked.** A 10 %
+cut in nodes-to-depth is worth more than every instruction win of the past week
+combined, and it is entirely unexplored.
+
+Its step 1 is a census the project has **never had**: **first-move beta-cutoff
+rate** (`fh_first / fh`) and the **distribution** of cutoff move index — per depth
+and per node type. The instrument already exists and is feature-gated
+(`--features search-stats`), which is exactly why study 68 made `SearchStats`
+zero-sized rather than deleting it.
+
+**Judged differently from the last five studies, deliberately:** the primary
+metric is **nodes to a fixed depth** — discrete and **load-immune**, so a busy box
+cannot corrupt it, which matters given four counters failed their nulls tonight.
+`Bench:` is EXPECTED to move (functional change) and the eval hash must NOT.
+Arbiter is `tools/sprt.sh` both-PGO vs `archon-s25`, since `screen.sh` structurally
+cannot test a binary change.
+
+Handed the full closed list so it cannot re-open any of it, plus the four
+counter-null failures, the PGO inline re-decision rule, and "counting a code
+sequence is not measuring it".
