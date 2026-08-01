@@ -3,8 +3,9 @@
 **Date:** 2026-08-01 · **Box:** 7700X (Zen 4), AVX-512 VBMI2, SMT on, 32 KB L1i,
 32 KB L1d, 1 MB L2/core, 32 MB L3, 15 GB · **Base:** `main` at **`e9501029`**
 (study 68 merged + its handoff) · **Net/arch:** D48X @ `network_scale=600`,
-`sota,arch-d48x`, ACC 1280 · **Instruments:** `tools/perf69/` (nine new;
-`tools/perf67/` and `tools/perf68/` reused, not rebuilt).
+`sota,arch-d48x`, ACC 1280 · **Instruments:** `tools/perf69/` (fifteen new;
+`tools/perf67/` and `tools/perf68/` reused, not rebuilt) · **Artifacts:**
+`docs/research/perf-artifacts-69/` (three panels, 38 rounds).
 
 **Frame, quoted with every number below:**
 
@@ -39,8 +40,13 @@ unmoved (§5).
    turned §2 from a wrong conclusion into a right one.
 2. **A measured negative, banner-committed at `attacks::tables()`** with both of
    its numbers, in the codebase's convention for a rejected arm.
-3. **Two counters added to the same-panel-null list**: `branch-misses:u`
-   (byte-identical null **−0.803 %**) joins `ic_cache_fill_l2`,
+3. **`--features pgonull69`** (`src/board.rs`, default OFF, in `check.sh`'s
+   feature matrix) — the **PGO null**: eight inert bytes on `Board` in the exact
+   place arm 1 put its pointer. It is what turned §2.5 from a wrong conclusion
+   into a right one (§2.7), the same service `--features pad68` did for study
+   68 §2.4.
+4. **One counter added to the same-panel-null list**: `branch-misses:u`
+   (byte-identical null **−0.803 %**, 11/16) joins `ic_cache_fill_l2`,
    `de_op_queue_empty` and `task-clock`.
 
 **No strength change landed. The arm that was built lost, and the reason it lost
@@ -55,23 +61,29 @@ is the study's most transferable result.**
 > **+16.8** through the shipped PGO pipeline (**+0.321 %, 0/16**, against a
 > byte-identical null of +0.000 %). Reverted. §2.
 
-> **The larger finding, and it is about the measuring instrument, not the
-> engine: a PGO-to-PGO delta is not a clean measurement of a source change.**
-> The arm shrank its callees (`qsearch` −903 B, `init_quiets` −538 B), PGO
-> re-decided inlining, and **0.40 % of instructions moved in symbols the diff
-> never touches** — `forward_into` +0.71 share points, `i8_deltas_into_inner`
-> −0.81. The byte-identical null bounds a REBUILD at 0.000 %; it does not bound
-> a source change, and nothing in studies 61–68 ever did. §2.5, and §6 item 0 is
-> the experiment that closes it.
+> **The larger finding: a source change that alters hot function SIZES buys a
+> PGO inline re-decision, and it can cost 4× the change's own direct effect and
+> invert its sign.** Arm 1 shrank five hot symbols by 108–903 bytes; PGO
+> re-decided; 0.40 % of instructions moved in NNUE kernels the diff never
+> touches. **This is causal, not a lottery — measured, not argued:** a new null
+> (`--features pgonull69`, eight inert bytes on `Board`) that leaves every hot
+> symbol's size *identical* reads **+0.000 % (5/12)** and reproduces PGO's
+> decisions byte for byte. So the PGO number is the arm's true cost, the revert
+> is right, and **when a PGO pair and a non-PGO pair disagree the gap is the
+> inline re-decision and `symdiff69.sh` names the symbols responsible.** §2.5,
+> §2.7 — including the retraction of §2.5's first draft, which had this
+> backwards.
 
 > **Branch mispredicts: the profile exists now, and the budget is 6.0 % of
 > cycles spread over hundreds of sites with no concentration above 0.16 %.**
-> At this engine's own measured **9.13 cycles per mispredict** (study 40, not
-> the generic 15), a branchless rewrite must cost under **22.4 instructions per
-> mispredict removed** to break even; `insertwin34` cost 42.58 and lost by
-> exactly that factor. The single largest source line in the engine —
+> At this engine's own measured **9.13 cycles per mispredict** and **2.45 IPC**
+> on added scalar work (study 40 §3, not the generic 15 and 4), a branchless
+> rewrite must cost under **22.4 instructions per mispredict removed** to break
+> even; `insertwin34` cost 39.1 and lost by **1.75×**. The single largest source
+> line in the engine —
 > `movepick.rs:282`, the insertion sort's shift loop — is **4.49 %** of the
-> taken-mispredict population and has been attacked and lost three times. §3.
+> taken-mispredict population, and **four distinct rewrites of it have lost**
+> (studies 23, 34 and 55; re-priced by 40 and 56). §3.
 
 ---
 
@@ -284,29 +296,107 @@ pair measures the *source change* and nothing else
 > | `finny_refresh_into` | 2.83 % | 3.08 % | +0.25 |
 >
 > The two NNUE kernels at the top are **not touched by this diff in any way**,
-> and they move 0.7–0.8 share points in opposite directions. The search-side
-> rows show the same thing from the other end: work migrated *into*
+> and they move 0.7–0.8 share points in opposite directions. Converted to
+> absolute counts (share × the run's own total, so the +0.321 % is divided out):
+> `forward_into` **+6.5 %**, `i8_deltas_into_inner` **−4.9 %**,
+> `search::<NonPv>` +2.5 %, `init_quiets` −4.8 %, `see_ge` −16.8 %. The
+> search-side rows show the same thing from the other end: work migrated *into*
 > `search::<NonPv>` out of `see_ge` and `init_quiets` — the inlining boundary
-> moved. This is **study 55 §0.1's size curve seen from the other end**: that
+> moved.
+>
+> **Stated with its error bar, because a single `perf record` run is not a
+> panel:** each profile is one run of ~13,000 samples, so a symbol at 11–16 %
+> carries a ~2.2–2.6 % relative standard error and the two NNUE moves are
+> **≈2σ each**, not 10σ. They are corroboration, not proof. The proof of the
+> effect is the pair of panels — **+0.321 % (0/16) PGO against −0.077 % (10/10)
+> non-PGO**, both of which are within-round paired medians with unanimous
+> signs — and §2.7's null is what settles the *cause*.
+>
+> This is **study 55 §0.1's size curve seen from the other end**: that
 > study measured `#[inline(always)]` buying −19.3 i/n on small bodies and
 > costing **+25.7 i/n in spills** on a 3,516-byte one. Here the *callees*
 > shrank, PGO pulled more of them into an already register-starved 45 KB
 > function, and the spills followed.
 >
-> **The consequence for this whole study series, stated as a rule:** the
-> byte-identical null is 0.000 % and every study since 61 has treated it as the
-> resolution floor. **It is the floor for a REBUILD, not for a SOURCE CHANGE.**
-> On this arm the pipeline's own re-decision was **0.40 % of instructions** —
-> larger than the arm, larger than study 68's entire landed win (−0.559 %),
-> and of arbitrary sign. Study 68's `--features pad68` does not measure this
-> and cannot: a never-called cold function generates no profile counters, so
-> the merged profile — and therefore every inlining decision — is unchanged.
-> **The missing instrument is a null that perturbs the PROFILE without
-> perturbing semantics**, and §6 registers it as the next session's first job,
-> because until it exists the shipped-pipeline error bar on every arm in this
-> series is unknown.
+> **The open question this leaves — is the re-decision CAUSAL or a lottery?**
+> If it is a lottery, the arm's real value is the non-PGO −0.077 % and the
+> rejection is an accident of one roll. If it is causal, the +0.321 % is the
+> arm's true shipped cost and the rejection is correct. Nothing in studies
+> 61–68 can tell these apart, so §2.7 built the null that can.
 
-### 2.6 Verdict
+### 2.7 ★★★ THE NULL THAT SETTLES IT — AND IT CORRECTS §2.5's FIRST DRAFT
+
+**`--features pgonull69`** (`src/board.rs`, default OFF, never ships): **eight
+inert bytes on `Board`, in the exact place arm 1 put its `&'static
+AttackTables`.** No code changes, no instruction the search executes differs by
+intent — but every `Board` field offset after it moves, so instruction
+encodings move (disp8 → disp32) and the binary is genuinely different.
+
+Study 68's `--features pad68` cannot do this job: a never-called cold function
+emits no profile counters, so the merged profile — and every inlining decision
+— is identical. This one at least perturbs the struct the search hammers.
+
+**What the binary says before the panel does:**
+
+| | `s69-b0` | `s69-pgonull` |
+|---|---:|---:|
+| `search::<NonPv>` / `qsearch::<NonPv>` / `init_quiets` / `see_ge` / `init_captures` | 45,296 / 19,897 / 7,091 / 1,333 / 4,825 | **identical, all five** |
+| `forward_into` / `i8_deltas_into_inner` | 3,694 / 33,131 | **identical** |
+| `.text` | 769,701 | 769,797 (**+96**) |
+
+**12 shuffled rounds, `docs/research/perf-artifacts-69/panel-pgonull.csv`:**
+
+| counter | **`s69-pgonull`** | sign | null (`s69-b0n`) | sign |
+|---|---:|---:|---:|---:|
+| **`instructions:u`** | **+0.000 %** | 5/12 | −0.000 % | 9/12 |
+| `branch-misses:u` | −0.162 % | 6/12 | +0.389 % | 6/12 |
+| `ic_cache_fill_l2` | −0.161 % | 8/12 | −0.592 % | 9/12 |
+| `de_op_queue_empty` | −1.041 % | 7/12 | −0.009 % | 6/12 |
+| `task-clock` | −0.214 % | 6/12 | +0.046 % | 5/12 |
+
+> ### ★★★ THE ANSWER — AND I HAD THE FRAMING WRONG
+>
+> **An inert perturbation that leaves every hot symbol's SIZE unchanged moves
+> `instructions:u` by +0.000 %, and PGO makes byte-for-byte the same inlining
+> decisions.** So:
+>
+> 1. **Growing `Board` by 8 bytes is innocent.** That was one of the two
+>    candidate mechanisms for arm 1's regression and it is now eliminated by
+>    measurement rather than by argument.
+> 2. **The PGO re-decision is NOT the box, the roll, or `.text` layout, and
+>    §2.5's first draft — which I wrote before this panel and which said "the
+>    shipped-pipeline error bar on every arm in studies 61–68 is unknown" — is
+>    RETRACTED.** The pipeline is *exactly* reproducible under a perturbation
+>    that moves `.text` and every `Board` field offset but no function's size.
+>    What provoked the re-decision was arm 1 **shrinking five hot symbols by
+>    108–903 bytes**, and that is a property of the arm.
+>    **What this null does NOT establish** (stated because the temptation to
+>    over-read it is exactly what §2.5's first draft did): whether a size change
+>    of a *given magnitude* has a predictable instruction cost, or a predictable
+>    sign. It bounds the layout-only case at +0.000 % and localises the cause;
+>    it does not calibrate it. §6 item 0 registers the follow-up.
+> 3. **Therefore +0.321 % is arm 1's true shipped cost and the revert is
+>    correct** — which is the opposite of the escape hatch the first draft was
+>    building. The non-PGO −0.077 % is the arm's *direct* effect; the +0.40 %
+>    difference is the *induced* effect, and both are the arm's.
+>
+> **The rule this earns, in its corrected form:**
+>
+> > **A source change that alters hot function SIZES buys a PGO inline
+> > re-decision, and that re-decision can cost 4× the change's own direct
+> > effect and can invert its sign. It is part of the arm and must be measured
+> > on the PGO pair. A source change that does NOT alter sizes leaves the
+> > pipeline exactly reproducible (+0.000 %).**
+> >
+> > Practical consequence: **when a PGO pair and a non-PGO pair disagree, the
+> > gap is the inline re-decision, and it is diagnosable — `symdiff69.sh` names
+> > the symbols whose size moved.** That is a lever, not a mystery: an arm
+> > whose direct effect is a win and whose induced effect is a loss may be
+> > recoverable by pinning the sizes it disturbed (`#[inline(never)]` on the
+> > shrunk callees). Arm 1's direct effect is only −4.1 i/node, so it is not
+> > worth that trouble; a bigger arm would be.
+
+### 2.8 Verdict
 
 **REVERTED** (`bd0103c2`). A measured +0.321 % on the shipped pipeline is not
 shippable, whatever the non-PGO control says: the engine is built with PGO and
@@ -384,8 +474,8 @@ the PMU totals, not by the LBR rate.
 | `branch-misses:u` = `ex_ret_brn_misp:u` | 108,263,499 | **21.65** |
 | `ex_ret_brn_tkn_misp:u` | 62,756,953 | 12.55 |
 
-**One branch in every 4.34 retired mispredicts.** 4.34 % of all branches
-mispredict; 34.8 % of branches are taken.
+**4.34 % of all retired branches mispredict — one in every 23.** 34.8 % of
+branches are taken, and 58 % of the mispredicts land on those.
 
 ### 3.4 By symbol (`instructions:u`-sampled LBR, 418,976 entries, 2 frames)
 
@@ -478,7 +568,8 @@ with the mechanism measured each time:
 > insertion sort — all 0.98 per node, which no rewrite has come close to —
 > earns 8.9 cycles/node and may cost at most **22 instructions per node**.
 > `insertwin34` removed 1.088 and cost 42.58. **It was not a bad
-> implementation; it was 1.9× over a budget that is 22 instructions wide.**
+> implementation — at 42.58/1.088 = 39.1 instructions per mispredict removed it
+> was 1.75× over a budget that is 22.4 instructions wide.**
 >
 > Every high-*rate* site in the table is worse, not better, because rate is not
 > volume: `board.rs:1379` mispredicts **76.7 %** of the time and is worth
@@ -582,7 +673,7 @@ constant, no atomic, no load. Only the `tune` build pays the `AtomicI64`.
 
 | gate | result |
 |---|---|
-| node total, every PGO binary (`s69-b0/b0n/c1/dbg`) and both non-PGO controls | **5,001,562** — exact |
+| node total, every PGO binary (`s69-b0/b0n/c1/dbg/pgonull`) and both non-PGO controls | **5,001,562** — exact |
 | wl50 eval hash, every binary | **`2e1ede95…79c4`** — exact |
 | PGO rebuild determinism (`s69-b0` vs `s69-b0n`) | **`cmp` clean, byte-identical** |
 | line-tables twin (`s69-dbg`) is a valid address proxy | `search::<NonPv>` 0xb0f0 and `init_quiets` 0x1bb3 in **both** — study 67 §1.1's proof re-checked on this tree |
@@ -598,20 +689,23 @@ constant, no atomic, no load. Only the `tune` build pays the `AtomicI64`.
 
 ## 6. WHAT THE NEXT SESSION SHOULD DO
 
-0. **★ BUILD THE PGO-RE-ROLL NULL, BEFORE ANY OTHER ARM.** §2.5 measured a
-   source change whose own cost is −0.077 % arriving at **+0.321 %** through the
-   shipped pipeline, with the difference living in untouched NNUE kernels. The
-   byte-identical null (0.000 %) does not bound this and `--features pad68`
-   cannot either — a never-called function produces no profile counters, so
-   every inlining decision is unchanged. **What is needed is a semantically
-   inert change that DOES perturb the profile**: the cheapest honest one is a
-   `#[inline(never)]`/`#[inline(always)]` flip on a single mid-sized cold-ish
-   callee, built PGO both ways and panelled against the byte-identical null. If
-   its `instructions:u` delta is ~0, then §2's +0.321 % is causal and the arm is
-   correctly rejected. **If it is ±0.3 %, then the shipped-pipeline error bar on
-   every arm in studies 61–68 is 0.3 % and several landed verdicts need
-   re-reading.** This is one build and one panel and it is the highest-value
-   hour available.
+0. **★ PANEL EVERY ARM ON A PGO PAIR *AND* A NON-PGO PAIR, AND READ THE GAP.**
+   §2.5/§2.7: arm 1's direct effect is −0.077 % (non-PGO, 10/10) and its shipped
+   effect is +0.321 % (PGO, 0/16); the 0.40 % gap is the inline re-decision its
+   own size changes provoked, and `--features pgonull69` proves that gap is
+   causal (an inert perturbation that leaves symbol sizes alone reads
+   **+0.000 %**). Both builds together cost ~10 minutes
+   (`tools/perf69/buildnp69.sh` is the non-PGO half) and they turn "the arm
+   lost" into "the arm's direct effect won and its induced effect lost, in
+   *these* symbols" — which is a diagnosis with a lever
+   (`tools/perf69/symdiff69.sh`, then pin the disturbed sizes) instead of a
+   dead end. **The PGO number remains the verdict**; the non-PGO number is the
+   diagnosis.
+   *A further null still worth building*: one that perturbs the profile
+   *counters* rather than the struct — e.g. an `#[inline(never)]` flip on a
+   mid-sized callee — to see whether a size change of a given magnitude has a
+   predictable instruction cost. §2.7's null deliberately does not move any hot
+   symbol's size, so it bounds the "layout only" case and nothing more.
 1. **Do NOT re-propose the `Board` attack-tables field** (§2, and the banner on
    `attacks::tables()`), the two remaining guards (§4, priced at −0.7 and −0.2
    i/node), or **any branchless rewrite of a mispredicting branch** without

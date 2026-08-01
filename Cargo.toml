@@ -165,6 +165,14 @@ search-stats = []
 # Default OFF and it must never ship. See src/lib.rs and
 # docs/research/perf-study-68-layout-2026-08-01.md §2.6.
 pad68 = []
+# Perf study 69's PGO NULL. Eight inert bytes on `Board`, in the exact place
+# study 69's arm 1 put its `&'static AttackTables`: it moves every later field
+# offset (so instruction encodings, so function sizes, so LLVM's inline cost
+# model) and changes nothing the search computes. `pad68` cannot do this job --
+# a never-called function emits no profile counters, so PGO decides identically.
+# Default OFF and it must never ship. See src/board.rs and
+# docs/research/perf-study-69-branches-and-the-guard-2026-08-01.md §2.7.
+pgonull69 = []
 # The SOTA NNUE net (D40, design/11 §12): SF features + Reckless-shaped hybrid
 # head. OFF by default (the whole SOTA path is inert until it ships), so the
 # default build + depth-6 bench stay byte-identical. Build with `--features sota`.

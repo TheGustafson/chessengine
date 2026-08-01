@@ -908,6 +908,28 @@ pub struct Board {
     /// Lazily-filled Wave-G threat map — see [`ThreatCache`]. Not part of the
     /// position: cloned cold, ignored by equality.
     threats: ThreatCache,
+
+    /// **Perf study 69's PGO NULL (`--features pgonull69`, default OFF, never
+    /// ships).** Eight bytes of nothing, in the exact place study 69's arm 1
+    /// put its `&'static AttackTables`.
+    ///
+    /// Study 68's `pad68` is a null for `.text` LAYOUT — one cold, never-called
+    /// function. It cannot be a null for the PGO PIPELINE, because a function
+    /// that never runs emits no profile counters, so the merged profile and
+    /// every inlining decision are unchanged. This one is: it changes the
+    /// offset of every `Board` field after it, hence instruction *encodings*
+    /// (disp8 → disp32), hence function sizes, hence LLVM's inline cost model —
+    /// with **zero** semantic content. Same nodes, same eval hash, no
+    /// instruction the search executes is different by intent.
+    ///
+    /// It exists because study 69 §2.5 measured one source diff at −0.077 %
+    /// instructions non-PGO and **+0.321 % PGO**, with the difference landing
+    /// in NNUE kernels the diff never touched. That number decides whether the
+    /// arm was correctly rejected or whether the shipped-pipeline error bar on
+    /// studies 61–68 is ~0.3 %, and no instrument in the series could answer
+    /// it.
+    #[cfg(feature = "pgonull69")]
+    _pgonull69_pad: u64,
 }
 
 impl Board {
@@ -926,6 +948,8 @@ impl Board {
             state: StateInfo::EMPTY,
             history,
             threats: ThreatCache::default(),
+            #[cfg(feature = "pgonull69")]
+            _pgonull69_pad: 0,
         };
         // Even the empty board's root state is self-consistent (its key is
         // ZOBRIST.castling[0], its pawn key ZOBRIST.no_pawns, ...).

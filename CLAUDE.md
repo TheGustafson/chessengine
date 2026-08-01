@@ -296,24 +296,23 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   **Perf study 69 adds `branch-misses:u` to that list** — its byte-identical
   null read **−0.803 % (11/16)** in a 16-round panel, so no mispredict arm
   under ~0.8 % may be judged on it.
-- **★★ A PGO-TO-PGO DELTA IS NOT A CLEAN MEASUREMENT OF A SOURCE CHANGE (perf
-  study 69, 2026-08-01).** The byte-identical null is 0.000 % and every study
-  since 61 has treated it as the resolution floor. **It is the floor for a
-  REBUILD, not for a SOURCE CHANGE.** Measured on one diff, two ways: the
-  `attacks::TABLES` arm reads **−0.077 % instructions (10/10) as a NON-PGO
-  pair** and **+0.321 % (0/16) as a PGO pair**, and the 0.40 % difference lands
-  in symbols the diff never touches — `forward_into` **+0.71** share points,
-  `i8_deltas_into_inner` **−0.81**. Mechanism: the arm shrinks its callees
-  (`qsearch` −903 B, `init_quiets` −538 B, `see_ge` −193 B), PGO's inline cost
-  model re-decides, and more gets pulled into an already register-starved 45 KB
-  `search::<NonPv>` — study 55 §0.1's size curve from the other end. **Study
-  68's `--features pad68` does NOT bound this**: a never-called cold function
-  emits no profile counters, so no inlining decision changes. Until a null that
-  perturbs the PROFILE (not just `.text`) is built and measured, **the
-  shipped-pipeline error bar on every arm in studies 61–68 is unknown** —
-  build it before the next arm (`tools/perf69/buildnp69.sh` is the non-PGO
-  control half of it). Any arm under ~0.4 % PGO-to-PGO must be confirmed on a
-  non-PGO pair.
+- **★★ CHANGING A HOT FUNCTION'S SIZE BUYS A PGO INLINE RE-DECISION, AND IT CAN
+  COST 4× THE CHANGE ITSELF (perf study 69, 2026-08-01).** Measured on one diff,
+  three ways. The `attacks::TABLES` arm reads **−0.077 % instructions (10/10) as
+  a NON-PGO pair** — its direct effect, a win — and **+0.321 % (0/16) as a PGO
+  pair**, with the 0.40 % gap landing in NNUE kernels the diff never touches
+  (`forward_into` +6.5 % absolute, `i8_deltas_into_inner` −4.9 %). Mechanism:
+  the arm shrinks its callees (`qsearch` −903 B, `init_quiets` −538 B, `see_ge`
+  −193 B), LLVM's inline cost model re-decides, and more is pulled into an
+  already register-starved 45 KB `search::<NonPv>` — study 55 §0.1's size curve
+  from the other end. **The gap is CAUSAL, not a lottery:** `--features
+  pgonull69` (eight inert bytes on `Board`, no code change, every hot symbol
+  byte-for-byte the same size) reads **+0.000 % (5/12)** and reproduces every
+  PGO decision. **So the PGO number is the verdict** — the arm was correctly
+  reverted — **and the non-PGO number is the diagnosis.** Panel both
+  (`tools/perf69/buildnp69.sh` is the non-PGO half, ~4 min), and when they
+  disagree run `tools/perf69/symdiff69.sh` to name the symbols whose size moved;
+  an arm whose direct effect wins may be recoverable by pinning those sizes.
 - **BRANCH MISPREDICTS ARE A 6.0 %-OF-CYCLES BUDGET WITH NO HOT SPOT (perf
   study 69, 2026-08-01).** Profiled to the branch site for the first time
   (`tools/perf69/mispred69.sh` + `misroll69.py` — AMD LBR v2, six minutes,
@@ -321,11 +320,15 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   cycles** (study 40 §3 — *not* the generic ~15) = 197.7 cycles/node. The
   largest single SOURCE LINE is `movepick.rs:282` (the insertion sort's shift
   loop) at **4.49 %** of the taken-mispredict population = 0.157 % of cycles,
-  and studies 23/34/40/55/56 have attacked it five times and lost every time.
+  and **four distinct rewrites** of it have lost — `copy_within` (+91 i/n) and
+  `partition_point` (+77.8) in study 23, `insertwin34` in study 34 (+42.58 i/n
+  for −1.088 misp/node), `bcsort55` in study 55 (+14.7 on the shipped tree) —
+  re-priced and confirmed by studies 40 and 56.
   **The break-even is arithmetic: at 9.13 cycles and study 40's measured 2.45
   IPC on added scalar work, a branchless rewrite may cost at most 22.4
-  instructions per mispredict removed** (`insertwin34` cost 42.58 — it was not
-  a bad implementation, it was 1.9× over budget). Price any new branch arm
+  instructions per mispredict removed** (`insertwin34` cost 42.58 i/n for 1.088
+  mispredicts = 39.1 each — it was not a bad implementation, it was **1.75×**
+  over budget). Price any new branch arm
   against that number first. **Instrument caveat: an LBR stack holds only
   TAKEN branches** (12.55 of the 21.65 misp/node) and is blind to a never-taken
   guard; use `tools/perf69/opsat69.py` (IBS dispatched ops) for those.
