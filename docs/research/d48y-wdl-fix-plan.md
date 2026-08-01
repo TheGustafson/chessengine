@@ -17065,3 +17065,52 @@ that distinction in mind.
 
 **Live:** D49 continuation sb1639 (177–185k pos/s, self-restarting), teacher
 calibration agent working CPU-only, memory 6252 MB.
+
+---
+
+## 2026-08-01 12:55 — ★ MY BRIEF'S PREMISE WAS WRONG. `sf-eval` prints SF's RAW INTERNAL units.
+
+**Verified by me on one position, decisively:**
+```
+our  sf-eval      : -1286
+stockfish's eval  : NNUE evaluation  -1286  (side to move, internal units)
+```
+**Identical.** So `sf-eval` = `evaluate_raw` = **Stockfish's raw internal NNUE
+units**, NOT ARCHON's frame. The 0.538 figure belongs to `evaluate()`, which
+applies `FRAME = 0.5126`. The agent found this and it is correct.
+
+**What this retracts, both mine:**
+1. **"slope 0.7604 ours/teacher"** (12:05) — a real measurement, but I described
+   the teacher as being in our frame. It is our net against **SF internal
+   units**.
+2. **The derived ≈1.023 teacher→label prediction** — built on that wrong premise.
+   **It holds for NO corpus**; measured slopes run **0.325–0.865**.
+
+**The corrected prediction is `1/SCORE_DIV` per corpus** (divisors 1.49–2.25 from
+`ledger/data.jsonl` + `stage5_data_chain.sh`, plus two house corpora on a UCI-cp
+frame at 0.674/0.699) — **and that also fails for 9 of 12, by 17–33 %.** So the
+calibration genuinely has to be measured, which is the whole reason it was
+commissioned.
+
+**Its other results, with controls I would not have thought to demand:**
+- **`per_corpus_target[i]` ↔ `mix[i]` is positional — VERIFIED**: 11/12 corpora
+  reproduce their stored `(a,b)` to ≤1.6 % on an independent MLE refit. Slot 11
+  is a **deliberate duplicate of slot 0** (documented at
+  `d48y-wdl-fix-plan.md:234`), not a mapping error.
+- **A single constant is wrong by up to 2.66×**, and **41 % of the mix by weight
+  is mispriced >25 %** — the per-corpus requirement is quantified, not asserted.
+- **Material was a RED HERRING for this purpose**: `p_a` is effectively constant
+  (381–388, ±0.9 %). The real law is SF's `evaluate()` blend, whose exponent is
+  **not 1 for any corpus** (−1.62 to +2.17, splitting by labelling provenance).
+  I had told it to treat material as the thing to handle; it measured that and
+  found the actual mechanism elsewhere.
+- **Nulls pass**: a permuted-teacher null collapses slopes to |≤0.026| and sign
+  agreement to 0.46–0.52; decoder round-trips 4800/4800 byte-exact.
+- **Self-caught**: its first sampler used 500-record contiguous windows —
+  unbiased but **not independent** (same-game clustering), so its bootstrap CIs
+  were too narrow and an independent-seed replication fell outside them for 3–5
+  of 12. Fixed to iid draws; point estimates move <2 %.
+
+**Standing correction for anyone using the teacher:** `sf-eval` is raw SF
+internal. To reach a label frame you need that corpus's measured slope — not
+0.538, not 1.023, and not a single global constant.
