@@ -12994,3 +12994,44 @@ Deliberately waiting rather than reading it early — the same discipline that
 caught the n=4 trend error.
 
 **D49:** four services active, 7.7 GB free. **Study 63** working.
+
+## Tick — 2026-07-31 20:32, PHASE-LOCK TEST RUN: the sawtooth is measurably gone
+
+Waited for n≥40 rather than reading it at 8, 20 or 34. At **n=41 new-leg
+superbatches** the test runs:
+
+| leg | peak−trough | σ | n |
+|---|---|---|---|
+| **CYCLING** sb700–1170 | **+0.000116 ± 0.000010** | **+11.84** | 71/69 |
+| **DECAY** sb1171–1211 | **−0.000030 ± 0.000023** | **−1.32** | 6/6 |
+
+**No phase-lock on the decay leg.**
+
+### The null is powered, which is what makes it mean anything
+
+A non-significant result with n=6 per bin invites "underpowered". It is not:
+
+| | |
+|---|---|
+| decay-leg standard error | 0.000023 |
+| detectable at 2σ | 0.000046 |
+| cycling effect size | **0.000116** |
+| **cycling effect ÷ detection threshold** | **2.5×** |
+
+**The test can comfortably see a cycling-magnitude sawtooth, and does not see
+one.** That converts −1.32σ from "no evidence" into "evidence of no effect at the
+relevant scale."
+
+**Two independent confirmations now agree**, which is the standard this log has
+been holding itself to:
+
+1. **Structural** — the ramp is monotone decreasing across all 134 points, checked
+   against the closed form `1.579e-5 × 0.996ⁿ`. There is no phase to lock to.
+2. **Empirical** — the phase-lock statistic that read **+11.84σ** under cycling
+   now reads **−1.32σ**, with the power to have caught it.
+
+The cyclical schedule is off, and that is measured rather than assumed from the
+config file.
+
+**D49:** sb1211, heldout ema **0.010539** — still falling (0.010564 → 0.010539),
+185k pos/s, four services active, 7.5 GB free, 146 GB disk. **Study 63** working.
