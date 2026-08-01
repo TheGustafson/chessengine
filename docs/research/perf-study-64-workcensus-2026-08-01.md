@@ -345,14 +345,76 @@ therefore removes **a whole ply-fold in both channels plus a whole head pass**:
 > (`smallnet_thresh` / `smallnet_mat_gate` / `smallnet_halfka`) that this engine
 > already carries, fully wired and currently inert.
 >
-> **Stockfish removed its small net (`ab8f901d`) and that decision does NOT
-> transfer**, for a reason this study can now state numerically: SF's fold is
-> ONE channel, ours is two, and the threat channel alone is **54.7 % of our
-> folded rows**. The cost a cheap predictor has to beat is roughly twice SF's.
+> **Stockfish removed its small net (`ab8f901d`), and whether that decision
+> transfers is OPEN.** An earlier draft of this section argued it does not,
+> "because SF's fold is one channel and ours is two". **That is wrong and is
+> retracted** — see §5.1. Our fold is 1.25× SF's, not 2×, so SF's own
+> cost/benefit is much closer to ours than that argument claimed, and the
+> honest statement is that a cheap predictor has to beat a bar 1.25× higher
+> than the one SF judged not worth clearing.
 
 **This is a D-decision and a training task, not a perf arm.** It changes node
 counts by construction, so it is arbitrated by games, not by a speed panel —
 and pre-registering that here is the point of measuring it.
+
+### 5.1 A RETRACTION, and a correction to a doc that landed mid-study
+
+`main` moved to `802cbb98` while this study was open. Two of its commits
+(`dbd43bb3`, `4a6d5f71`, both editing `docs/research/d48y-wdl-fix-plan.md`)
+compare our architecture against Stockfish's and the owner rules on it. Read
+against the source rather than against either document
+(`eca43a97:src/nnue/nnue_architecture.h`, lines 39–49 and 60–70):
+
+```
+using ThreatFeatureSet = Features::FullThreats;      // :39
+using PSQFeatureSet    = Features::HalfKAv2_hm;      // :40
+constexpr IndexType TransformedFeatureDimensionsBig = 1024;   // :43
+constexpr int       L2Big = 15;                               // :44
+constexpr int       L3Big = 32;                               // :45
+...
+Layers::AffineTransformSparseInput<TransformedFeatureDimensions, FC_0_OUTPUTS + 1> fc_0;
+Layers::AffineTransform<FC_0_OUTPUTS * 2, FC_1_OUTPUTS>                            fc_1;
+```
+
+**RETRACTED (mine).** I wrote that "SF's fold is ONE channel, ours is two".
+**Stockfish runs `Features::FullThreats` as well**, and `dbd43bb3` is right
+that the input spaces are identical. The retraction weakens §5's closing
+argument and I have rewritten it above rather than quietly dropping it.
+
+**CORRECTION (`dbd43bb3`).** That commit prices SF's `fc_0` at **262,144
+against our 163,840, "SF 1.600×"**, and builds a two-cost-regimes story on it
+("SF spends 1.6× more on the free layer to spend 0.8× on the expensive one").
+**SF's `fc_0` output width is `FC_0_OUTPUTS + 1` = 15 + 1 = 16, not 32** — the
+32 is `L3Big`, i.e. `fc_1`'s output. So SF's `fc_0` is `1024 × 16 × 8 buckets =
+131,072` against our `1280 × 16 × 8 = 163,840`: **SF is 0.800×, the same 0.800×
+as its feature transformer, not 1.600×.** Confirmed on our side from
+`sota_head.rs`: `L1 = 1280`, `L2 = 16`, `L3 = 32`, `BUCKETS = 8`, and
+`l1_weights` measures 163,840 bytes in the region census.
+
+> **The corrected comparison is simpler and stronger than the one it replaces.**
+> Every layer of Stockfish's big net is our layer at **exactly 1024/1280 =
+> 0.800×**: same two feature sets, same 16-wide `fc_0`, same 32-wide `fc_1`,
+> same 8 buckets. There is no trade between a cheap layer and an expensive one
+> — there is one width, applied everywhere. **The measured 1.263× speed ratio
+> against a 1.250× width ratio is the whole story**, and it is the same
+> conclusion `dbd43bb3` reached, now resting on one number instead of two
+> offsetting ones. (Our `skip_weights` lane is the one real shape difference:
+> SF gets it free as `fc_0`'s 16th row, we carry it as a separate 1280-byte
+> dot — which `forward_into`'s own comment already says.)
+>
+> It also puts a caveat on `4a6d5f71`'s "L2 remains a separate open dial …
+> doubling 16→32 costs almost nothing in traffic". Doubling `L2` doubles
+> `l1_weights` from 20,480 to 40,960 bytes per bucket, and §2.2 measures that
+> table's gather at **6.16 % of engine latency at ~97 % L2 hits** on a 91.44 %
+> L1-miss stream (study 51). It is cheap, not free, and it would be the second
+> time this table doubled.
+
+**The owner ruling (`4a6d5f71`) is what this study was already assuming**: L1 =
+1280 stands and may grow, and traffic-reduction work is the lever a wider
+accumulator does not blunt. Note what that does to §6.1: **narrowing the STORED
+row is the only byte-cut that is compatible with keeping — or growing — L1**,
+because it cuts bytes per lane rather than lanes per row. It is now the one
+open route in the 55.25 %.
 
 ---
 
@@ -460,7 +522,14 @@ Most doubtful first.
    either as "the from-scratch row count".
 6. **No games.** Nothing landed changes behaviour, so there is nothing to play.
    The one arm worth playing (§5) is not built.
-7. **The 6-bit unpack cost (§6.1) is an instruction estimate, not a
+7. **I published a wrong claim about Stockfish's architecture and caught it
+   only because `main` moved.** §5's first draft said SF runs one feature
+   channel to our two; it runs both (§5.1). I inferred it from CLAUDE.md's
+   perf-study-7 banner instead of opening
+   `eca43a97:src/nnue/nnue_architecture.h`, which is precisely the failure
+   CLAUDE.md's Stockfish section warns about. The correction is in §5.1 and the
+   argument that rested on it is rewritten, not deleted.
+8. **The 6-bit unpack cost (§6.1) is an instruction estimate, not a
    measurement.** Whether ≈ 80 extra shuffle-port ops per row are absorbed by a
    backend-bound machine (study 63's finding) or serialise on Zen 4's single
    shuffle port is exactly the question that arm has to answer, and I did not
@@ -482,7 +551,7 @@ Most doubtful first.
 | `cargo test --release --test perft_suite -- --ignored perft_full_suite` | **ok** (1 passed) |
 | `cargo clippy --all-targets` (default) and `--features sota,arch-d48x,foldcount` | **clean, both** |
 | `cargo fmt` | clean |
-| rebase re-gate (study 56's `bcmisc55` rule) | opened and closed on `4d41d407`; `main` did not move during the study |
+| rebase re-gate (study 56's `bcmisc55` rule) | opened on `4d41d407`; `main` moved to **`802cbb98`** during the study. `git diff --stat 4d41d407 802cbb98` is **one docs file and no `src/`, no `Cargo.toml`**, so no measurement expired. Rebased; the gate row above was run on the rebased tree, and `base3` (rebuilt from the final tree) still reproduces `.text` md5 `75c9955e`. Two of those commits make architecture claims this study checked against the source — §5.1 retracts one of mine and corrects one of theirs. |
 
 D24 perft ritual not strictly required (nothing under `movegen`, `board`
 mutation, `zobrist` or `attacks` is touched) — run anyway.
@@ -498,6 +567,9 @@ mutation, `zobrist` or `attacks` is touched) — run anyway.
    byte cut is convex (a 20 % byte cut was a 30 % cut in L2-missing bytes), so
    the latency payoff is plausibly ~1.4× the byte figure — but the unpack cost
    is unmeasured (§7 item 7) and that is the first thing to panel.
+   **`4a6d5f71` makes this the ONLY open route in the 55.25 %**: with L1 = 1280
+   ruled permanent and possibly growing, bytes-per-lane is the one term in
+   `rows × lanes × bytes` still free to move.
 2. **The 45 % prize is a NET decision, not a kernel one** (§5). If anyone
    proposes work on the fold kernels again, the ceiling on all of it is
    `55.25 % × (whatever fraction of ROW BYTES the arm removes)`, and every
