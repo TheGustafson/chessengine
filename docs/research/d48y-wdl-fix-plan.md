@@ -14703,3 +14703,60 @@ is false and would have become a permanent bad rule.
 **Still unresolved and unchanged:** the MECHANISM of the parity cliff. Depth is
 refuted (13.209 vs 13.204). Every arm is fixed-node; real-TC confirmation is
 still required before any frame decision ships.
+
+---
+
+## 2026-08-01 03:40 — STUDY 66: three bit-exact arms, all negative, and it REFUTES STUDY 65's mechanism
+
+**No speed win landed. The value is that the whole family is now closed with the
+cost decomposed** — and that a mechanism I merged four hours ago was wrong.
+
+**1. The compacted layout does not rescue study 65, AND study 65's explanation
+was false.** Study 65 blamed its +13.23% L2 misses on the dead 320-byte tail the
+prefetcher fetches anyway. Removing the tail ENTIRELY converts **-0.81% of L2
+misses (6/8 rounds)**, and `l2_pf_hit_l2.all` is still **+18.09% with no tail in
+existence**. I merged that mechanism into main at `908126d0` and wrote it into
+the handoff as the reusable insight. **It was wrong, and only building the
+successor exposed it.**
+
+**2. The real cost is the INDIRECTION, not the decode or the tail.** Isolated
+inside one binary: the 243 KB row map ALONE costs **+6.02% instructions, +6.49%
+task-clock, +15.28% L2 misses** (0/8 negative) — ~1.7 L2 misses per lookup. The
+6-bit pack on top buys **-2.21% L2 misses** for **+7.63% instructions**. **So
+even a FREE map loses.** Study 64 §6.1 named that table; study 65 designed around
+it and blamed the prefetcher.
+
+**3. Locality converts nothing — a two-sided null.** The block transpose cut the
+share of a fold's row pairs sharing a 4 KB page by **3.32x (2.794% -> 0.842%,
+PHYSICAL offsets)** and moved every counter by <=1.5% at 2-4/8 sign counts. The
+agent predicted the opposite direction and its own physical-offset census caught
+it. **Mechanism: the fold is MISS-PARALLEL** — one tile walk exposes ~80
+independent line accesses inside a ~320-uop window, so misses are already all in
+flight and limited by MSHRs, not address proximity. That also kills
+"prefetch the next row" BY CONSTRUCTION, since the tile walk touches every row of
+the fold inside tile 0. **This closes brief routes 1 and 3 with a number.**
+
+Route 5 (redundant work) priced out: threat folds carry **1.93% exactly-cancelling
+rows**, HalfKA **0%**, repeats **0** — 1.05% of folded rows against ~5
+comparisons per fold.
+
+Methodology worth keeping: **five physical layouts as five DATA MODES of ONE
+binary**, so every contrast shares `.text` byte-for-byte and box load cancels.
+All arms bit-exact (5,001,560 nodes + eval hash exact in every mode), 8 shuffled
+rounds.
+
+**MY BRIEF CARRIED STALE PROFILE SYMBOLS, AND I VERIFIED IT.**
+`grep -rn 'fn i16_deltas_into|fn i16_deltas_dual' src/` returns **NOTHING** —
+those functions do not exist; perf study 32's i8 conversion replaced them. The
+live hot symbols are **`avx512::i8_into_shaped` (53.61% of L1-miss latency,
+`sota_simd.rs:1864`)**, `forward_into` (14.44%, `sota_head.rs:621`),
+`finny_refresh_into` (6.72%, `sota_accumulator.rs:632`).
+
+**The standing directive's "Unexplored, from our OWN profile" list still names
+`i16_deltas_into 13.14%` and `current_full 3.28%` — it has been pointing studies
+at a DEAD SYMBOL.** Any future brief must use the list above.
+
+Gate: `gate66.service` verifying (agent reports exit 0, all three pins unmoved,
+724 tests green, off-path +48 B `.text` / +0.163 instructions/node, node- and
+eval-identical). It also stripped 14 MB of arm binaries a `git add -A` had swept
+into branch history and gitignored `bin66/`.
