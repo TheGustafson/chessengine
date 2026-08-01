@@ -16792,3 +16792,43 @@ via `mainwt` all session while *code* edits landed in the primary checkout on a
 different branch. Those two habits are individually fine and together they
 silently split the work. Any source edit made in the primary checkout needs the
 same "which branch am I on" check that the handoff file got at 23:48.
+
+---
+
+## 2026-08-01 11:47 — ★ CYCLE 2 DOES NOT COMPOUND: +9.50 vs cycle 1's +9.27
+
+| checkpoint | phase | Elo vs canonical |
+|---|---|---:|
+| sb1540 | anchor | +3.47 ± 11.22 |
+| sb1570 | cycle 1 anneal end | +9.27 ± 11.04 |
+| **sb1600** | **cycle 2 anneal end** | **+9.50 ± 10.86** |
+
+**Cycle 2 landed +0.23 above cycle 1 — indistinguishable.** The second
+jump→anneal bought essentially nothing on top of the first.
+
+**Pooling the two anneal-end checkpoints (3000 games): +9.38 ± 7.78.**
+Against the anchor's +3.47 ± 11.22 that is **+5.91 ± 13.65 — still NOT
+significant.**
+
+**But the CONSISTENCY is the informative part.** Two independent 1500-game
+screens of two different checkpoints landed within **0.23 Elo** of each other, in
+a series whose measured point-to-point spread is **13 Elo**. That is not what
+noise usually does. The reading it supports: **jump→anneal moves the net to a
+level around +9.4 and holds it there** — a one-time relocation rather than a
+per-cycle gain.
+
+**If that is right, the practical recipe changes**: one jump→anneal cycle is
+worth running, three are not, and the 60 superbatches spent on cycles 2 and 3
+would be better spent on plain training — which the undertraining result
+(**+30.31 ± 11.0** for 1000 superbatches) says is worth ~0.03 Elo/sb, i.e. ~1.8
+Elo for 60 sb. So the cycles are not obviously *worse* than plain training; they
+are just not compounding.
+
+**NOT concluded, and the A/B is what decides it.** `d49c3` runs cycle-3 sb1630
+against the sb1540 anchor directly — **one match, one bar (±10)** — which
+resolves +5.91 ± 13.65 into something that can clear zero. If three cycles read
+~+6 ± 10 there, the effect is real but small and non-compounding; if ~0, cycle 1
+was the series' ordinary spread.
+
+**Cycle 3 at sb1613** (13 of 30), 196.3k pos/s, no mid-cycle exports —
+`export_every` holding. Memory 7979 MB.
