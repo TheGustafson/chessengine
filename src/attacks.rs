@@ -788,11 +788,18 @@ fn init_magics(
 
 static TABLES: LazyLock<AttackTables> = LazyLock::new(AttackTables::new);
 
-/// Force/fetch the magic tables. Every deref of the `LazyLock` behind this
-/// costs an atomic acquire load plus a predicted branch — cheap, but hot
-/// loops (movegen, SEE, eval) should call `tables()` once at function entry
-/// and use the `&'static AttackTables` methods thereafter. `main` forces it
-/// before the UCI loop so init never happens mid-search.
+/// Force/fetch the magic tables. `main` forces it before the UCI loop so init
+/// never happens mid-search.
+///
+/// ⚠ **If a `Board` is in scope, call [`crate::board::Board::attack_tables`]
+/// instead.** Every deref of the `LazyLock` behind this is an atomic acquire
+/// load of the `Once` state, a branch, **and** a `lea` to materialise the table
+/// base (x86 RIP-relative addressing has no index register, so `magics[sq]`
+/// cannot fold the static's address into its own operand). Nothing may hoist
+/// that out of a recursive function. Perf study 69 §2 measured the whole
+/// sequence at **5.14 executions per node** in the shipped engine and moved
+/// every `Board`-side caller onto a field read; what is left here is the
+/// startup force, the tests, and the two NNUE threat paths that hold no board.
 #[inline]
 pub fn tables() -> &'static AttackTables {
     &TABLES

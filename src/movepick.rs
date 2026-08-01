@@ -1112,11 +1112,12 @@ impl MovePicker {
         let c6 = hist.cont_ref(self.cont_hist[5]);
         let ply = self.ply;
         let low_ply_plane = (ply < LOW_PLY_SIZE).then(|| &hist.low_ply[ply]);
-        // Hoist the slider-table `LazyLock` deref (CLAUDE.md hot-loop rule).
-        // Since perf study 12 §5 the offense term no longer calls `attacks()`
-        // per quiet — it builds one reverse fan per piece type below — so this
-        // is now paid once per `init_quiets` and read only inside that fan.
-        let att_tables = crate::attacks::tables();
+        // The slider tables. Since perf study 12 §5 the offense term no longer
+        // calls `attacks()` per quiet — it builds one reverse fan per piece
+        // type below — so this is paid once per `init_quiets` and read only
+        // inside that fan. Perf study 69 §2: read off the BOARD, not through
+        // `attacks::tables()`, so it is one `mov` and not a `LazyLock` guard.
+        let att_tables = board.attack_tables();
 
         // Perf study 12 §5 — the offense term, turned inside out.
         //
