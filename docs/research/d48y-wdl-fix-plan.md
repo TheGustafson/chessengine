@@ -17868,3 +17868,47 @@ not merge a hack believing it is finished**.
 
 **Next action once that lands: merge the teacher path to main** so training runs
 from a checkout the coordinator controls.
+
+---
+
+## 2026-08-01 16:18 — THIRD OOM TOOK THE TRAINER. The fix is SERIALIZATION, not a guard.
+
+**Two OOMs in four minutes:**
+
+| time | victim | trainer |
+|---|---|---|
+| 16:04:10 | `npm run build` (node, 4.4 GB, owner's terminal) | survived |
+| **16:06:17** | **`d49train.service`** — `Failed with result 'oom-kill'`, 5.2 GB peak | **KILLED** |
+
+MemAvailable fell **1508 → 179 MB in twelve seconds** during a cargo parallel
+phase, with five rustc live beside the trainer.
+
+**Restarted and running**: `d49train` active, GPU 7633 MiB, resumed from sb1632,
+producing superbatches.
+
+**★ MY `trainguard` DOES NOT WORK, and I checked rather than assumed.** It raises
+disposables to `oom_score_adj=1000`. Manually the write succeeds (200 → 1000), so
+it is not permissions — **`rustc` processes are short-lived**, so most are younger
+than the 15 s sweep and still read **200** when the kernel chooses. Meanwhile the
+trainer sits at **oom_score 972** because of its ~4 GB RSS, and its
+`oom_score_adj=200` is inherited from the harness and **cannot be lowered without
+`CAP_SYS_RESOURCE`**.
+
+**So the guard is a band-aid and the real fix is scheduling** — which is exactly
+what the teacher agent concluded after its own verification panel killed the
+trainer: **"nothing else runs while a trainer runs."**
+
+**Issued as a hard constraint to the simplification-execution agent:** check
+`systemctl --user is-active d49train` before every build; if active, wait and
+poll. Told explicitly **not** to work around it by trimming parallelism —
+`CARGO_BUILD_JOBS=2` and `MemoryMax=6G` were already in force at 16:06 and the
+trainer died anyway. **The problem is the sum, not any single job.** Also told
+that `free -m >= 2500` is necessary but **not sufficient**, with the twelve-second
+collapse as the receipt.
+
+**Offered it a scheduled window rather than a blocker**, since Tier 0 is
+bit-identical but still needs builds to verify its gate — that is a scheduling
+problem, not a failure on its part.
+
+**Standing consequence for this box: trainer OR builds, never both.** Three OOMs
+today all have the same shape.
