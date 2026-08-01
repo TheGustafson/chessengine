@@ -158,6 +158,13 @@ search-control = []
 # store, and a `&mut Worker` field live across the recursive search call is a
 # place. Measured numbers: docs/research/perf-study-68-layout-2026-08-01.md.
 search-stats = []
+# Perf study 68's LAYOUT NULL. One cold, never-called function whose only job is
+# to shift `.text` and re-roll every downstream symbol's L1i set mapping while
+# changing nothing the search executes. It exists to measure how much of an
+# arm's `ic_cache_fill_l2` delta is the arm and how much is the lottery.
+# Default OFF and it must never ship. See src/lib.rs and
+# docs/research/perf-study-68-layout-2026-08-01.md §2.6.
+pad68 = []
 # The SOTA NNUE net (D40, design/11 §12): SF features + Reckless-shaped hybrid
 # head. OFF by default (the whole SOTA path is inert until it ships), so the
 # default build + depth-6 bench stay byte-identical. Build with `--features sota`.
