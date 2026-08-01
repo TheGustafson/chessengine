@@ -452,6 +452,22 @@ class TrainConfig:
     # the 2026-07-26 D47V 1.378× output-scale gotcha.
     teacher_frame_offset: float = 0.0
     teacher_frame_scale: float = 0.0
+    # SF-NET TEACHER frame (sf-teacher-blend-2026-08-01). The two scalars above
+    # cannot express it and no scalar can: an SF net emits raw internal units,
+    # and the measured conversion into our label frame is
+    #     label_frame = k_i * (1 + material/77871)^p_i * teacher_raw
+    # per corpus AND per position. Over the (corpus x material) grid the
+    # multiplier runs 0.319-0.604 (1.90x); the weight-averaged constant 0.4182
+    # is wrong by up to +45%, and uho (25% of the mix) is off -20% at low
+    # material and +19% at high BY THE SAME CONSTANT. So this is a list of
+    # (k, p), indexed POSITIONALLY against `mix` exactly like
+    # per_corpus_target (verified against the data, not assumed — that study
+    # §3, 11/12 corpora reproduce their own slot to <=1.6%).
+    # None = no SF teacher, and every code path it touches stays inert.
+    teacher_kp: tuple | None = None
+    # The teacher's ArchSpec kwargs (tools/nnue/sf_to_archon_warm.py
+    # --dump-arch). Empty = the historical ArchSpec.full() teacher.
+    teacher_arch: tuple = ()
     # --- D49 (2026-07-29). All default to the historical behaviour, so an
     # untouched config trains bit-identically to before.
     # Loss: SF applies the offset two-sigmoid to BOTH sides; D48Y2 did the

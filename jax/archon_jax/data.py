@@ -25,7 +25,8 @@ import threading
 import numpy as np
 
 from .features import canonical_orient, map_batch, policy_move_id
-from .spec import POLICY_MASK_ILLEGAL, POLICY_VOCAB, RECORD_DTYPE, THREAT_DIMS, TrainConfig
+from .spec import (EVAL_BLEND_BASE, POLICY_MASK_ILLEGAL, POLICY_VOCAB,
+                   RECORD_DTYPE, THREAT_DIMS, TrainConfig)
 
 
 def _threat_remap_of(cfg: TrainConfig) -> np.ndarray | None:
@@ -181,6 +182,17 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
         _off = np.asarray([o for o, _ in _pct], dtype=np.float32)
         _scl = np.asarray([b for _, b in _pct], dtype=np.float32)
 
+    # SF-net teacher: per-corpus (k, p), indexed positionally against `mix`
+    # exactly like per_corpus_target (that positional claim is verified against
+    # the data, not assumed — sf-teacher-calibration-2026-08-01 §3).
+    _kp = getattr(cfg, "teacher_kp", None) or None
+    if _kp is not None:
+        if len(_kp) != len(bins):
+            raise ValueError(
+                f"teacher_kp has {len(_kp)} entries for {len(bins)} corpora")
+        _tk = np.asarray([k for k, _ in _kp], dtype=np.float32)
+        _tp = np.asarray([p for _, p in _kp], dtype=np.float32)
+
     _remap = _threat_remap_of(cfg)
     _region_kw = _region_kwargs_of(cfg)
 
@@ -192,7 +204,30 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
             t_scl = cfg.scale
         out = map_batch(recs, wdl=cfg.wdl, score_multiplier=cfg.score_multiplier,
                         scale=t_scl, policy=policy, threats=threats,
-                        target_offset=t_off, threat_remap=_remap, **_region_kw)
+                        target_offset=t_off, threat_remap=_remap,
+                        sf_bucket=_kp is not None, **_region_kw)
+        if _kp is not None:
+            # SF-net teacher frame, per corpus AND per position
+            # (sf-teacher-calibration-2026-08-01 §4):
+            #   label_frame_teacher = k_i * (1 + material/77871)^p_i * raw
+            # A SCALAR cannot do this job: the multiplier runs 0.319-0.604 over
+            # the (corpus x material) grid, one constant is wrong by up to
+            # +45%, and `uho` -- 25% of the mix on its own -- is mispriced -20%
+            # at low material and +19% at high BY THE SAME CONSTANT, so no
+            # better scalar exists. Computed host-side because `material` is a
+            # property of the record we already decoded, and only the finished
+            # multiplier needs to reach the device.
+            mat = out.pop("material")
+            k = _tk[src] if src is not None else _tk[0]
+            p = _tp[src] if src is not None else _tp[0]
+            out["teacher_mult"] = (
+                k * (1.0 + mat / EVAL_BLEND_BASE) ** p).astype(np.float32)
+            # The teacher's cp must go through the SAME per-corpus draw-aware
+            # transform as the label it is blended with, or the two halves of
+            # `target` are different quantities again (the D48Y bug).
+            ones = np.ones(len(recs), np.float32)
+            out["t_off"] = (t_off * ones).astype(np.float32)
+            out["t_scl"] = (t_scl * ones).astype(np.float32)
         if policy and legal_mask:
             if str(legal_mask) == "ids":
                 out["pol_legal"] = legal_move_ids(recs, out["pol_target_id"])
