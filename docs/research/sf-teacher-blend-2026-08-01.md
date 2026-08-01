@@ -291,7 +291,34 @@ teacher (today's code), **B** teacher wired at α=0, **C** teacher wired at
 α=0.4. B must be bit-identical to A; **C must differ**, because a null that
 passes through a disconnected harness proves nothing.
 
-Result: see `jax/tools/sf_teacher_null.py` output, recorded in §9 below.
+**STATUS: NOT RUN TO A VERDICT. This gate is OWED.** Arm A completed; arms B
+and C never did. Three attempts, each killed by something other than the claim
+under test — a missing `archon_mask.so`, a double-donated device buffer in my
+own harness, and finally the box's memory. Do not read the absence of a
+failure as a pass.
+
+What IS known without running it: at α=0 the teacher branch is a **Python-level
+`if`** on `d_alpha`, a float captured when `make_update_step` traces
+(`train.py`: `if t_params is not None and d_alpha > 0.0:`). The teacher forward
+is therefore never traced into the graph, and the data path only ADDS keys
+(`t_bucket`, `teacher_mult`, `t_off`, `t_scl`) without touching `target`. So
+inertness is a static property of the code, not a numerical coincidence. That
+is an argument, not a measurement, and it does not discharge the gate.
+
+Command (the `--student-hl` panel is the one to use — it tests the identical
+code path at ~1/10th the memory, and running the production width beside a live
+trainer is what oom-killed the probe on 2026-08-01):
+
+```
+cd jax && JAX_PLATFORMS=cpu uv run --no-project --with numpy==2.5.1 \
+  --with 'jax[cuda12]==0.11.0' --with optax==0.2.8 -- \
+  python tools/sf_teacher_null.py ../tools/nnue/runs/d49_sfblend_probe.json \
+    --steps 4 --batch 256 --stream-from 0 --student-hl 128
+```
+
+Expect `NULL A vs B -> BIT-IDENTICAL` and `CTRL A vs C` differing on many
+tensors. **If C does not differ, the null proves nothing** and the harness is
+disconnected.
 
 The config for all three comes from `pump_train.build_cfg` — extracted in this
 change for exactly this reason. A null that tests a configuration the trainer
@@ -355,3 +382,60 @@ Two things to read off that line, and one not to.
    `jnp.asarray` on an already-device array is a no-op, so building the shadow
    from `params` shares them. `pump_train` carries a comment warning about
    exactly this and I reproduced it anyway.
+
+**15:43:42 — the probe was OOM-killed, and I caused it.** I started the gate-3
+null on CPU beside the live trainer; at the production width that panel holds
+~1.7 GB (params + Adam m,v + EMA) and the box has 15 GB shared with other
+agents. `archon-d49sfb.service: The kernel OOM killer killed some processes in
+this unit.` Checkpoints through **sb1632** survived complete (raw + ema + both
+quants); sb1634's raw had been written but not its EMA pair, so it was removed
+rather than left as a half-set for a resume scanner to find.
+
+**The rule this earns: nothing else runs while a trainer runs.** Not a build,
+not a match, not a verification panel. The null now has `--student-hl` for
+exactly this reason.
+
+---
+
+## 10. HANDOVER
+
+Training ownership returned to the coordinator (owner's ruling: subagents do
+not own training runs). Nothing of this agent's is running.
+
+**Merge to main:** commits `859133f1..HEAD` on
+`worktree-agent-ac79f75828e3be36d`, based on main at `962ffc3c`. Fast-forward.
+
+| file | new? | production-ready? |
+|---|---|---|
+| `tools/nnue/sf_to_archon_warm.py` | new | yes |
+| `jax/archon_jax/spec.py` (`sf_act`, `teacher_kp`, `teacher_arch`, SF consts) | edit | yes, all default-inert |
+| `jax/archon_jax/model.py` (`_dual(x, sf_act)`) | edit | yes, default False |
+| `jax/archon_jax/features.py` (`map_batch(sf_bucket=)`) | edit | yes, default False |
+| `jax/archon_jax/data.py` (`teacher_kp` → `teacher_mult`/`t_off`/`t_scl`) | edit | yes, `None` = inert |
+| `jax/archon_jax/train.py` (t_bucket routing + SF frame) | edit | yes, gated on batch keys |
+| `jax/tools/pump_train.py` (`build_cfg`, `teacher_arch`, `teacher_kp`) | edit | yes |
+| `jax/tools/sf_teacher_parity.py` / `_frame_check.py` / `_null.py` | new | yes (the gates) |
+| `tools/nnue/make_sfblend_probe.py` | new | yes |
+| **`tools/nnue/launch_sfblend_probe.sh`** | new | **PROBE-SCOPED** — `WT` defaults to this agent's worktree; repoint or delete after merge |
+| `docs/research/sf-teacher-calibration-2026-08-01.{md,json}`, `tools/nnue/sf_teacher_calibration.py`, `verify_per_corpus_target.py` | carried from `worktree-agent-a93f7f3c53481113a` | unchanged copies; identical content merges cleanly |
+
+**Non-git artifact.** `data/nnue/teachers/sf-eca43a97-teacher-raw.bin`,
+344,805,073 B, sha256 `56db9451563a14d1…d7e9da6e`. Fully reproducible in ~5 s,
+numpy only, no jax and no GPU:
+
+```
+python3 tools/nnue/sf_to_archon_warm.py \
+    /home/nick/sf-eca43a97/src/nn-0ee0657fb25e.nnue \
+    data/nnue/teachers/sf-eca43a97-teacher-raw.bin
+```
+
+from `nn-0ee0657fb25e.nnue`, sha256 `0ee0657fb25ec3fe…60c611a7`.
+
+The run spec is generated, not committed (`tools/nnue/runs/` is gitignored):
+`python3 tools/nnue/make_sfblend_probe.py`.
+
+**Worktree-only scaffolding, NOT needed on a full checkout:** symlinks `data`,
+`engines/bin`, `jax/archon_mask.so`, and a copy of `d49_x500_1280.json` under
+`tools/nnue/runs/`. A normal checkout has all four for real.
+
+**Owed:** gate 3 (§7), and the matched α=0 control for the probe (§8).

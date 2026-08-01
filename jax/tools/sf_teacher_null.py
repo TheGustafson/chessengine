@@ -63,6 +63,15 @@ def main() -> int:
     # live GPU run. `--stream-from 0` also avoids materialising the ~5 M-entry
     # skip schedule three times, which dominates the runtime otherwise.
     ap.add_argument("--batch", type=int, default=0, help="override batch_size")
+    # MEMORY, and it is not theoretical: run at the production hl=1280 this
+    # panel holds params + Adam m,v + EMA ~= 1.7 GB, and on 2026-08-01 doing
+    # that beside the live probe got the PROBE oom-killed. Bit-identity at
+    # alpha=0 is a property of the CODE PATH, not of the student's width, so a
+    # narrow student tests the identical claim for ~1/10th the memory. The
+    # TEACHER stays the real 1024-wide SF net either way.
+    ap.add_argument("--student-hl", type=int, default=0,
+                    help="shrink the student and init from seed instead of the "
+                         "warm checkpoint (the cheap, always-safe panel)")
     ap.add_argument("--stream-from", type=int, default=-1,
                     help="superbatch offset for the BATCH STREAM (default: "
                          "--resume-sb; 0 = start of the corpus, much cheaper)")
@@ -77,6 +86,8 @@ def main() -> int:
 
     spec = json.loads(Path(a.spec).read_text())
     arch = ArchSpec.from_run_spec(spec)
+    if a.student_hl:
+        arch = dataclasses.replace(arch, hl=a.student_hl)
     base = pt.build_cfg(spec, a.resume_sb + 1)
     stream_from = a.resume_sb if a.stream_from < 0 else a.stream_from
     if a.batch:
@@ -102,7 +113,12 @@ def main() -> int:
             # Arm A is TODAY'S run: no teacher object, and no teacher_kp — so
             # the data path does not even emit t_bucket / teacher_mult.
             cfg = dataclasses.replace(cfg, teacher_kp=None)
-        host = ck.load_warm(warm, arch)
+        if a.student_hl:
+            from archon_jax import model as _m
+            host = {k: np.asarray(v)
+                    for k, v in _m.init_params(arch, 12345).items()}
+        else:
+            host = ck.load_warm(warm, arch)
         opt, step = make_update_step(
             arch, cfg, teacher=(t_params, t_arch) if with_teacher else None)
         opt_state = opt.init(host)
