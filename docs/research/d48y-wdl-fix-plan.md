@@ -16461,3 +16461,38 @@ step further from Elo than the heldout is. The answer comes from the anchor and
 cycle screens against canonical.
 
 Next heldout at sb1550; anchor baseline screen still running.
+
+---
+
+## 2026-08-01 09:32 — ★ ANCHOR BASELINE MEASURED: sb1540 = +3.47 ± 11.22. The experiment now has a reference.
+
+**`d49xml` completed the anchor screen:** D49 **sb1540 vs canonical = +3.47 ±
+11.22** over 1500 games (W480 / L465 / D555, 50.50 %). **This is the number every
+LR cycle is measured against.** It sits inside the pooled sb1350–1450 band
+(+8.41 ± 3.89), as a single ±11 screen should.
+
+**Cycle 1 at sb1554 of 1570**, 185.5k pos/s. Heldout confirmed running in the
+cycle (it logs to journald, which is why the bridge exists).
+
+**The jump's effect on heldout, which is the dynamic to watch:**
+
+| | value | ema |
+|---|---:|---:|
+| sb1500 (pre) | 0.010444 | 0.010437 |
+| sb1510 (pre) | 0.010443 | **0.010432** |
+| sb1520 (pre) | 0.010446 | 0.010435 |
+| sb1530 (pre) | 0.010427 | 0.010440 |
+| **sb1550 (post-jump)** | **0.010485** | **0.010468** |
+
+**Heldout got WORSE at the jump** — ema 0.010440 → 0.010468 — exactly as a 5×
+LR should. **The question the experiment asks is whether the anneal to 0 brings
+it back BELOW the pre-jump 0.010432–0.010440 band by sb1570**, i.e. whether the
+excursion buys a better basin or merely costs 30 superbatches.
+
+**Two readouts, and they can disagree** — which is the point of having both:
+- **heldout** at sb1560/1570 (cheap, immediate, and NOT Elo);
+- **games**: cycle 1's sb1570 screen vs the **+3.47 anchor** (slow, and the only
+  thing that decides).
+
+[[loss-is-not-elo]] means a heldout recovery is not a success and a heldout
+failure is not a verdict. Both get reported; the screen arbitrates.
