@@ -61,7 +61,14 @@ The 3/6–6/6 stack's consolidated verification (same three pins + full
 teacher probe after the 16:06 box OOM (see §4) and runs in the
 `simplify-verify` systemd unit; result recorded below.
 
-> **RESULT (filled when the unit completes):** pending.
+> **RESULT (2026-08-01 16:46): PASSED — the whole tier-0/0b stack is
+> bit-identical.** `simplify-verify2` on tip `e156d547`: cargo test green,
+> PIN 1 `bench 16 1 6 default depth` = **300694**, PIN 2 d13 wl50+net =
+> **2045128**, PIN 3 eval hash = **2e1ede95…79c4**, then the full
+> `CHECK_NNUE_GATE=1 tools/check.sh` (clippy, 12-combo feature matrix,
+> tests, release perft suite, bench fingerprint, NNUE behavioural gate)
+> exited 0 with `All checks passed.` No bisection needed. (First attempt
+> failed on a one-line rustfmt reflow — fixed in `e156d547`.)
 
 ## 2. Games-gated tiers (stages 2–4)
 
