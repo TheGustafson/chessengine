@@ -1,0 +1,28 @@
+    30.36%  s67-qt   s67-qt            [.] <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+    15.64%  s67-qt   s67-qt            [.] chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into_inner
+    12.22%  s67-qt   s67-qt            [.] <chessengine::eval::nnue::sota_head::SotaHead>::forward_into
+     9.96%  s67-qt   s67-qt            [.] <chessengine::movepick::MovePicker>::init_quiets
+     6.62%  s67-qt   s67-qt            [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+     3.05%  s67-qt   s67-qt            [.] <chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>
+     2.98%  s67-qt   s67-qt            [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into
+     2.70%  s67-qt   s67-qt            [.] chessengine::eval::nnue::sota_threats::record_square_touch
+     2.29%  s67-qt   s67-qt            [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current_full
+     2.16%  s67-qt   s67-qt            [.] chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into_generic
+     1.71%  s67-qt   s67-qt            [.] chessengine::eval::nnue::sota_loader::load_v2_bytes
+     1.36%  s67-qt   s67-qt            [.] <chessengine::movepick::MovePicker>::init_captures
+     1.28%  s67-qt   s67-qt            [.] <chessengine::board::Board>::see_ge
+     1.08%  s67-qt   s67-qt            [.] chessengine::attacks::init_magics
+     0.80%  s67-qt   s67-qt            [.] <chessengine::search::Worker>::do_move
+     0.80%  s67-qt   s67-qt            [.] chessengine::eval::nnue::sota_simd::avx512::i8_deltas_dual_generic
+     0.78%  s67-qt   s67-qt            [.] <chessengine::movepick::MovePicker>::init_evasions
+     0.72%  s67-qt   s67-qt            [.] <chessengine::search::Worker>::search::<chessengine::search::Pv>
+     0.54%  s67-qt   s67-qt            [.] <chessengine::history::Histories>::update_continuation_histories
+     0.51%  s67-qt   s67-qt            [.] chessengine::eval::nnue::sota_features::for_each_threat_at::<chessengine::eval::nnue::sota_features::refresh_threat_into_at::{closure#0}>::{closure#2}
+     0.37%  s67-qt   s67-qt            [.] chessengine::eval::nnue::sota_threats::record_outgoing
+     0.33%  s67-qt   s67-qt            [.] chessengine::eval::nnue::sota_loader::quantise_halfka
+     0.26%  s67-qt   s67-qt            [.] <chessengine::history::Histories>::update_all_stats
+     0.24%  s67-qt   s67-qt            [.] chessengine::movegen::generate::<2>
+     0.22%  s67-qt   s67-qt            [.] <chessengine::history::Histories>::update_correction_history
+     0.18%  s67-qt   s67-qt            [.] chessengine::eval::nnue::sota_threats::refresh_psqt_threat_at
+
+

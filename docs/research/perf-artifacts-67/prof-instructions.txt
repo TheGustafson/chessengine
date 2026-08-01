@@ -1,0 +1,30 @@
+    30.87%  s67-base  s67-base          [.] <chessengine::search::Worker>::search::<chessengine::search::NonPv>
+    15.07%  s67-base  s67-base          [.] chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into_inner
+    12.01%  s67-base  s67-base          [.] <chessengine::eval::nnue::sota_head::SotaHead>::forward_into
+     9.84%  s67-base  s67-base          [.] <chessengine::movepick::MovePicker>::init_quiets
+     6.38%  s67-base  s67-base          [.] <chessengine::eval::nnue::sota_threats::ThreatContext>::at_full
+     3.36%  s67-base  s67-base          [.] <chessengine::search::Worker>::qsearch::<chessengine::search::NonPv>
+     2.89%  s67-base  s67-base          [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::finny_refresh_into
+     2.85%  s67-base  s67-base          [.] chessengine::eval::nnue::sota_threats::record_square_touch
+     2.35%  s67-base  s67-base          [.] <chessengine::eval::nnue::sota_accumulator::HalfkaContext>::current_full
+     2.01%  s67-base  s67-base          [.] chessengine::eval::nnue::sota_simd::avx512::i8_deltas_into_generic
+     1.69%  s67-base  s67-base          [.] chessengine::eval::nnue::sota_loader::load_v2_bytes
+     1.27%  s67-base  s67-base          [.] <chessengine::movepick::MovePicker>::init_captures
+     1.18%  s67-base  s67-base          [.] <chessengine::board::Board>::see_ge
+     1.06%  s67-base  s67-base          [.] chessengine::attacks::init_magics
+     0.94%  s67-base  s67-base          [.] chessengine::eval::nnue::sota_simd::avx512::i8_deltas_dual_generic
+     0.71%  s67-base  s67-base          [.] <chessengine::movepick::MovePicker>::init_evasions
+     0.66%  s67-base  s67-base          [.] <chessengine::search::Worker>::do_move
+     0.61%  s67-base  s67-base          [.] <chessengine::search::Worker>::search::<chessengine::search::Pv>
+     0.52%  s67-base  s67-base          [.] <chessengine::history::Histories>::update_continuation_histories
+     0.47%  s67-base  s67-base          [.] chessengine::eval::nnue::sota_features::for_each_threat_at::<chessengine::eval::nnue::sota_features::refresh_threat_into_at::{closure#0}>::{closure#2}
+     0.33%  s67-base  s67-base          [.] <chessengine::types::Square as core::fmt::Display>::fmt
+     0.33%  s67-base  s67-base          [.] chessengine::eval::nnue::sota_loader::quantise_halfka
+     0.32%  s67-base  s67-base          [.] chessengine::eval::nnue::sota_threats::record_outgoing
+     0.30%  s67-base  s67-base          [.] <char as core::fmt::Display>::fmt
+     0.24%  s67-base  s67-base          [.] chessengine::eval::nnue::sota_threats::refresh_psqt_threat_at
+     0.22%  s67-base  s67-base          [.] chessengine::movegen::generate::<2>
+     0.17%  s67-base  libc.so.6         [.] malloc
+     0.16%  s67-base  s67-base          [.] <chessengine::history::Histories>::update_correction_history
+
+

@@ -441,6 +441,44 @@ ttspec2_42 = []
 # construction (a hint computes no value the score depends on) and gated on
 # the `Bench:` fingerprint like every other study arm.
 histpf44 = []
+# ---- perf study 67: THE INSTRUCTION-CACHE ARM.
+#
+# `search::<NonPv>` is 45,565 bytes against a 32 KB L1i and carries **34.06 %
+# of the engine's L1i line fills** (`ic_cache_fill_l2`, per-symbol). The engine
+# takes 128.0 L1i fills per node and spends **445.7 cycles/node with a
+# completely empty op queue** (`de_op_queue_empty`, startup subtracted) — 11.5 %
+# of the frame, a pool no previous study in this series had an instrument for.
+#
+# `icold67` marks the callees PGO folds into the search body that carry the
+# worst BYTES-PER-OP ratio (perf study 67 §3's inline-callee byte census):
+# `tt_verify_child` (3,520 B / 0.1 % of the symbol's ops), `evaluate`
+# (2,605 B / 1.9 %), `update_all_stats` (2,894 B / 4.0 %), `check_time_slow`
+# (495 B / 0.2 %), `new_probcut`, `make_null_move`/`unmake_null_move`,
+# `is_shuffling` (237 B / 0.0 %).
+#
+# It deliberately INVERTS study 55's `#[inline(always)]` ruling on two of them.
+# That ruling was made on `instructions:u`, which is blind to code size
+# (study 57's dispatch table: −113 i/n while L1i misses rose 6.2 %).
+# Node-identical by construction — inlining decisions cannot move the tree.
+#
+# **MEASURED, AND IT LOSES. Default OFF; do not turn it on.** It shrinks
+# `search::<NonPv>` 45,565 → 36,033 B (−20.9 %) and `.text` −1.9 %, and over
+# 14 shuffled rounds against `s67-qt` it reads **instructions +0.385 % (0/14),
+# `ic_cache_fill_l2` +3.203 % (3/14), `de_op_queue_empty` +1.298 %, task-clock
+# +1.078 %** — against a byte-identical-binary null of +0.467 % (6/14) on the
+# fill counter. The bytes it removes were never FETCHED (a line with zero
+# sampled ops never enters L1i), and two of the eight are warm enough that
+# outlining them adds a fetch stream. **Function size is not the L1i cost; the
+# number of distinct lines the frame EXECUTES is.**
+icold67 = []
+# `icold67b` — the DEDUPLICATION arm, a different mechanism from `icold67`'s.
+# `icold67` moved code that the frame barely executes; this one moves code the
+# frame executes a lot of, in SEVERAL COPIES. Study 67's duplication census
+# (`tools/perf67/dupcensus67.py`) over the four search monomorphisations:
+# `do_move` 16,638 B in 3 copies, `next_move` 10,871 B in 4. Both are hot in at
+# least two of them, so one out-of-line copy lets both callers fetch the same
+# lines. Node-identical by construction.
+icold67b = []
 # Perf study 44's FOLD-TILE WIDTH sweep. `REGS` (the number of live zmm
 # accumulators in every fold kernel's tile) is 20 at ACC 1280, chosen as the
 # largest exact divisor of ACC_BLOCKS and adjudicated on `instructions:u` --

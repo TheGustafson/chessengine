@@ -309,19 +309,37 @@ fn wdl_tm_factor(root_decisiveness: f32, c3: f32) -> f64 {
 /// expand ~1.75x Stockfish's qsearch on identical positions with identical
 /// windows and verified-identical code; only a per-decision trace can say
 /// which branch differs.
+/// **Perf study 67 — this used to take `mv: &str`, and every call site passed
+/// `&m.to_string()`.** Rust evaluates arguments before the call, so the shipped
+/// build — where the body below is `{}` — still ran the whole `Display` chain
+/// and its heap allocation and then dropped the `String`. Measured:
+/// **2,171 bytes of `to_string::<Move>` plus 112 of `drop_glue::<String>`
+/// inside `qsearch::<NonPv>` — 10.0 % of that symbol's code — collecting 4.3 %
+/// of its dispatched ops**, and the same again in `qsearch::<Pv>`; the engine's
+/// `malloc`, `<Square as Display>::fmt` and `<char as Display>::fmt` symbols
+/// have no other caller in the frame. Taking the `Move` by value (2 bytes,
+/// `Copy`) and formatting inside the ENABLED arm makes the disabled arm what
+/// this doc comment always claimed it was.
 #[cfg(feature = "search-control")]
 #[inline]
-fn qtrace(ply: usize, alpha: Value, beta: Value, stand: Value, mv: &str, verdict: &str) {
+fn qtrace(ply: usize, alpha: Value, beta: Value, stand: Value, mv: Move, verdict: &str) {
     use std::sync::OnceLock;
     static ON: OnceLock<bool> = OnceLock::new();
     if *ON.get_or_init(|| std::env::var_os("ARCHON_QTRACE").is_some()) {
+        // `Move::NULL` carries what the old `"-"` literal did: "no move at this
+        // decision point".
+        let mv = if mv == Move::NULL {
+            "-".to_string()
+        } else {
+            mv.to_string()
+        };
         eprintln!("QT ply={ply} a={alpha} b={beta} sp={stand} {mv:<6} {verdict}");
     }
 }
 
 #[cfg(not(feature = "search-control"))]
 #[inline(always)]
-fn qtrace(_: usize, _: Value, _: Value, _: Value, _: &str, _: &str) {}
+fn qtrace(_: usize, _: Value, _: Value, _: Value, _: Move, _: &str) {}
 
 /// The late-move-pruning move-count threshold (design/10 §3.5, the move
 /// loop's LMP): once the running `move_count` reaches
@@ -2704,32 +2722,14 @@ impl Worker {
                         && self.board.pseudo_legal(tt_data.mv)
                         && self.board.legal(tt_data.mv)
                     {
-                        let m = tt_data.mv;
-                        // Board-only make/unmake (SF `pos.do_move`,
-                        // search.cpp): this verification probe is NOT a search
-                        // node, so it must NOT bump `self.nodes` (which would
-                        // inflate the bench fingerprint, the `go nodes` budget,
-                        // and node-based TM) nor stamp the search stack. The
-                        // prefetch hook still rides along so the immediate child
-                        // probe below is warm.
-                        let gc = self.board.gives_check(m);
-                        // No NNUE accumulator push here: this probe only reads
-                        // the child's TT entry and never `evaluate`s it, and it
-                        // unmakes immediately — the next real `do_move` at this
-                        // node re-pushes and invalidates `stack[ply + 1]`
-                        // (design/11 §3.4.4), so the accumulator stays correct.
-                        self.board.make_move_with(m, gc, &mut TtPrefetch { tt });
-                        let child = tt.probe(self.board.key());
-                        let child_value = if child.hit {
-                            value_from_tt(
-                                child.data.value,
-                                ply as i32 + 1,
-                                self.board.rule50_count() as i32,
-                            )
-                        } else {
-                            VALUE_NONE
-                        };
-                        self.board.unmake_move(m);
+                        // Perf study 67: the probe body lives in
+                        // `tt_verify_child`, which is `#[cold] #[inline(never)]`
+                        // under `icold67`. Inlined it is the single worst
+                        // bytes-per-op block in `search::<NonPv>` — a whole
+                        // second copy of `make_move_with` (2,679 B) plus
+                        // `gives_check` (441 B) and `unmake_move` (400 B) for
+                        // **0.2 % of the symbol's dispatched ops**. See §3.
+                        let child_value = self.tt_verify_child(tt, tt_data.mv, ply);
                         if !is_valid(child_value) || (tt_value >= beta) == (-child_value >= beta) {
                             self.st_ttcut += 1;
                             #[cfg(feature = "foldcount")]
@@ -4675,7 +4675,11 @@ impl Worker {
     // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
     // costs +25.7 i/n in spills. Do not extend this to a big function without
     // measuring — study 55 §0.1 has the size curve.
-    #[inline(always)]
+    // Perf study 67 §3 inverts study 55's ruling for this one callee: 237 bytes
+    // of `search::<NonPv>` for **0.0 %** of its dispatched ops. Study 55 judged
+    // the group on `instructions:u` alone, which is blind to code size.
+    #[cfg_attr(not(feature = "icold67"), inline(always))]
+    #[cfg_attr(feature = "icold67", inline(never))]
     fn is_shuffling(&self, m: Move, cur: usize, ply: usize) -> bool {
         if self.board.capture_stage(m)
             || (self.board.rule50_count() as i32) < params::SHUFFLE_RULE50()
@@ -4987,7 +4991,7 @@ impl Worker {
             }
 
             if best_value >= beta {
-                qtrace(ply, alpha, beta, best_value, "-", "STANDPAT_CUT");
+                qtrace(ply, alpha, beta, best_value, Move::NULL, "STANDPAT_CUT");
                 // Search-instability damping (§3.8 step 5): pull a
                 // non-decisive stand-pat cutoff partway back toward beta.
                 // Decisive scores are never blended (§8.11).
@@ -5056,7 +5060,7 @@ impl Worker {
         let prev_move = self.stack[cur - 1].current_move;
         let prev_sq = (prev_move != Move::NULL).then(|| prev_move.to());
 
-        qtrace(ply, alpha, beta, best_value, "-", "LOOP_ENTERED");
+        qtrace(ply, alpha, beta, best_value, Move::NULL, "LOOP_ENTERED");
         let mut best_move = Move::NULL;
         let mut move_count = 0;
         while let Some(m) = mp.next_move(&self.board, &self.histories) {
@@ -5083,14 +5087,7 @@ impl Worker {
                     // Late-move cutoff: after two such moves, skip them
                     // all (§3.8 step 7).
                     if move_count > params::QS_LATE_MOVE_LIMIT() {
-                        qtrace(
-                            ply,
-                            alpha,
-                            beta,
-                            best_value,
-                            &m.to_string(),
-                            "prune:latemove",
-                        );
+                        qtrace(ply, alpha, beta, best_value, m, "prune:latemove");
                         continue;
                     }
 
@@ -5110,14 +5107,7 @@ impl Worker {
                             params::QS_PIECE_MULT(),
                         );
                     if futility_value <= alpha {
-                        qtrace(
-                            ply,
-                            alpha,
-                            beta,
-                            best_value,
-                            &m.to_string(),
-                            "prune:futility",
-                        );
+                        qtrace(ply, alpha, beta, best_value, m, "prune:futility");
                         best_value = best_value.max(futility_value);
                         continue;
                     }
@@ -5144,20 +5134,13 @@ impl Worker {
 
                 // The hard SEE floor for everything left (§3.8 step 7).
                 if !self.board.see_ge(m, params::QS_SEE_FLOOR()) {
-                    qtrace(
-                        ply,
-                        alpha,
-                        beta,
-                        best_value,
-                        &m.to_string(),
-                        "prune:seefloor",
-                    );
+                    qtrace(ply, alpha, beta, best_value, m, "prune:seefloor");
                     continue;
                 }
             }
 
             // Step 8 — recurse: full window, same node type.
-            qtrace(ply, alpha, beta, best_value, &m.to_string(), "SEARCH");
+            qtrace(ply, alpha, beta, best_value, m, "SEARCH");
             // Same facts `do_move` used to re-derive; qsearch has no earlier
             // use for either, so this is a move, not a saving (perf study 23
             // arm 6 keeps the main loop's win without taxing qsearch).
@@ -5248,6 +5231,44 @@ impl Worker {
         best_value
     }
 
+    /// The N6b child-TT verification probe (design/10 item 20): make the
+    /// ttMove on the BOARD ONLY, read the child's stored value, unmake.
+    ///
+    /// Board-only make/unmake (SF `pos.do_move`, search.cpp): this probe is NOT
+    /// a search node, so it must NOT bump `self.nodes` (which would inflate the
+    /// bench fingerprint, the `go nodes` budget, and node-based TM) nor stamp
+    /// the search stack. The prefetch hook still rides along so the child probe
+    /// is warm. No NNUE accumulator push: the probe never `evaluate`s the child
+    /// and unmakes immediately — the next real `do_move` at this node re-pushes
+    /// and invalidates `stack[ply + 1]` (design/11 §3.4.4).
+    ///
+    /// **Perf study 67 — why this is a function and not a block.** Inlined, it
+    /// contributed 3,520 bytes to `search::<NonPv>` (a second whole copy of
+    /// `make_move_with`, plus `gives_check` and `unmake_move`) and collected
+    /// **0.1 % of that symbol's dispatched ops** — 77× the symbol's average
+    /// bytes per op, the worst ratio in the function. `search::<NonPv>` is
+    /// 45,565 B against a 32 KB L1i and is 34.06 % of the engine's L1i line
+    /// fills; code that never runs still occupies fetch lines and address span.
+    /// Returns [`VALUE_NONE`] on a TT miss, exactly as the inline form did.
+    #[cfg_attr(feature = "icold67", cold)]
+    #[cfg_attr(feature = "icold67", inline(never))]
+    fn tt_verify_child(&mut self, tt: &TranspositionTable, m: Move, ply: usize) -> Value {
+        let gc = self.board.gives_check(m);
+        self.board.make_move_with(m, gc, &mut TtPrefetch { tt });
+        let child = tt.probe(self.board.key());
+        let child_value = if child.hit {
+            value_from_tt(
+                child.data.value,
+                ply as i32 + 1,
+                self.board.rule50_count() as i32,
+            )
+        } else {
+            VALUE_NONE
+        };
+        self.board.unmake_move(m);
+        child_value
+    }
+
     /// Make `m`, counting the node (§3.9 — `nodes` counts MADE moves,
     /// matching SF and the `bench` fingerprint) and installing the child's
     /// stack slots. The [`TtPrefetch`] hook rides the [`MakeMoveHooks`]
@@ -5269,6 +5290,10 @@ impl Worker {
     /// for facts that were sitting in registers one line up. The two cold call
     /// sites (ProbCut, qsearch) pass exactly what this function used to compute,
     /// so nothing moved onto a path that did not already pay for it.
+    // Perf study 67 arm B: 16,638 bytes across three search monomorphisations,
+    // 15.2 % of `search::<NonPv>`'s dispatched ops and 11.6 % of
+    // `qsearch::<NonPv>`'s -- the largest DUPLICATED HOT block in the engine.
+    #[cfg_attr(feature = "icold67b", inline(never))]
     #[inline]
     fn do_move(
         &mut self,
@@ -5343,6 +5368,8 @@ impl Worker {
         }
     }
 
+    // Perf study 67 arm B, same reason as `do_move`.
+    #[cfg_attr(feature = "icold67b", inline(never))]
     #[inline]
     fn undo_move(&mut self, m: Move) {
         self.board.unmake_move(m);
@@ -5368,6 +5395,10 @@ impl Worker {
     /// the wall-clock bounds (`maximum`/`movetime`) so we stop a few ms
     /// early to cover the unwind-and-print tail. The `nodes` budget is left
     /// unshaved — an exactness bound, not a clock forfeit risk.
+    // Perf study 67 §3: 495 bytes of `search::<NonPv>` for **0.2 %** of its
+    // dispatched ops. The mask test is one predicted branch that has to stay
+    // inline; the enforcement body behind it is pure fetch weight and lives in
+    // `check_time_slow`.
     #[inline]
     fn check_time(&self, stop: &AtomicBool) {
         // Helpers never enforce time or limits (design/13 §3.7): they stop
@@ -5380,6 +5411,15 @@ impl Worker {
         if self.nodes & self.check_time_mask != self.check_time_mask {
             return;
         }
+        self.check_time_slow(stop);
+    }
+
+    /// The enforcement body of [`Self::check_time`], split off by perf study 67
+    /// so the fetch weight leaves the caller. Reached once every
+    /// `check_time_mask + 1` nodes; everything above it is one predicted test.
+    #[cfg_attr(feature = "icold67", cold)]
+    #[cfg_attr(feature = "icold67", inline(never))]
+    fn check_time_slow(&self, stop: &AtomicBool) {
         // D31: guarantee a real (if shallow) bestmove — no hard stop of any
         // kind fires before the first iteration has fully completed.
         if self.completed_depth == 0 {

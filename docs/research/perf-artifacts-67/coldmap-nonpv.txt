@@ -1,0 +1,34 @@
+symbol ~45565 B = 712 lines; 129389 samples (23.04% of engine ops)
+NEVER-SAMPLED lines: 172 = 24.2%  (11008 B)
+<=1/40-of-average lines: 42 = 5.9%  (2688 B)
+
+contiguous never-sampled runs (top 25), offset .. length:
+  +0x03a40 .. +0x04780    53 lines =  3392 B
+  +0x055c0 .. +0x05a80    19 lines =  1216 B
+  +0x09000 .. +0x09340    13 lines =   832 B
+  +0x093c0 .. +0x09700    13 lines =   832 B
+  +0x04a40 .. +0x04c80     9 lines =   576 B
+  +0x00c00 .. +0x00e00     8 lines =   512 B
+  +0x0b040 .. +0x0b200     7 lines =   448 B
+  +0x03780 .. +0x03900     6 lines =   384 B
+  +0x04dc0 .. +0x04f40     6 lines =   384 B
+  +0x099c0 .. +0x09b40     6 lines =   384 B
+  +0x080c0 .. +0x081c0     4 lines =   256 B
+  +0x00ac0 .. +0x00b80     3 lines =   192 B
+  +0x047c0 .. +0x04880     3 lines =   192 B
+  +0x01b00 .. +0x01b80     2 lines =   128 B
+  +0x03340 .. +0x033c0     2 lines =   128 B
+  +0x03400 .. +0x03480     2 lines =   128 B
+  +0x03640 .. +0x036c0     2 lines =   128 B
+  +0x08a80 .. +0x08b00     2 lines =   128 B
+  +0x08d40 .. +0x08dc0     2 lines =   128 B
+  +0x01f40 .. +0x01f80     1 lines =    64 B
+  +0x03100 .. +0x03140     1 lines =    64 B
+  +0x03240 .. +0x03280     1 lines =    64 B
+  +0x034c0 .. +0x03500     1 lines =    64 B
+  +0x035c0 .. +0x03600     1 lines =    64 B
+  +0x04900 .. +0x04940     1 lines =    64 B
+
+runs of >=2 lines total 162 lines = 10368 B (22.8% of the symbol)
+
+90% of this symbol's ops live in 246 lines = 15744 B (34.6% of it)

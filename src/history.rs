@@ -763,6 +763,12 @@ impl Histories {
     /// punished (quiets via a geometrically decaying malus, captures flat), and
     /// — when the parent played a refuted first-try quiet — its continuation
     /// entries take an extra malus.
+    // Perf study 67 §3: PGO folds this whole burst into `search::<NonPv>` —
+    // **2,894 bytes for 4.0 % of that symbol's dispatched ops**, 1.6× its
+    // average bytes per op. It runs once per node that raises alpha with a
+    // non-TT best move, i.e. as a rare burst, so out of line it costs one call
+    // and stops fragmenting the node's hot fetch span.
+    #[cfg_attr(feature = "icold67", inline(never))]
     #[allow(clippy::too_many_arguments)]
     pub fn update_all_stats(
         &mut self,

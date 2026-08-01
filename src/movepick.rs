@@ -710,6 +710,10 @@ impl MovePicker {
     // becoming single-call-site, which let LLVM's last-call-to-static bonus
     // inline it.  `search::<NT>` duplicates every search-body call site, so
     // that bonus never applies here; this forces the same inline directly.
+    // Perf study 67 §3: 307 bytes of `search::<NonPv>` for 0.1 % of its ops —
+    // ProbCut runs at a small minority of nodes and PGO inlined the whole
+    // constructor anyway.
+    #[cfg_attr(feature = "icold67", inline(never))]
     pub fn new_probcut(board: &Board, tt_move: Move, threshold: Value) -> Self {
         let usable = tt_move.is_ok() && board.pseudo_legal(tt_move) && board.capture_stage(tt_move);
         MovePicker::with_base(
@@ -806,7 +810,13 @@ impl MovePicker {
     // look expensive was `L1-dcache-load-misses` rising; measuring the
     // DENOMINATOR settles that -- total L1d LOADS fall 4.1/node, so this is less
     // memory work at a marginally worse hit rate, not more work.
-    #[inline(always)]
+    // Perf study 67 arm B — the DEDUPLICATION arm, a different mechanism from
+    // `icold67`'s: PGO emits this body **four times** (10,871 B across
+    // `search::<{Pv,NonPv}>` and `qsearch::<{Pv,NonPv}>`) and it is EXECUTED in
+    // at least two of them. One out-of-line copy would let both callers fetch
+    // the same lines.
+    #[cfg_attr(not(feature = "icold67b"), inline(always))]
+    #[cfg_attr(feature = "icold67b", inline(never))]
     pub fn next_move(&mut self, board: &Board, hist: &Histories) -> Option<Move> {
         loop {
             match self.stage {
