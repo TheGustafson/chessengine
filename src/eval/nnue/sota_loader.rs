@@ -937,7 +937,7 @@ fn threat_transpose(rows: usize) -> Vec<usize> {
     // A permutation or nothing: a half-built map would silently evaluate a
     // different net, which is exactly the failure mode this whole route can
     // produce and the gate would only catch by luck.
-    if perm.iter().any(|&t| t == usize::MAX) {
+    if perm.contains(&usize::MAX) {
         return Vec::new();
     }
     perm
