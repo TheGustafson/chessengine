@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # perf study 67: memory-capped PGO build wrapper.
-#   bash tools/s67_build.sh <features> <out-name>
+#   bash tools/perf67/build67.sh <features> <out-name>
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 FEAT=${1:?features}
 OUT=${2:?out name}
 FREE=$(free -m | awk '/^Mem:/{print $7}')

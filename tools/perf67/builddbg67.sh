@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# perf study 67: same PGO pipeline as tools/s67_build.sh, but with
+# perf study 67: same PGO pipeline as tools/perf67/build67.sh, but with
 # `debug = "line-tables-only"` forced on through cargo's env override. Line
 # tables are metadata: they add DWARF sections and change no codegen, which the
 # study verifies by `cmp`ing the resulting `.text` against the plain build.
-#   bash tools/s67_build_dbg.sh <features> <out-name>
+#   bash tools/perf67/builddbg67.sh <features> <out-name>
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 FEAT=${1:?features}
 OUT=${2:?out name}
 FREE=$(free -m | awk '/^Mem:/{print $7}')
