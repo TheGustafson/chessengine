@@ -17381,3 +17381,37 @@ live argv.
 `systemctl is-active` is always true — any "wait for idle" starves. Gate on
 `pgrep -c fastchess` and stand the matcher down explicitly if it needs the box.
 That single confusion cost three starvations today.
+
+---
+
+## 2026-08-01 13:48 — steady tick: continuation sb1665, first continuation checkpoint being screened
+
+**D49 continuation sb1665**, 183.3k pos/s, self-restarting under `x500watch`.
+All six units green. Memory **4714–4939 MB** and stable under study 71's build
+(one `rustc`), **zero kernel OOM kills since 13:00**. Disk 136 GB.
+
+**`d49xml` is screening sb1660 — the FIRST checkpoint of the 500-superbatch
+continuation** (stdev 600.0, right on canonical's 610).
+
+**How to read it when it lands, and how NOT to.** The reference points are:
+
+| checkpoint | Elo vs canonical |
+|---|---:|
+| anchor sb1540 | +3.47 ± 11.22 |
+| cycle 3 sb1630 (continuation's start) | +0.69 ± 10.76 |
+| **sb1660 (continuation +30 sb)** | **in flight** |
+
+**A single screen cannot resolve 30 superbatches of progress.** The undertraining
+result prices plain training at **+30.31 Elo per 1000 sb ≈ 0.03 Elo/sb**, so 30
+superbatches is worth **~0.9 Elo** against a **±11** bar. Any movement seen at
+sb1660 is noise, not signal — and today's whole LR-cycle episode was exactly this
+mistake at a larger scale (two +9.4 draws that the one-bar A/B resolved to
+**−7.41**).
+
+**The continuation should be read as a POOL over many checkpoints**, the way
+sb1350–1450 pooled to +8.41 ± 3.89 over 15000 games, or with a direct A/B against
+sb1630 once enough superbatches have accumulated to be worth resolving — ~300 sb
+for a ~9 Elo effect.
+
+Study 71 (TT-less deficit) building. Teacher calibration delivered. Per-node
+microarch surface closed.
