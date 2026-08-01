@@ -16305,3 +16305,32 @@ working directory, and never asked what the script would do **if a child failed*
 A "wait until the unit stops" loop is a success/failure conflation by
 construction. Every orchestrator wait needs a completion CRITERION, not just an
 exit signal.
+
+---
+
+## 2026-08-01 09:02 — cycle 1 training confirmed; telemetry armed; a third bogus checkpoint removed
+
+**Cycle 1 IS training** — verified from the unit's own journal, not from its
+status: `components sb 1541 | value 0.006857 | 177,967 pos/s`, GPU **93 %,
+7599 MiB**. Warm-resumed from the anchor with the ramp
+`1.7919e-5 → 0` over sb1540→1570.
+
+**Removed a THIRD bogus checkpoint.** The failed run had also written
+`d49lrc1-sb1540-*.bin` before I caught it — I deleted the cycle-2 and cycle-3
+fakes earlier but missed cycle 1's, because I stopped looking after finding two.
+Protected set is now exactly the 4 anchor files, which is what it should be.
+
+**Armed telemetry, per the standing rule that every training run gets tb at
+launch.** The cycles run as their own units and log to **journald**, so the
+existing `cyc.log` shim is blind to them — the twin ran dark for a whole session
+once for exactly this reason. Bridged with `lrctail` (journal → `lrcycles.log`,
+filtered to `components sb`/`heldout sb`) plus `lrcshim` feeding
+`data/nnue/tb/d49-1280/lrcycles`.
+
+**The bridge is EMPTY as of this tick and that is expected** — `journalctl -f -n 0`
+emits only new lines and superbatches are ~2.4 min apart. **Deliberately NOT
+declaring it working: verification happens on a LATER tick.** This session has
+now seen three detached jobs report healthy while dead (study 70's chain twice,
+my own LR orchestrator once), and every one looked fine at launch.
+
+**Live:** cycle 1 → sb1570; tunables SPRT running NNUE-verified; memory 6179 MB.
