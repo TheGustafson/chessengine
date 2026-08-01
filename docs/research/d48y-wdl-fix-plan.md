@@ -13182,3 +13182,38 @@ an error — it is a fast, clean-looking number.
 
 **D49 unaffected throughout:** the trainer uses an absolute config path and its own
 data; sb1225+, four services active.
+
+## Tick — 2026-07-31 22:0x, re-measuring both retracted figures on a quiet box
+
+No study running, `rustc=0 fastchess=0 pbase=0` — the quietest the box has been
+all day. Re-running the two panels I retracted, this time with an **explicit
+resolved `--net`** and the guarded tool.
+
+**The guard I added an hour ago had its own bug and refused everything**,
+including good runs: it checked `probe.stdout`, and **the engine writes its entire
+bench output to STDERR** (measured: stdout 0 bytes, stderr 4597). Fixed to
+concatenate both. A conservative failure rather than a permissive one — it
+refused valid work instead of passing invalid work — but wrong, and it cost a
+full re-launch.
+
+**That is now three defects in this one tool inside a day**, two of them mine and
+one found by study 63:
+
+| defect | found by | symptom |
+|---|---|---|
+| null copy on tmpfs vs NVMe arms | study 63 | null +0.646%, p<1e-4 |
+| runs unpinned | study 63 | per-round sd 3.58% vs 1.13% |
+| **default `--net` dangles in a worktree** | me, chasing a 0.021s round | **engine searches ZERO nodes; two Elo figures void** |
+| **probe guard read stdout, engine writes stderr** | me, immediately after | guard refused every run |
+
+**The tool is now guarded three ways** — net must be a readable file, a probe run
+must actually report `Nodes searched`, and a mid-run stability check compares the
+base binary's first-half and second-half medians (because a before/after CPU
+census cannot see a job that starts *and* ends between the checks).
+
+**What is being re-measured:** studies 61+62 (was the void +3.14 Elo), its startup
+frame, and studies 52–58 (was the void +1.58). The surviving **+1.77 Elo for
+52–56** is untouched — it never used this tool.
+
+**D49 unaffected and healthy throughout:** sb1238, heldout ema **0.010506** — still
+the run's lowest, still falling. 188k pos/s, four services active.
