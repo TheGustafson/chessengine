@@ -13414,3 +13414,76 @@ dispatch (**already a 100.00% cover**), `REGS_CAP = 5`, and the generic kernel's
 loop control (three failures plus study 63's declined pricing).
 
 **D49:** sb1252+, four services active, 142 GB disk. **sb1700 in ~16 h.**
+
+## Tick — 2026-08-01 00:0x, WHY SF IS FASTER, ANSWERED — and it is not in the code
+
+Sixty-two perf studies did not find this because **it is not a code difference.
+It is an architectural trade, made in the opposite direction.** Read from both
+sources, not from any doc:
+
+| | ARCHON `arch-d48x` | SF `eca43a97` |
+|---|---|---|
+| HalfKAv2_hm dims | 22,528 | 22,528 |
+| FullThreats dims | 60,720 | **60,720 — SF runs FullThreats too** |
+| **total inputs** | **83,248** | **83,248 — IDENTICAL** |
+| accumulator **L1** | **1280** | **1024** |
+| **L2** | **16** | **32** |
+
+**Parameter counts, every layer:**
+
+| layer | ARCHON | SF | SF/ARCHON |
+|---|---:|---:|---:|
+| FT | 106,557,440 | 85,245,952 | **0.800×** |
+| fc_0 (L1→L2) | 163,840 | 262,144 | **1.600×** |
+| fc_1 | 8,192 | 16,384 | 2.000× |
+| fc_2 | 768 | 1,024 | 1.333× |
+| PSQT | 665,984 | 665,984 | 1.000× |
+| **TOTAL** | **107,396,224** | **86,191,488** | 0.803× |
+
+`fc_0` is exactly **0.8 × 2 = 1.600×** — their narrower accumulator times their
+doubled L2.
+
+**The two halves live in different cost regimes, and that is the entire finding:**
+
+| per evaluation | ARCHON | SF | nature |
+|---|---|---|---|
+| head arithmetic | 21,600 MAC | **34,944 MAC (1.618×)** | dense, tiny, **cache-resident — effectively free** |
+| FT traffic | 204,800 B | **163,840 B (0.800×)** | sparse over 85–107 MB, **memory-bound** |
+
+**SF spends 1.6× more on the free layer in order to spend 0.8× on the expensive
+one.** The dense head never leaves cache however large it grows; every FT row is a
+potential miss.
+
+**And it closes numerically:**
+
+> **FT working set 1.250× · measured speed ratio 1.263×**
+
+### What this settles
+
+- **It is not a code problem.** Nine studies optimised the fold kernels and the
+  last two bought nothing measurable, because the constraint is **bytes per row,
+  not instructions per row.** Study 61's capacity model — no fitted parameter,
+  predicting L1 hit 18.5% vs 19.1% measured — said the cache already extracts all
+  available locality. **This is why.**
+- **Study 61's width prediction is now much stronger than when pre-registered.**
+  It predicted 1280→1024 gains *more* than linearly in L2-missing bytes.
+  **1024 is exactly SF's width, and SF is exactly the speed that predicts.**
+- **And `fc_0`'s arithmetic says the trade is available to us**: L2 could go
+  16→32 while total parameters still land **below** SF's, because that layer is
+  ~0.15% of the net.
+
+### Two of my claims this corrects
+
+**SF's input space is not 22,528** — that is only the HalfKA half — and it is
+**not 3.7× smaller than ours; it is identical.** Both errors came from quoting
+CLAUDE.md instead of reading `nnue_architecture.h`. The owner caught both.
+
+### Consequence for the roadmap
+
+The remaining speed is **architectural, not code**, and the specific candidate is
+now concrete rather than a hypothesis: **L1 1280→1024 with L2 16→32.** That is a
+gen-2 training decision, not a perf study — and it is the owner's call, not
+something to start unilaterally mid-D49.
+
+**D49:** sb1258, heldout ema **0.010492**, four services active, 143 GB disk.
+**Study 64** working on traffic-reduction.
