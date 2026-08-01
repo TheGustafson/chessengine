@@ -15184,3 +15184,33 @@ doc, so the record of the change survives the removal of the change.
 
 **Owner's call left open:** if the VVLTC hypothesis is worth testing, the restore
 is one `git revert d5f89245` plus a long-TC arm. The values are not lost.
+
+**`gaterev` PASSED** — `Bench: 587683`, eval hash `2e1ede95…79c4`, d13 `1739588`,
+all checks passed. Main is clean and verified at `d5f89245`.
+
+### STATE AT 05:35 — what is IN main, what was measured, what is owed
+
+**In main and gated:** study 65 (narrow row, feature OFF, bit-exact null), study
+66 (compaction + locality closed by construction), study 67 (`qtrace` dead-work
+removal — a real -2.33 % of search time — plus the frontend census and 12 tools).
+**Out of main:** the 154 `ebcea3ef` tunables, reverted on a 1500-game verdict.
+
+**Settled by games tonight (6000+ games):**
+- **The eval frame is NOT a lever.** Interior optimum; the shipped scale is on
+  it; SF parity costs ~18 Elo and over-shrinking ~12.
+- **The `ebcea3ef` tunables cost ~29 Elo at our TC.** VVLTC hypothesis recorded.
+- **D49 has overtaken canonical**: sb1410 = **+15.06 +/- 10.84, LOS 99.68 %**.
+
+**Settled by construction (studies 65-67):** sub-byte FT weight formats dead in
+all layouts; locality/reordering/prefetch dead (fold is MSHR-limited); function
+size is NOT the icache cost; **the search side is FRONTEND-bound** (128 L1i
+fills/node, 120.3 KB hot code vs a 32 KB L1i, 40.5 % decoder delivery).
+
+**OWED:**
+1. **The `qtrace` win has never been measured at REAL TC** — fixed-node testing
+   structurally cannot reward a speed fix, so its ~+4 Elo is derived only.
+2. **sb1700 verdict** (~9.5 h): run the 5880-game screen with the **PGO** binary,
+   not `target-sota`.
+3. Study 68 (frontend) in flight.
+4. Optional: re-test the tunables at long TC if the VVLTC hypothesis is worth
+   spending on.
