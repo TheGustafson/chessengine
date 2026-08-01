@@ -196,109 +196,15 @@ fn rfp_prune_margin(
     ) - params::RFP_THREAT_MARGIN() * Value::from(no_own_threat)
 }
 
-/// EXP-UNC-1 (search study bet 1): default EMA shift for the running mean value
-/// uncertainty `σ̄` (α = 2⁻¹⁰ = 1/1024). Env-overridable via `ARCHON_UNC_EMA_SHIFT`
-/// so Gate 2 can sweep it — D33 reviewer B argued a fast α self-centers within a
-/// search and subtracts out the cross-phase (endgame-low-σ̂) component, likely the
-/// stronger Elo half, so a slower α (shift ≥ 13) or a fixed σ̄ is worth trying.
-#[cfg(feature = "sota")]
-const UNC_EMA_SHIFT_DEFAULT: i32 = 10;
-
-/// EXP-UNC-1: the position-conditioned RFP/futility margin scale from the value
-/// uncertainty `σ̂` relative to its running mean `σ̄` (design: consumer 1). The
-/// eval is trusted MORE (tighter margin, prune more — where the Elo lives) where
-/// σ̂ is below average, and LESS (looser margin, prune less — safety) where it is
-/// above. Returns exactly `1.0` (no change) when disabled (`c1 == 0`), when there
-/// is no fresh σ̂ this node (`sigma <= 0`), or before σ̄ has warmed
-/// (`sigma_bar <= 0`) — so a variance-less net or the default coefficient is
-/// bit-identical. Clamped to [0.7, 1.5] to bound the effect (study formula).
-#[cfg(feature = "sota")]
-#[inline]
-fn unc_margin_scale(sigma: f32, sigma_bar: f32, c1: f32) -> f32 {
-    if c1 == 0.0 || sigma <= 0.0 || sigma_bar <= 0.0 {
-        return 1.0;
-    }
-    (1.0 + c1 * (sigma - sigma_bar) / sigma_bar).clamp(0.7, 1.5)
-}
-
-/// EXP-UNC-1 consumer 2: the TM soft-stop time scale from the ROOT value
-/// uncertainty. Think LONGER (factor > 1) at a sharp/unclear root, SHORTER at a
-/// reliable one — ARCHON's TM otherwise has zero position content. Returns
-/// exactly `1.0` (bit-identical) when disabled / no root σ̂ / σ̄ unwarmed;
-/// clamped to [0.8, 1.25] (design). Narrower bound than the margin scale — time
-/// is a scarcer, riskier lever than a prune margin. Returns `f64` to fold into
-/// `soft_stop`'s `total_time` without a precision hop.
-#[cfg(feature = "sota")]
-#[inline]
-fn unc_tm_factor(root_sigma: f32, sigma_bar: f32, c2: f32) -> f64 {
-    if c2 == 0.0 || root_sigma <= 0.0 || sigma_bar <= 0.0 {
-        return 1.0;
-    }
-    f64::from((1.0 + c2 * (root_sigma - sigma_bar) / sigma_bar).clamp(0.8, 1.25))
-}
-
-/// Head-free TM soft-stop **contestedness** scale (2026-07-28, searchopt):
-/// scale the clock by how *undecided* the SEARCH's own root score is.
-///
-/// This is [`wdl_tm_factor`]'s idea without the net dependency. That one reads
-/// `|P(win) − P(loss)|` from a WDL sidecar and [`unc_tm_factor`] reads a σ̂
-/// head; **D48X carries neither, so both are measurably inert** — with the
-/// coefficients forced on, `ARCHON_TM_TRACE` emits byte-identical soft-stop
-/// sequences. The settled root score is already in hand at every soft-stop
-/// decision, so this factor works on any net and needs no retrain.
-///
-/// # Why it keys on CONTESTEDNESS and not decisiveness
-///
-/// The first cut of this was shrink-only on decided roots, mirroring
-/// `wdl_tm_factor`. **That has the wrong sign for the measurement that
-/// motivated it**, a point the NNUE architecture study made about
-/// `ARCHON_WDL_TM_C3` and which applies here identically. Measured at 10+0.1,
-/// normalised by each engine's own mean, we under-spend against SF18 at BOTH
-/// extremes — 0.559 vs 0.679 when balanced, 0.546 vs 0.819 when clearly winning
-/// — while over-spending in the 1.5–3.0 band. Shrinking decided roots pushes
-/// the winning band *further* from SF and only reaches the balanced band
-/// indirectly, by banking clock for later moves.
-///
-/// So the factor keys on `contested = 1 − min(|score|, KNEE)/KNEE`, which is 1
-/// at a dead-level root and 0 once the score reaches the knee. **The sign of
-/// `TM_SCORE_C` then selects the hypothesis** rather than the code assuming
-/// one: positive spends more on contested roots (the direct reading of the
-/// measurement), negative spends less (the bank-it-for-later reading). Both are
-/// reachable from one tunable, so the game decides which is right instead of me.
-///
-/// Returns exactly `1.0` when disabled (`TM_SCORE_C == 0`, the default) or on a
-/// non-finite score, so `total_time` is bit-identical and the four-factor
-/// golden tests hold.
-#[inline]
-fn score_tm_factor(best_value: Value, c_num: i32, knee: Value) -> f64 {
-    if c_num == 0 || knee <= 0 || !is_valid(best_value) {
-        return 1.0;
-    }
-    // `saturating_abs` rather than `abs`: a mate score sits near `Value::MIN`
-    // and a plain negation would overflow in debug. Saturating is also the
-    // right semantics here — a mate IS maximally decided, and clamping to the
-    // knee below discards the magnitude anyway.
-    let contested = 1.0 - f64::from(best_value.saturating_abs().min(knee)) / f64::from(knee);
-    (1.0 + f64::from(c_num) / 1024.0 * contested)
-        .clamp(params::TM_SCORE_FLOOR(), params::TM_SCORE_CEIL())
-}
-
-/// Multi-head consumer (D41 rich-net, 2026-07-21): TM soft-stop decisiveness
-/// scale from the ROOT WDL head. A root the head already calls decided
-/// (|P(win) − P(loss)| high) earns LESS clock — bank it for genuinely
-/// contested positions. Shrink-only ([0.8, 1.0]): the σ̂ factor above owns
-/// "unclear → think longer", so the two heads pull one lever from independent,
-/// independently-tunable directions. Returns exactly `1.0` (bit-identical)
-/// when disabled (`ARCHON_WDL_TM_C3`=0, the default), when the loaded net has
-/// no WDL sidecar, or before a root capture.
-#[cfg(feature = "sota")]
-#[inline]
-fn wdl_tm_factor(root_decisiveness: f32, c3: f32) -> f64 {
-    if c3 == 0.0 || root_decisiveness <= 0.0 {
-        return 1.0;
-    }
-    f64::from((1.0 - c3 * root_decisiveness).clamp(0.8, 1.0))
-}
+// Speculative TM/margin head hooks DELETED here 2026-08-01 (simplification
+// plan tier 0, items 0.7/0.8): `score_tm_factor` + the TM_SCORE_* knobs (the
+// back-loading hypothesis they served was refuted at real TC, −36.6 ± 22.5),
+// and the EXP-UNC-1 / WDL-TM apparatus (`unc_margin_scale`, `unc_tm_factor`,
+// `wdl_tm_factor`, six Worker fields, four ARCHON_* env vars) — D48X carries
+// neither a σ̂ nor a WDL head, so all of it was measurably inert (byte-identical
+// ARCHON_TM_TRACE with the coefficients forced on). A real head integration is
+// one multiplicative factor in `soft_stop` and one margin scale at the RFP
+// site, both single-line re-insertions; git keeps the prototypes.
 
 /// Feature-gated qsearch decision trace (`--features search-control`,
 /// enabled at runtime by `ARCHON_QTRACE=1`).
@@ -1267,35 +1173,6 @@ pub struct Worker {
     tm_best_previous_average_score: Value,
     /// Per-thread eval state (design/11 §3.1); empty in Phase A.
     eval_ctx: EvalContext,
-    /// EXP-UNC-1: RFP/futility uncertainty coefficient (env `ARCHON_UNC_RFP_C1`,
-    /// default 0.0 = off → bit-identical). Read once at Worker construction.
-    #[cfg(feature = "sota")]
-    unc_rfp_c1: f32,
-    /// EXP-UNC-1: running mean value-uncertainty σ̄ (EMA), 0.0 until the first
-    /// fresh σ̂. Per-worker; the ratio `(σ̂−σ̄)/σ̄` self-calibrates as it warms.
-    #[cfg(feature = "sota")]
-    sigma_bar: f32,
-    /// EXP-UNC-1 consumer 2: TM soft-stop uncertainty coefficient (env
-    /// `ARCHON_UNC_TM_C2`, default 0.0 = off). Read once at construction.
-    #[cfg(feature = "sota")]
-    unc_tm_c2: f32,
-    /// EXP-UNC-1 consumer 2: the ROOT position's value uncertainty σ̂ (ply-0
-    /// fresh eval), read by [`Worker::soft_stop`]. 0.0 until a root eval lands.
-    #[cfg(feature = "sota")]
-    root_sigma: f32,
-    /// Multi-head WDL TM consumer: soft-stop decisiveness coefficient (env
-    /// `ARCHON_WDL_TM_C3`, default 0.0 = off). Read once at construction.
-    #[cfg(feature = "sota")]
-    wdl_tm_c3: f32,
-    /// Multi-head WDL TM consumer: the ROOT position's decisiveness
-    /// |P(win) − P(loss)| from the WDL head (ply-0 fresh eval), read by
-    /// [`Worker::soft_stop`]. 0.0 until a root eval lands.
-    #[cfg(feature = "sota")]
-    root_wdl_d: f32,
-    /// EXP-UNC-1: the σ̄ EMA rate α (env `ARCHON_UNC_EMA_SHIFT`, default
-    /// [`UNC_EMA_SHIFT_DEFAULT`]). Read once at construction; swept in Gate 2.
-    #[cfg(feature = "sota")]
-    unc_ema_alpha: f32,
     /// Per-thread move-ordering statistics (design/09 §3.4, D23): butterfly/
     /// low-ply/capture/continuation/pawn/correction history. Read by the
     /// [`MovePicker`] scoring and written by [`Histories::update_all_stats`]
@@ -1453,34 +1330,6 @@ impl Worker {
             tm_time_reduction: crate::timeman::TIME_REDUCTION_INIT,
             tm_best_previous_average_score: VALUE_INFINITE,
             eval_ctx: EvalContext::new(),
-            #[cfg(feature = "sota")]
-            unc_rfp_c1: std::env::var("ARCHON_UNC_RFP_C1")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0.0),
-            #[cfg(feature = "sota")]
-            sigma_bar: 0.0,
-            #[cfg(feature = "sota")]
-            unc_tm_c2: std::env::var("ARCHON_UNC_TM_C2")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0.0),
-            #[cfg(feature = "sota")]
-            root_sigma: 0.0,
-            #[cfg(feature = "sota")]
-            wdl_tm_c3: std::env::var("ARCHON_WDL_TM_C3")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0.0),
-            #[cfg(feature = "sota")]
-            root_wdl_d: 0.0,
-            #[cfg(feature = "sota")]
-            unc_ema_alpha: 2.0f32.powi(
-                -std::env::var("ARCHON_UNC_EMA_SHIFT")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(UNC_EMA_SHIFT_DEFAULT),
-            ),
             histories: Histories::new(),
             #[cfg(feature = "sota")]
             policy_head: None,
@@ -2115,21 +1964,6 @@ impl Worker {
         // heads reuse this protected accumulator and have no board-refresh
         // trunk of their own.
         self.eval_ctx.refresh_root(&self.board);
-        // EXP-UNC-1 (D33 review, reviewers A/B/C): reset the root uncertainty
-        // per search. The persistent TT means the root usually hits a cached
-        // eval on move N+1, so a fresh root σ̂ isn't recaptured every search;
-        // without this reset `root_sigma` would leak a PRIOR move's value into
-        // the TM soft-stop. Worst case now: 0.0 → `unc_tm_factor` returns 1.0
-        // (consumer 2 self-disables that search) rather than mis-scaling on a
-        // different position's uncertainty.
-        #[cfg(feature = "sota")]
-        {
-            self.root_sigma = 0.0;
-            // Same leak guard for the WDL decisiveness: a TT-cached root eval
-            // on move N+1 would otherwise leave move N's |P(w)−P(l)| scaling
-            // move N+1's clock. 0.0 → wdl_tm_factor self-disables this search.
-            self.root_wdl_d = 0.0;
-        }
         #[cfg(feature = "policy")]
         if crate::policy::root_order_enabled() {
             let scores = self.policy_net.as_ref().and_then(|net| {
@@ -2820,10 +2654,6 @@ impl Worker {
         // Perf study 64 census: did THIS node pay for a real forward pass?
         #[cfg(feature = "foldcount")]
         let mut fresh_eval = false;
-        // EXP-UNC-1: this node's value uncertainty σ̂ (0.0 = none this node);
-        // set on a fresh sota eval, read at the RFP margin below.
-        #[cfg(feature = "sota")]
-        let mut node_sigma: f32 = 0.0;
         // `improving` is hoisted out of the not-in-check branch: doc 10's LMR
         // reduction (below, in the move loop) reads it even when this node is
         // in check — where SF pins it `false` (the pre-check eval bears no
@@ -2871,41 +2701,6 @@ impl Worker {
                         ply,
                     )
                 };
-                // EXP-UNC-1: on a FRESH sota eval, capture this node's value
-                // uncertainty σ̂ and fold it into the running mean σ̄. Env-gated —
-                // skipped entirely unless a consumer coefficient (ARCHON_UNC_RFP_C1
-                // for the RFP margin, ARCHON_UNC_TM_C2 for the TM soft-stop) is set,
-                // so zero overhead and bit-identical by default. `last_sigma()` is
-                // invalidated at the top of `evaluate()`, so a material-draw /
-                // non-SOTA node yields None here (no stale fold) — D33 review.
-                #[cfg(feature = "sota")]
-                if (self.unc_rfp_c1 != 0.0 || self.unc_tm_c2 != 0.0)
-                    && !(tt_hit && is_valid(tt_data.eval))
-                    && let Some(s) = self.eval_ctx.last_sigma()
-                {
-                    node_sigma = s;
-                    self.sigma_bar = if self.sigma_bar > 0.0 {
-                        self.sigma_bar + (s - self.sigma_bar) * self.unc_ema_alpha
-                    } else {
-                        s
-                    };
-                    // Consumer 2 reads the ROOT position's uncertainty in soft_stop.
-                    if ply == 0 {
-                        self.root_sigma = s;
-                    }
-                }
-                // Multi-head WDL TM consumer: capture the root decisiveness from
-                // the WDL head's fresh ply-0 eval (same freshness rules as σ̂:
-                // `last_wdl()` is invalidated at the top of `evaluate()`, so a
-                // TT-served root never folds a stale distribution).
-                #[cfg(feature = "sota")]
-                if self.wdl_tm_c3 != 0.0
-                    && ply == 0
-                    && !(tt_hit && is_valid(tt_data.eval))
-                    && let Some([l, _d, w]) = self.eval_ctx.last_wdl()
-                {
-                    self.root_wdl_d = (w - l).abs();
-                }
                 // S1 (design/10 N6, D22): `ss.static_eval` is the CORRECTED
                 // eval — raw plus the correction-history delta — and every
                 // downstream consumer (improving/opponent_worsening, hindsight,
@@ -3315,10 +3110,7 @@ impl Worker {
                 // exactly, for both values of `flag`. The right-hand side never
                 // evaluates the flag when `C(false)` already prunes or when
                 // `C(true)` cannot, which confines `all_threats()` to the band
-                // where the relaxation decides. The equivalence survives the
-                // EXP-UNC-1 rescale below because that scale is non-negative and
-                // `as Value` truncation is monotone, so it cannot reorder the
-                // two margins.
+                // where the relaxation decides.
                 //
                 // Why this is worth doing: `Board::ensure_threats` memoises on
                 // the position key, but RFP runs BEFORE any child search, so the
@@ -3335,29 +3127,14 @@ impl Worker {
                 // It is a MEMO, so deferring never duplicates work — the first
                 // later consumer pays what this site used to.
                 let rfp_margin = |flag: bool| -> Value {
-                    let margin = rfp_prune_margin(
+                    rfp_prune_margin(
                         depth,
                         tt_hit,
                         improving,
                         opponent_worsening,
                         correction_value,
                         flag,
-                    );
-                    // EXP-UNC-1: position-condition the RFP margin by the value
-                    // uncertainty (consumer 1). unc_margin_scale returns exactly
-                    // 1.0 when disabled or when there is no fresh σ̂ this node,
-                    // and the else keeps the integer margin untouched →
-                    // bit-identical by default (verified: sota bench 147691 with
-                    // the coeff unset).
-                    #[cfg(feature = "sota")]
-                    let margin = if self.unc_rfp_c1 != 0.0 {
-                        (margin as f32
-                            * unc_margin_scale(node_sigma, self.sigma_bar, self.unc_rfp_c1))
-                            as Value
-                    } else {
-                        margin
-                    };
-                    margin
+                    )
                 };
                 let prune = eval - rfp_margin(false) >= beta
                     || (eval - rfp_margin(true) >= beta && {
@@ -6124,22 +5901,11 @@ impl Worker {
 
         let mut total_time =
             self.tm.optimum() as f64 * falling_eval * reduction * instability * effort;
-        // Head-free decisiveness scale (searchopt 2026-07-28). Unlike the two
-        // factors below it needs no net head, so it is NOT `sota`-gated and is
-        // live on every build. Exactly 1.0 at the default `TM_SCORE_C = 0`, so
-        // `total_time` is bit-identical and the four-factor golden tests hold.
-        total_time *= score_tm_factor(best_value, params::TM_SCORE_C(), params::TM_SCORE_KNEE());
-        // EXP-UNC-1 consumer 2: position-condition the time budget by the root
-        // value uncertainty. unc_tm_factor is exactly 1.0 when disabled or before
-        // a root σ̂ exists, so total_time is unchanged and the four-factor golden
-        // tests hold; it only bites with a variance net + a nonzero coeff.
-        #[cfg(feature = "sota")]
-        {
-            total_time *= unc_tm_factor(self.root_sigma, self.sigma_bar, self.unc_tm_c2);
-            // Multi-head WDL consumer: bank clock on roots the WDL head calls
-            // decided. Exactly 1.0 when disabled / headless — golden tests hold.
-            total_time *= wdl_tm_factor(self.root_wdl_d, self.wdl_tm_c3);
-        }
+        // The soft-stop factor product is multiplicative, so a future
+        // head-driven TM factor (σ̂ / WDL / score-contestedness) is a one-line
+        // re-insertion here. The speculative versions were deleted 2026-08-01
+        // (simplification tier 0, items 0.7/0.8): all were measurably inert on
+        // a headless net, and TM back-loading was refuted at real TC.
         if self.root_moves.len() == 1 {
             total_time = total_time.min(params::ONE_REPLY_TOTAL_TIME_CAP());
         }

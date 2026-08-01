@@ -1248,49 +1248,13 @@ crate::tunables! {
     /// budget the soft stop compares against.
     pub ONE_REPLY_TOTAL_TIME_CAP: f64 = 561.7;
 
-    // ── Head-free decisiveness scale on the soft stop (2026-07-28, searchopt) ──
-    //
-    // WHY. Measured at 10+0.1 over the corpus match, conditioned EX ANTE on each
-    // engine's own previous eval and normalised by its own mean, we allocate
-    // **18% less** of our budget than SF18 in balanced positions (|eval| < 0.25)
-    // and **33% less** when clearly winning, while the conversion band is at
-    // parity. That is not a clock artifact (the gap is largest in the midgame,
-    // where we spend 14% MORE total time than SF) and not a symptom of our
-    // churnier scores (we escalate MORE on score movement than SF, so that story
-    // predicts the wrong sign). Details: `searchopt/LEDGER.md`, "TIME ALLOCATION".
-    //
-    // The engine already has two factors of exactly this shape — `unc_tm_factor`
-    // and `wdl_tm_factor` — but both read NET HEADS, and D48X carries neither, so
-    // both are measurably inert (identical `ARCHON_TM_TRACE` sequences with the
-    // coefficients forced on). This one reads the SEARCH's own settled root
-    // score, so it needs no head, no sidecar and no retrain.
-    //
-    // SHAPE. `1 + (TM_SCORE_C/1024) · contested`, where
-    // `contested = 1 − min(|score|, KNEE)/KNEE` is 1 at a dead-level root and 0
-    // once the score reaches the knee, clamped to [FLOOR, CEIL]. TWO-SIDED on
-    // purpose: the sign of TM_SCORE_C picks which hypothesis is under test
-    // rather than the code baking one in.
-    //
-    // DEFAULT 0 = EXACTLY 1.0, so `total_time` is bit-identical and the
-    // four-factor golden tests hold. `bench` is depth-limited, so
-    // `use_time_management()` is false and the soft stop never runs there — the
-    // `Bench:` pin cannot move regardless.
-    /// Contestedness coefficient in 1024ths. **0 = off (default).**
-    /// **Signed, and the sign selects the hypothesis:** positive spends MORE on
-    /// contested roots (the direct reading of the allocation measurement),
-    /// negative spends LESS (the bank-clock-for-later reading). The first cut of
-    /// this knob was shrink-on-decided only, which has the wrong sign for its own
-    /// motivating measurement — see `score_tm_factor`'s docs.
-    pub TM_SCORE_C: i32 = 0;
-    /// Root score at which the shrink saturates, in OUR internal units (a pawn
-    /// is ~207 here, not ~385 — this is an eval-frame quantity, so do NOT
-    /// transcribe a Stockfish number into it).
-    pub TM_SCORE_KNEE: Value = 400;
-    /// Floor on the factor: a root can never be starved below 80% of its budget.
-    pub TM_SCORE_FLOOR: f64 = 0.8;
-    /// Ceiling on the factor, matching `unc_tm_factor`'s upper clamp so a
-    /// contested root can never claim more than 125% of its budget.
-    pub TM_SCORE_CEIL: f64 = 1.25;
+    // The TM_SCORE_* head-free decisiveness family (score_tm_factor) was
+    // DELETED 2026-08-01 (simplification tier 0, item 0.7): default 0 = exact
+    // 1.0 since birth, and the TM back-loading hypothesis it existed to test
+    // was refuted at real TC (−36.6 ± 22.5). The 18%/33% under-allocation
+    // measurement that motivated it lives in `searchopt/LEDGER.md`
+    // ("TIME ALLOCATION"); a future head-driven factor re-enters as one line
+    // in `soft_stop`'s multiplicative product.
 
     // The four soft-stop factors multiply into the plain `optimum` budget
     // (design/12 §3.9, step 8). Each is an SF-current fitted value (D20); the
