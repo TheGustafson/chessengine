@@ -14151,3 +14151,54 @@ perf loop is verify-the-agent-myself -> `CHECK_NNUE_GATE=1 tools/check.sh` ->
 build PGO -> merge, and only THEN test. The binary is an argument because both
 sides of the screen must use the SAME binary — the comparison is between NETS
 with tunables held fixed.
+
+---
+
+## 2026-08-01 00:50 — tick: PARITY IS LOSING, and my explanation for it is REFUTED
+
+**D49:** sb1320, 184.8k pos/s, heldout ema 0.010474. All services green.
+
+**The frame experiment is contradicting the frame theory.**
+
+| arm | slope vs SF internal | result | n |
+|---|---:|---:|---:|
+| 756 (shipped) | 0.477 | **+3.24 +/- 10.65** | 1500 (final) |
+| **1585 (PARITY)** | **0.995** | **-16.72 +/- 10.9** | 1227, running |
+
+Difference **~20 Elo against a combined 95% bar of +/-15.2** — outside the bar,
+so this is a real gap, not noise. And it moved FURTHER negative with more games
+(-11.63 at n=807 -> -16.72 at n=1227), which is the opposite of a regression to
+the mean. **The elegant argument — our margins are SF's raw internal constants,
+so match SF's frame — predicts the opposite sign of what the games say.**
+Rule 6 of the method guide: when the story gets beautiful, attack it hardest. The
+games did the attacking.
+
+**I proposed a mechanism and it is REFUTED in the same tick.** Hypothesis: at
+FIXED 25k nodes, margins that are 2.1x too large prune harder, so the 756 arm
+searches DEEPER and depth buys the Elo. Measured from the two PGNs
+(194,261 and 172,710 scored moves):
+
+| arm | mean depth |
+|---|---:|
+| 756 | **13.209** |
+| 1585 | **13.204** |
+
+**Identical to 0.005 ply.** The depth mechanism is dead.
+
+**And I nearly published the opposite.** My first extraction gave 17.95 vs 17.74
+— a 0.21-ply gap that is quantitatively about right for 20 Elo, i.e. a beautiful
+confirmation. It was a **contaminated regex** (`/[0-9]+ ` matching outside the
+`{eval/depth time}` comments; the giveaway was `max 245`, not a real depth).
+Re-derived strictly from comment interiors, the effect vanished. **The number
+that confirmed the story was the broken one** — exactly the failure mode the
+"re-derive any number before building on it" rule exists for.
+
+**Cause of the parity loss: UNKNOWN, and deliberately left unknown.** Not
+chaining a second unmeasured inference onto a refuted first one. Candidates not
+yet tested: our eval's error PROFILE differs from SF's so the optimal
+margin-to-eval ratio is not 1.0; or something scale-dependent that the absmax
+saturation check (2386 vs the 15000 boundary) does not capture.
+
+**This does not change the standing plan** — the whole screen is re-run after the
+tunable transcription lands, because the margins these frames are measured
+against are themselves about to move. Tonight's arms become the BEFORE half.
