@@ -14099,3 +14099,39 @@ cherry-pick dirtied mainwt and had to be reset — no commits lost).
 **Box:** avail 6659 MB, zero builds at launch time, swap still 4095/4095.
 sb1300 match still running; `d49frame` (1585 parity arm FIRST, then 1068) waits
 on it. D49 at sb1309, 183.1k pos/s.
+
+---
+
+## 2026-08-01 00:33 — tick: sb1300 FINAL +3.24, study 65 gate VERIFIED and merged, parity arm live
+
+**sb1300 @ scale 756 FINAL: +3.24 +/- 10.65 over 1500 games** (W464/L450/D586,
+50.47%, Ptnml [24,167,359,171,29]). D49 is level-to-mildly-ahead of canonical
+**in the HANDICAPPED frame** (slope 0.477 vs canonical 0.674). Trajectory:
+sb1270 -2.08 +/- 11.32 -> sb1300 **+3.24 +/- 10.65**.
+
+**Study 65 gate VERIFIED BY ME, not taken on report.** `gate65.service`,
+`CHECK_NNUE_GATE=1 tools/check.sh` on its branch, memory-capped 6G:
+`Result=success`, exit 0, **Bench: 587683**, eval hash
+`2e1ede95…79c4`, **d13 1739588**, "All checks passed." All three pins match, so
+`narrow65` genuinely does not touch the default path. **Merged as `908126d0`**
+with the feature OFF.
+
+**Frame experiment: the PARITY arm (1585, slope 0.995) is running**, started
+00:28:01, n=299 reads -1.2 +/- 22.1 — far too early, bar is +/-22. ETA ~00:52,
+then the 1068 arm.
+
+**Correction to my own reading this tick:** I called the match rate "4.5
+games/min, 13x slower than expected" and started diagnosing a slowdown. It was
+00:32, not later — 302 games in 4.75 min is **63 games/min, the normal rate**. I
+had misjudged elapsed time, not measured a regression. Checked the clock before
+acting on it.
+
+Load is 8.48 because the tunable-refresh agent's test binary is at 683% CPU. That
+costs match WALL-CLOCK but not the RESULT: fixed 25k nodes.
+
+**No new study commissioned this tick, and the reason is saturation, not
+caution:** an 8-core box is carrying the trainer, a 1500-game match, and a
+build-heavy agent at load 8.48. A third concurrent heavy job would slow all three
+and buy nothing. The FT-LOCALITY brief (staged above, grounded: both weight
+tables are ALREADY i8, so the lever is rows-touched and ordering, not precision)
+fires the moment the tunable agent lands.
