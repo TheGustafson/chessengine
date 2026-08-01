@@ -15741,3 +15741,43 @@ frame (interior optimum, the shipped scale is already on it).
 fail a byte-identical null; `cycles:u` is not load-robust; the wall-clock panel
 voided itself on a busy box. **`instructions:u` and node counts are the only
 things that decided anything.**
+
+---
+
+## 2026-08-01 07:18 — 15000 games pooled: D49 is +8.41 ± 3.89, and it is FLAT across sb1340–1480
+
+**D49:** sb1498 (sb1500 permanent checkpoint imminent), 188.6k pos/s, heldout ema
+0.010436. Disk 147 GB. Study 70 running.
+
+**Ten completed frame-fair screens, 1500 games each = 15000 games:**
+
+| sb | Elo | sb | Elo |
+|---:|---:|---:|---:|
+| 1340 | +0.69 | 1440 | +3.71 |
+| 1350 | +12.75 | 1450 | +10.66 |
+| 1410 | +15.06 | 1460 | +0.46 |
+| 1420 | +14.14 | 1470 | +16.46 |
+| 1430 | +1.85 | 1480 | +8.34 |
+
+**POOLED: +8.41 ± 3.89 Elo** (sd 6.27 across checkpoints, SE 1.98). Supersedes the
+six-screen +9.70 ± 4.47 from 06:18 — same conclusion, tighter bar.
+
+**AND THE TREND IS FLAT: slope +0.0116 Elo/sb, t = +0.25, NOT significant.**
+Over the 140 superbatches spanned that is **+1.6 Elo**, against a per-screen bar
+of ±11. So across sb1340→1480 **D49 is not measurably getting stronger** — it is
+sitting at a stable ~+8 Elo over canonical.
+
+**This is the sharpest thing measured about D49 tonight, and it cuts against the
+natural reading of the series.** At 04:32 I reported "D49 has overtaken canonical,
++15.06" off sb1410; at 06:18 I pooled six screens and implied a rising story. With
+ten screens the level is solid and the *slope is indistinguishable from zero*.
+The apparent climb was the spread (sd 6.27, range +0.46 to +16.46) being read as
+motion.
+
+**What this does NOT say:** that training has stopped helping. The heldout is
+still falling significantly (t = −3.82 at sb1360–1470) — but
+[[loss-is-not-elo]] applies in both directions, and 140 superbatches of a decayed
+LR simply may not move Elo enough to see against ±3.9. **It does say the sb1700
+verdict should not be expected to show a large jump**, and that any claim of
+"D49 improved from sb1400 to sb1700" needs the 5880-game screen at ±5, not a
+comparison of two 1500-game points.
