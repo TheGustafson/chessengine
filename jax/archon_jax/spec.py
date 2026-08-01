@@ -116,6 +116,19 @@ RECORD_DTYPE = np.dtype([
 ])
 assert RECORD_DTYPE.itemsize == 32
 
+# ---------------------------------------------------------------------------
+# Stockfish-side constants, needed only when SF's own net is the live teacher
+# (sf-teacher-blend-2026-08-01). Kept here so the trainer, the converter and
+# the calibration tool cannot drift apart on them.
+# ---------------------------------------------------------------------------
+SF_BUCKETS = 8               # their layer stacks; index = (pieces-1)/4
+# `material` in SF's evaluate() blend: 534*count<PAWN>() + non_pawn_material().
+# Piece values are ARCHON's transcription of eca43a97 (types.rs:636-644);
+# index by PieceType 0=P 1=N 2=B 3=R 4=Q 5=K.
+PIECE_VALUES = np.array([0, 781, 825, 1276, 2538, 0], dtype=np.int64)
+MATERIAL_PAWN_WEIGHT = 534   # eval/params.rs:20
+EVAL_BLEND_BASE = 77871      # eval/params.rs:27 — v*(BASE+material)/BASE
+
 
 def clip_map_for_arch(arch) -> dict[str, float]:
     """Per-tensor weight clip DERIVED FROM EACH TENSOR'S EXPORT ENCODING (v1.5).
@@ -234,6 +247,21 @@ class ArchSpec:
     #   l3w (l3,   B)    -> (2*l2 + 2*l3, B)
     # False = today's single-activation tail, byte-for-byte.
     dual_tail: bool = False
+    # SF-net TEACHER only (sf-teacher-blend-2026-08-01): the exact float
+    # analogue of SF's integer dual activation, which `dual_tail` deliberately
+    # does NOT reproduce (it is "shape only" — see above). Two differences,
+    # both load-bearing when the goal is to REPRODUCE their net rather than to
+    # borrow its topology:
+    #   * SF squares the UNCLIPPED pre-activation: `(x*x) >> 21` has no lower
+    #     clamp, so a NEGATIVE unit contributes POSITIVELY to the sqr lane,
+    #     where our SqrCReLU sends it to 0. Ignoring this is not a rounding
+    #     difference, it changes the function.
+    #   * the sqr lane's gain is 127/128, not 1: at the normalisation that
+    #     makes the clipped lane `clamp(x,0,1)` (divide by 2^(WSB+1)*127), the
+    #     square lands on `min(x^2 * 127/128, 1)`.
+    # Derivation in docs/research/sf-teacher-blend-2026-08-01.md §2.
+    # Requires dual_tail; False everywhere else, so no trained net moves.
+    sf_act: bool = False
     # Recode POC (learned-feature-code study §6.1, 2026-07-30): the threat
     # embedding's ROW COUNT. 0 = the identity code (THREAT_DIMS rows, every
     # net before the study). When a run trains a re-coded threat channel,

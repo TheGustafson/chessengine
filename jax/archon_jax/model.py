@@ -241,17 +241,32 @@ def _screlu(x):
     return c * c
 
 
-def _dual(x):
+# SF's square lane, normalised. Their int form is `(v*v) >> (2*(WSB+1)+7)`
+# capped at 127, against a clipped lane of `(v >> (WSB+1))` clamped to
+# [0, 127]. Writing x = v / (2^(WSB+1) * 127) makes the clipped lane exactly
+# clamp(x, 0, 1); the same substitution turns the square lane into
+# min(x^2 * 127/128, 1), at BOTH layers (the WSB+1 / WSB pair cancels).
+SF_SQR_GAIN = 127.0 / 128.0
+
+
+def _dual(x, sf_act: bool = False):
     """SF `eca43a97`'s dual activation: hand BOTH SqrCReLU(x) and CReLU(x)
     forward, concatenated (nnue_architecture.h:56-67 — ac_sqr_N writes the
     low half of fc_{N+1}'s input buffer, ac_N the high half, so sqr comes
     FIRST). Doubles what each unit contributes at one extra multiply per
     unit; adds routes rather than width (study §4.3/§4.4).
 
-    SHAPE ONLY. SF's `WeightScaleBits+1` / `WeightScaleBits` per-layer shifts
-    are int8 requantisation bookkeeping; our tail is f32 and has no analogue.
+    ``sf_act=False`` is SHAPE ONLY — SF's `WeightScaleBits+1` /
+    `WeightScaleBits` shifts are int8 requantisation bookkeeping and our tail
+    is f32. ``sf_act=True`` is the exact float analogue of their integer
+    activation, needed only to REPRODUCE their net as a teacher: the square
+    lane reads the UNCLIPPED pre-activation (so negative units contribute
+    positively) and carries the 127/128 gain. See ArchSpec.sf_act.
     """
     c = jnp.clip(x, 0.0, 1.0)
+    if sf_act:
+        return jnp.concatenate([jnp.minimum(SF_SQR_GAIN * x * x, 1.0), c],
+                               axis=-1)
     return jnp.concatenate([c * c, c], axis=-1)
 
 
@@ -288,9 +303,10 @@ def head_forward(params: dict, arch: ArchSpec, acc_stm: jnp.ndarray,
     if arch.dual_tail:
         # R2: dual activation + inter-layer concat skip (study §4.4). L1/L2
         # unchanged, so `l1` above — the expensive part — is untouched.
-        hl2 = _dual(_select(l1, bucket, arch.num_buckets))        # (B, 2*L2)
+        sfa = getattr(arch, "sf_act", False)
+        hl2 = _dual(_select(l1, bucket, arch.num_buckets), sfa)   # (B, 2*L2)
         l2 = hl2 @ params["l2w"] + params["l2b"]                  # (B, 8*L3)
-        hl3 = _dual(_select(l2, bucket, arch.num_buckets))        # (B, 2*L3)
+        hl3 = _dual(_select(l2, bucket, arch.num_buckets), sfa)   # (B, 2*L3)
         # fc_2 reads BOTH layers' pairs: a neck direction reaches the output
         # without passing through fc_1's nonlinearity.
         l3 = jnp.concatenate([hl2, hl3], axis=-1) @ params["l3w"] + params["l3b"]
