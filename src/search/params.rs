@@ -701,9 +701,19 @@ crate::tunables! {
     /// **50.6 % were written by a main-search fail-low** (34.5 % at depth
     /// 1–3, 16.1 % deeper) — 220 k entries, 17.7 % of all NonPV nodes.
     ///
-    /// `0` = off (Stockfish `eca43a97` and Reckless both store nothing there).
-    /// `1` = store the argmax move. It rides an UPPER-bound entry and is
-    /// therefore never a singular-extension candidate; see
+    /// **MEASURED DEAD — leave it at 0.** Against its own pruning control the
+    /// store reads **−0.06 pp of NonPV `fhf` and +2.3 % nodes** (uho1000 @ d10,
+    /// null ±0.03 pp); alone it reads +0.08 pp and +3.9 % nodes. Mechanism: at
+    /// a NonPV all-node with a zero window every child returns an upper bound
+    /// from a REDUCED search, and the moves that survive the §3.5 pruning
+    /// cascade far enough to get a value are the ones the static ordering
+    /// already ranked first — so the argmax carries almost nothing the next
+    /// visit did not already have. Stockfish `eca43a97` and Reckless both
+    /// store nothing there, and this is why.
+    ///
+    /// Kept as a knob, not deleted, because it is the reproduction path for
+    /// that claim; `1` = store the argmax move. It rides an UPPER-bound entry
+    /// and is therefore never a singular-extension candidate; see
     /// [`TT_UPPER_PRUNE_BLIND`] for what it does to the gates that read
     /// `ttMove == NULL` as "this node is unresolved".
     pub TT_FAILLOW_MOVE: i32 = 0;
@@ -722,6 +732,15 @@ crate::tunables! {
     /// indistinguishable from the pruning side effect of handing 20 % of
     /// NonPV nodes a move they did not have (study 70's standing finding,
     /// which cost that study two retracted headline arms).
+    ///
+    /// **REJECTED IN GAMES — never put this in an SPSA campaign.** Bit 1 (IIR)
+    /// alone is a **−27.7 %** tree at fixed depth, which is why it is tempting;
+    /// the other three bits are +0.3 %, +0.6 % and −0.05 %, inside the null. As
+    /// a PGO pair at 25 k fixed nodes it reads **−24.17 ± 15.11 Elo over 792
+    /// games, LOS 0.08 %**. Our IIR is already exact SF parity
+    /// (`search.cpp:1030`) and SF's own source carries
+    /// `(*Scaler) Making IIR more aggressive scales poorly` — this is that
+    /// comment, measured on ARCHON. Perf study 71 §2.1.
     pub TT_UPPER_PRUNE_BLIND: i32 = 0;
 
     // --- Move-loop pruning: late move pruning (design/10 §3.5) ---
