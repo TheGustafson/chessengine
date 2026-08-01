@@ -247,6 +247,7 @@ impl PolicyNet {
             &eval.halfka_weights,
             &eval.ft_bias,
             &eval.threat_weights,
+            &eval.threat_narrow,
             board,
             eval.threat_remap.as_deref(),
         );

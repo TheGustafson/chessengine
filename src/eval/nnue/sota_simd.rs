@@ -97,6 +97,150 @@ type L3DotFn = fn(&[f32; L3], &[f32; L3]) -> f32;
 // battery (S2 landing commit).
 type SkipDotFn = fn(&[u8], &[i8]) -> i32;
 
+// ---------------------------------------------------------------------------
+// Perf study 65 — the NARROW WEIGHT ROW.
+// ---------------------------------------------------------------------------
+
+/// Signed bits a "narrow" FullThreats weight row is stored in.
+///
+/// Study 64 §2.1 measured that **55.25 % of this engine's L1-miss latency is
+/// weight-row loads**, and with `L1 = 1280` fixed by owner ruling the only term
+/// left in `rows × lanes × bytes` is the last one. Study 51 §4.2 and study 64
+/// §6.1 measured the folded-row width distribution; study 65 re-measured it per
+/// FOLD and per LANE:
+///
+/// | population | ≤ 6 bits | 7 bits | 8 bits |
+/// |---|---:|---:|---:|
+/// | threat rows, **fold-weighted** | **53.06 %** | 38.71 % | 8.23 % |
+/// | threat rows living in an ALL-NARROW fold | **9.99 %** | — | — |
+/// | HalfKA rows, fold-weighted | 0.00 % | 2.70 % | 97.30 % |
+///
+/// Three consequences decide this design:
+///
+/// 1. **Per ROW, not per fold.** The 53.06 % is already the fold-weighted ROW
+///    rate; only 9.99 % of folded rows live in a fold whose every row is
+///    narrow, so a whole-fold "all narrow?" predicate converts **5.3× less**
+///    than a per-row plane does. The dispatch is therefore per row, hoisted out
+///    of the tile loop.
+/// 2. **Threats only.** HalfKA has literally zero narrow rows.
+/// 3. **Not a lane split.** `LANEMAX` measured the per-lane maxima over the
+///    whole threat table: only **91 of 1280** lanes fit 6 bits and 891 fit 7,
+///    so a uniform lane-split layout — which would need no dispatch at all —
+///    is worth one cache line in twenty. Measured and rejected (study 65 §3).
+///
+/// 6 bits × 1280 lanes = **960 B = exactly 15 cache lines**, against 20 today,
+/// and the row start stays 64-byte aligned with no padding. 7 bits would be
+/// 1120 B = 17.5 lines and would have to pad to 18, which is why the second
+/// plane is a follow-up and not part of this arm.
+pub(crate) const NARROW_BITS: usize = 6;
+/// Stored bytes of a narrow row. The row keeps its 1280-byte SLOT — the layout,
+/// the `feature * ACC` offset arithmetic and every producer are untouched — and
+/// simply stops reading the last 320 bytes. Cache lines are fetched on demand,
+/// so "not read" and "not present" cost the same, and this buys the whole byte
+/// cut without the 243 KB permutation table study 64 §6.1 costed the route at.
+pub(crate) const NARROW_BYTES: usize = ACC * NARROW_BITS / 8;
+
+#[cfg(feature = "narrow65")]
+/// The magnitude a row's peak must not exceed to be stored narrow: 6 signed
+/// bits hold `-32..=31`.
+pub(crate) const NARROW_MAX: i16 = 31;
+
+#[cfg(feature = "narrow65")]
+/// Whether the kernel that will actually run can decode a narrow row.
+///
+/// The packed form is read with `vpermb` + `vpmultishiftqb`, which are
+/// **AVX512_VBMI** — and VBMI is not implied by the VNNI the compile-time
+/// direct path keys on (Cascade Lake has VNNI and no VBMI). So the decision is
+/// made once, at LOAD time, by the same predicate the dispatcher uses: if it is
+/// false the loader leaves the table in its 8-bit form, the bitmap stays empty,
+/// every row takes the existing path and the build is bit-identical to today.
+pub(crate) fn narrow_supported() -> bool {
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx512f",
+        target_feature = "avx512bw",
+        target_feature = "avx512vnni"
+    ))]
+    {
+        // The compile-time direct path calls `avx512::*` with no runtime check,
+        // so VBMI must be statically present too.
+        cfg!(target_feature = "avx512vbmi")
+    }
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "avx512f",
+        target_feature = "avx512bw",
+        target_feature = "avx512vnni"
+    )))]
+    {
+        #[cfg(target_arch = "x86_64")]
+        {
+            std::arch::is_x86_feature_detected!("avx512f")
+                && std::arch::is_x86_feature_detected!("avx512bw")
+                && std::arch::is_x86_feature_detected!("avx512vnni")
+                && std::arch::is_x86_feature_detected!("avx512vbmi")
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            false
+        }
+    }
+}
+
+/// Is the row at element offset `off` stored narrow? `bits` is the loader's
+/// per-feature bitmap, empty when the table was left in its 8-bit form.
+///
+/// Called once per row per FOLD (hoisted out of the tile walk), not once per
+/// row per tile — perf study 57's rule about the row-offset scaling applies to
+/// this lookup for the same reason.
+#[inline(always)]
+pub(crate) fn is_narrow(bits: &[u64], off: usize) -> bool {
+    let f = off / ACC;
+    bits.get(f >> 6).is_some_and(|w| (w >> (f & 63)) & 1 != 0)
+}
+
+/// Decode lane `j` of a narrow row whose packed bytes start at `row`.
+///
+/// The scalar reference for [`pack_narrow_row`], used by the from-scratch
+/// rebuild path and by the tests that prove the SIMD decode agrees with it.
+#[inline]
+pub(crate) fn unpack_narrow_lane(row: &[i8], j: usize) -> i16 {
+    let g = j / 8;
+    let mut q = 0u64;
+    for (i, &b) in row[g * 6..g * 6 + 6].iter().enumerate() {
+        q |= u64::from(b as u8) << (8 * i);
+    }
+    let v = (q >> (6 * (j % 8))) & 0x3F;
+    // Sign-extend from 6 bits: `(v ^ 32) - 32`.
+    (v as i16 ^ 32) - 32
+}
+
+#[cfg(feature = "narrow65")]
+/// Pack one row's `ACC` i8 weights into [`NARROW_BYTES`] bytes, little-endian,
+/// 8 lanes per 6 bytes.
+///
+/// The grouping is what makes the decode one shuffle: eight 6-bit fields are 48
+/// bits, so **no field ever straddles a 64-bit boundary**, and
+/// `vpmultishiftqb` — which extracts eight unaligned byte-wide fields from each
+/// qword — can lift all eight in one instruction once `vpermb` has put each
+/// group's 6 bytes into its own qword.
+///
+/// Values are stored as the raw two's-complement 6-bit pattern; the kernel
+/// recovers `w + 32` with a single `vpternlogd` (`(m & 0x3F) ^ 0x20`) and pays
+/// the `-32` bias once per fold instead of once per lane.
+pub(crate) fn pack_narrow_row(row: &[i8], out: &mut [u8]) {
+    debug_assert_eq!(row.len(), ACC);
+    debug_assert_eq!(out.len(), NARROW_BYTES);
+    out.fill(0);
+    for (g, group) in row.chunks_exact(8).enumerate() {
+        let mut q: u64 = 0;
+        for (k, &w) in group.iter().enumerate() {
+            q |= u64::from((w as u8) & 0x3F) << (6 * k);
+        }
+        out[g * 6..g * 6 + 6].copy_from_slice(&q.to_le_bytes()[..6]);
+    }
+}
+
 struct Kernels {
     i8_deltas: ApplyI8Fn,
     i8_deltas_into: ApplyI8IntoFn,
@@ -704,6 +848,7 @@ pub(crate) fn apply_threat_deltas_into(
     weights: &[i8],
     adds: &[RowOffset],
     subs: &[RowOffset],
+    narrow_bits: &[u64],
 ) {
     #[cfg(feature = "foldcount")]
     {
@@ -731,6 +876,15 @@ pub(crate) fn apply_threat_deltas_into(
     pin_rows_thr!(adds, subs);
     pin_src!(src);
     pin_dst!(dst);
+    // Perf study 65: one branch per FOLD, not per row. `narrow_bits` is empty
+    // unless the loader packed a narrow plane — which it only does behind
+    // `narrow_supported()` and the `narrow65` feature — so every other build
+    // reaches exactly the call it reached before.
+    #[cfg(all(target_arch = "x86_64", feature = "narrow65"))]
+    if !narrow_bits.is_empty() {
+        return avx512::i8_deltas_into_narrow(dst, src, weights, adds, subs, narrow_bits);
+    }
+    let _ = narrow_bits;
     kernel_dispatch!(i8_deltas_into(dst, src, weights, adds, subs))
 }
 
@@ -1856,6 +2010,115 @@ mod avx512 {
         };
     }
 
+    // ── Perf study 65 — the narrow-row decode. ─────────────────────────────
+    //
+    // A wide row's 32 lanes are ONE instruction: `vpmovsxbw zmm, [mem]`. A
+    // narrow row's 32 lanes are 24 packed bytes and four:
+    //
+    //   vpermb          spread the 24 bytes so each group of 8 lanes owns a qword
+    //   vpmultishiftqb  lift all 8 unaligned 6-bit fields of every qword at once
+    //   vpternlogd      (m & 0x3F) ^ 0x20  ⇒  the byte is exactly `w + 32`
+    //   vpmovzxbw       widen to 32 i16
+    //
+    // so the row costs 40 extra shuffle-port ops and reads 15 cache lines
+    // instead of 20. The `+32` per lane is deliberately NOT undone here: it is
+    // lane-uniform, so the whole fold's bias is one `vpsubw` per tile register
+    // (and exactly zero when the fold has as many narrow subs as narrow adds,
+    // which the modal (1,1) shape does).
+    //
+    // Eight 6-bit fields are 48 bits, so no field ever straddles a qword — that
+    // is the property that makes `vpmultishiftqb` a single instruction here and
+    // it is why the packer groups by eight.
+
+    #[cfg(feature = "narrow65")]
+    /// `vpermb` index: output qword `q` takes source bytes `6q..6q+5`.
+    const fn narrow_spread() -> [i8; 32] {
+        let mut a = [0i8; 32];
+        let mut q = 0;
+        while q < 4 {
+            let mut i = 0;
+            while i < 6 {
+                a[q * 8 + i] = (q * 6 + i) as i8;
+                i += 1;
+            }
+            q += 1;
+        }
+        a
+    }
+
+    #[cfg(feature = "narrow65")]
+    /// `vpmultishiftqb` control: byte `j` of each qword selects bits
+    /// `[6j, 6j+8)` of that qword. The widest is `j = 7` at bit 42, so every
+    /// window stays inside its own qword.
+    const fn narrow_shift() -> [i8; 32] {
+        let mut a = [0i8; 32];
+        let mut k = 0;
+        while k < 32 {
+            a[k] = ((k % 8) * 6) as i8;
+            k += 1;
+        }
+        a
+    }
+
+    #[cfg(feature = "narrow65")]
+    static NARROW_SPREAD: [i8; 32] = narrow_spread();
+    #[cfg(feature = "narrow65")]
+    static NARROW_SHIFT: [i8; 32] = narrow_shift();
+
+    /// The four decode constants, materialised ONCE per fold.
+    ///
+    /// They were originally loaded inside `narrow_lanes`, and LLVM hoisted them
+    /// only as far as the TILE loop — three `vpbroadcast`s per tile, i.e. ~20
+    /// extra `.rodata` loads per node, competing for L1 with a weight stream
+    /// that moves 45.9 GB per frame. **Measured: that alone was +19.3 L1d
+    /// misses/node, which is more than the whole arm was trying to save.**
+    /// Passing them by value makes the hoist a property of the source rather
+    /// than of the register allocator's mood.
+    #[cfg(feature = "narrow65")]
+    #[derive(Clone, Copy)]
+    struct NarrowConsts {
+        spread: __m256i,
+        shift: __m256i,
+        m3f: __m256i,
+        m20: __m256i,
+    }
+
+    #[cfg(feature = "narrow65")]
+    #[target_feature(enable = "avx512f,avx512bw,avx512vl,avx512vbmi")]
+    #[inline]
+    unsafe fn narrow_consts() -> NarrowConsts {
+        // SAFETY: two 32-byte reads of `'static` 32-byte arrays.
+        unsafe {
+            NarrowConsts {
+                spread: _mm256_loadu_si256(NARROW_SPREAD.as_ptr().cast()),
+                shift: _mm256_loadu_si256(NARROW_SHIFT.as_ptr().cast()),
+                m3f: _mm256_set1_epi8(0x3F),
+                m20: _mm256_set1_epi8(0x20),
+            }
+        }
+    }
+
+    #[cfg(feature = "narrow65")]
+    /// The 32 i16 lanes of a narrow row at lane offset `lane`, as `w + 32`.
+    ///
+    /// # Safety
+    /// `row` must point at a live `ACC`-byte row slot and `lane + 32 <= ACC`.
+    /// The 32-byte load reads 8 bytes past the packed region on the last group
+    /// of a tile; those bytes are inside the row's own (unshrunk) 1280-byte
+    /// slot, which is why the layout keeps the slot rather than compacting it.
+    #[target_feature(enable = "avx512f,avx512bw,avx512vl,avx512vbmi")]
+    #[inline]
+    unsafe fn narrow_lanes(row: *const i8, lane: usize, c: NarrowConsts) -> __m512i {
+        unsafe {
+            let packed = _mm256_loadu_si256(row.add(lane * NARROW_BITS / 8).cast());
+            let spread = _mm256_permutexvar_epi8(c.spread, packed);
+            let fields = _mm256_multishift_epi64_epi8(c.shift, spread);
+            // (a & b) ^ c with A=0xF0, B=0xCC, C=0xAA ⇒ imm8 = 0x6A.
+            let biased = _mm256_ternarylogic_epi32::<0x6A>(fields, c.m3f, c.m20);
+            _mm512_cvtepu8_epi16(biased)
+        }
+    }
+
     /// In-place i8 fold — the HalfKA Finny cold
     /// build. Same `REGS`-wide register tile; the row is a 32-byte load
     /// sign-extended to 32 i16 lanes, halving the bytes the tile pulls in.
@@ -2598,6 +2861,225 @@ mod avx512 {
                 off += TILE;
             }
         }
+    }
+
+    // ── Perf study 65 — the narrow-plane twins of the two into-kernels. ────
+    //
+    // These are SEPARATE functions rather than a `const NARROW: bool` parameter
+    // on the existing ones, and that is deliberate on two counts. (a) The
+    // decode needs AVX512_VBMI, which the compile-time direct dispatch does not
+    // imply (Cascade Lake has VNNI, no VBMI), so the narrow bodies must carry a
+    // wider `target_feature` than the wide ones may. (b) It makes the claim
+    // "nothing about the wide path changed" a property of the diff rather than
+    // of a code-generation argument — `narrow_bits` is empty for HalfKA and for
+    // every build where the loader declined to pack, and in that case the
+    // dispatch below never runs at all.
+
+    #[cfg(feature = "narrow65")]
+    /// The shaped fold with a per-ROW narrow/wide decision, hoisted.
+    ///
+    /// The width test is done ONCE per row in the prologue, beside the offset
+    /// hoist study 57 landed, and the tile walk then branches on a register.
+    /// Study 65 measured why it must be per row and not per fold: 53.06 % of
+    /// folded threat rows are narrow but only 9.99 % live in a fold whose every
+    /// row is — a whole-fold predicate converts 5.3× less.
+    #[target_feature(enable = "avx512f,avx512bw,avx512vl,avx512vbmi")]
+    #[inline]
+    unsafe fn i8_into_narrow_shaped<const NA: usize, const NS: usize>(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i8],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
+        narrow_bits: &[u64],
+    ) {
+        // SAFETY: as `i8_into_shaped`. Narrow rows read `NARROW_BYTES` of their
+        // own 1280-byte slot (plus an 8-byte tail overread that stays inside
+        // it); wide rows are byte-for-byte the existing path.
+        unsafe {
+            let mut arow = [0usize; NA];
+            let mut anar = [false; NA];
+            for ((slot, flag), &feature) in arow.iter_mut().zip(anar.iter_mut()).zip(adds) {
+                *slot = feature.0;
+                *flag = super::is_narrow(narrow_bits, feature.0);
+            }
+            let mut srow = [0usize; NS];
+            let mut snar = [false; NS];
+            for ((slot, flag), &feature) in srow.iter_mut().zip(snar.iter_mut()).zip(subs) {
+                *slot = feature.0;
+                *flag = super::is_narrow(narrow_bits, feature.0);
+            }
+            // Every narrow lane arrives as `w + 32`; the bias is lane-uniform,
+            // so the whole fold owes one constant. It is exactly zero whenever
+            // the fold has as many narrow subs as narrow adds.
+            let bias = 32
+                * (anar.iter().filter(|b| **b).count() as i32
+                    - snar.iter().filter(|b| **b).count() as i32);
+            let biasv = _mm512_set1_epi16(bias as i16);
+            let c = narrow_consts();
+            let mut off = 0;
+            while off + TILE <= ACC {
+                let mut v = [_mm512_setzero_si512(); REGS];
+                for (k, vk) in v.iter_mut().enumerate() {
+                    *vk = _mm512_loadu_si512(src.as_ptr().add(off + k * LANES).cast());
+                }
+                for (i, &base) in arow.iter().enumerate() {
+                    let row = weights.as_ptr().add(base);
+                    if anar[i] {
+                        for (k, vk) in v.iter_mut().enumerate() {
+                            *vk = _mm512_add_epi16(*vk, narrow_lanes(row, off + k * LANES, c));
+                        }
+                    } else {
+                        let row = row.add(off);
+                        for (k, vk) in v.iter_mut().enumerate() {
+                            let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                            *vk = _mm512_add_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
+                        }
+                    }
+                }
+                for (i, &base) in srow.iter().enumerate() {
+                    let row = weights.as_ptr().add(base);
+                    if snar[i] {
+                        for (k, vk) in v.iter_mut().enumerate() {
+                            *vk = _mm512_sub_epi16(*vk, narrow_lanes(row, off + k * LANES, c));
+                        }
+                    } else {
+                        let row = row.add(off);
+                        for (k, vk) in v.iter_mut().enumerate() {
+                            let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                            *vk = _mm512_sub_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
+                        }
+                    }
+                }
+                if bias != 0 {
+                    for vk in v.iter_mut() {
+                        *vk = _mm512_sub_epi16(*vk, biasv);
+                    }
+                }
+                for (k, vk) in v.iter().enumerate() {
+                    _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                }
+                off += TILE;
+            }
+        }
+    }
+
+    #[cfg(feature = "narrow65")]
+    /// The runtime-length twin, for the 7.55 % of threat folds outside the
+    /// shaped table.
+    #[target_feature(enable = "avx512f,avx512bw,avx512vl,avx512vbmi")]
+    #[inline(never)]
+    unsafe fn i8_into_narrow_generic(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i8],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
+        narrow_bits: &[u64],
+    ) {
+        // SAFETY: as `i8_deltas_into_generic`.
+        unsafe {
+            let nb = |list: &[RowOffset]| {
+                list.iter()
+                    .filter(|f| super::is_narrow(narrow_bits, f.0))
+                    .count() as i32
+            };
+            let bias = 32 * (nb(adds) - nb(subs));
+            let biasv = _mm512_set1_epi16(bias as i16);
+            let c = narrow_consts();
+            let mut off = 0;
+            while off + TILE <= ACC {
+                let mut v = [_mm512_setzero_si512(); REGS];
+                for (k, vk) in v.iter_mut().enumerate() {
+                    *vk = _mm512_loadu_si512(src.as_ptr().add(off + k * LANES).cast());
+                }
+                for &feature in adds {
+                    let row = weights.as_ptr().add(feature.0);
+                    if super::is_narrow(narrow_bits, feature.0) {
+                        for (k, vk) in v.iter_mut().enumerate() {
+                            *vk = _mm512_add_epi16(*vk, narrow_lanes(row, off + k * LANES, c));
+                        }
+                    } else {
+                        let row = row.add(off);
+                        for (k, vk) in v.iter_mut().enumerate() {
+                            let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                            *vk = _mm512_add_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
+                        }
+                    }
+                }
+                for &feature in subs {
+                    let row = weights.as_ptr().add(feature.0);
+                    if super::is_narrow(narrow_bits, feature.0) {
+                        for (k, vk) in v.iter_mut().enumerate() {
+                            *vk = _mm512_sub_epi16(*vk, narrow_lanes(row, off + k * LANES, c));
+                        }
+                    } else {
+                        let row = row.add(off);
+                        for (k, vk) in v.iter_mut().enumerate() {
+                            let bytes = _mm256_loadu_si256(row.add(k * LANES).cast());
+                            *vk = _mm512_sub_epi16(*vk, _mm512_cvtepi8_epi16(bytes));
+                        }
+                    }
+                }
+                if bias != 0 {
+                    for vk in v.iter_mut() {
+                        *vk = _mm512_sub_epi16(*vk, biasv);
+                    }
+                }
+                for (k, vk) in v.iter().enumerate() {
+                    _mm512_storeu_si512(dst.as_mut_ptr().add(off + k * LANES).cast(), *vk);
+                }
+                off += TILE;
+            }
+        }
+    }
+
+    #[cfg(feature = "narrow65")]
+    /// Shape dispatch for the narrow path — the same grid the wide path uses,
+    /// so a fold does not lose studies 61/62's straight-line coverage merely
+    /// because one of its rows is narrow.
+    #[target_feature(enable = "avx512f,avx512bw,avx512vl,avx512vbmi")]
+    unsafe fn i8_deltas_into_narrow_inner(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i8],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
+        narrow_bits: &[u64],
+    ) {
+        // SAFETY: as `i8_deltas_into_inner`.
+        unsafe {
+            shaped_dispatch!(
+                i8_into_narrow_shaped(dst, src, weights, adds, subs, narrow_bits);
+                adds.len(), subs.len();
+                (1, 1), (1, 2), (2, 1), (2, 2), (1, 0), (0, 1), (2, 0), (0, 2),
+                (3, 0), (0, 3), (1, 3), (3, 1), (2, 3), (3, 2), (3, 3),
+                (4, 0), (0, 4), (4, 1), (1, 4), (4, 2), (2, 4), (4, 3), (3, 4), (4, 4),
+                (5, 0), (0, 5), (5, 1), (1, 5), (5, 2), (2, 5), (5, 3), (3, 5), (5, 4), (4, 5),
+                (5, 5),
+                (6, 0), (0, 6), (6, 1), (1, 6), (6, 2), (2, 6), (6, 3), (3, 6), (6, 4), (4, 6),
+                (6, 5), (5, 6), (6, 6));
+            i8_into_narrow_generic(dst, src, weights, adds, subs, narrow_bits)
+        }
+    }
+
+    #[cfg(feature = "narrow65")]
+    /// Public entry: the FullThreats fold when the loader packed a narrow plane.
+    ///
+    /// # Safety
+    /// Installed only behind [`super::narrow_supported`], which is also what
+    /// gates the packing — so reaching this function implies the CPU has the
+    /// VBMI the decode needs.
+    pub(super) fn i8_deltas_into_narrow(
+        dst: &mut [i16; ACC],
+        src: &[i16; ACC],
+        weights: &[i8],
+        adds: &[RowOffset],
+        subs: &[RowOffset],
+        narrow_bits: &[u64],
+    ) {
+        // SAFETY: see the doc comment.
+        unsafe { i8_deltas_into_narrow_inner(dst, src, weights, adds, subs, narrow_bits) }
     }
 
     #[target_feature(enable = "avx512f,avx512bw,avx512vnni")]
@@ -3452,8 +3934,70 @@ mod tests {
         let mut reference = [0i16; ACC];
         scalar::i8_deltas_into(&mut reference, &seed, &i8_weights, &adds, &subs);
         let mut dispatched = [0i16; ACC];
-        apply_threat_deltas_into(&mut dispatched, &seed, &i8_weights, &adds, &subs);
+        apply_threat_deltas_into(&mut dispatched, &seed, &i8_weights, &adds, &subs, &[]);
         assert_eq!(dispatched, reference);
+    }
+
+    /// Perf study 65 — the narrow plane is BIT-EXACT, checked the only way that
+    /// proves it: fold the same rows twice, once from the 8-bit table and once
+    /// from a table where every row has been packed to six bits, and demand the
+    /// same accumulator.
+    ///
+    /// A mixed bitmap is deliberate — the whole design turns on the per-ROW
+    /// dispatch (only 9.99 % of folded rows live in an all-narrow fold), so a
+    /// test where every row is narrow would not exercise the branch that
+    /// matters.
+    #[test]
+    #[cfg(feature = "narrow65")]
+    fn narrow_rows_fold_bit_exactly() {
+        if !super::narrow_supported() {
+            return;
+        }
+        const ROWS: usize = 8;
+        // In range for six signed bits, so every row is packable; a couple of
+        // rows are left wide by the bitmap anyway to force the mixed path.
+        let wide: Vec<i8> = (0..ROWS * ACC)
+            .map(|i| ((i * 7 + i / ACC) % 64) as i8 - 32)
+            .collect();
+        let mut packed = wide.clone();
+        let mut bits = vec![0u64; 1];
+        let mut buf = [0u8; super::NARROW_BYTES];
+        for r in [0usize, 1, 3, 4, 6] {
+            super::pack_narrow_row(&wide[r * ACC..(r + 1) * ACC], &mut buf);
+            for (dst, &src) in packed[r * ACC..r * ACC + super::NARROW_BYTES]
+                .iter_mut()
+                .zip(buf.iter())
+            {
+                *dst = src as i8;
+            }
+            bits[0] |= 1 << r;
+        }
+        // The scalar decode must agree with the source, lane for lane.
+        for r in [0usize, 1, 3, 4, 6] {
+            for j in (0..ACC).step_by(37) {
+                assert_eq!(
+                    super::unpack_narrow_lane(&packed[r * ACC..], j),
+                    i16::from(wide[r * ACC + j]),
+                    "scalar unpack disagrees at row {r} lane {j}"
+                );
+            }
+        }
+        let seed: [i16; ACC] = std::array::from_fn(|i| (i as i16).wrapping_mul(11) - 300);
+        for (adds, subs) in [
+            (&[0usize][..], &[1usize][..]),
+            (&[0, 2][..], &[1, 3][..]),
+            (&[2, 5, 7][..], &[0][..]),
+            (&[0, 1, 2, 3, 4, 5, 6, 7][..], &[7, 6, 5, 4, 3, 2, 1, 0][..]),
+            (&[][..], &[4][..]),
+        ] {
+            let a: Vec<RowOffset> = adds.iter().map(|&f| RowOffset::of(f)).collect();
+            let s: Vec<RowOffset> = subs.iter().map(|&f| RowOffset::of(f)).collect();
+            let mut want = [0i16; ACC];
+            apply_threat_deltas_into(&mut want, &seed, &wide, &a, &s, &[]);
+            let mut got = [0i16; ACC];
+            apply_threat_deltas_into(&mut got, &seed, &packed, &a, &s, &bits);
+            assert_eq!(got, want, "narrow fold differs for {adds:?} / {subs:?}");
+        }
     }
 
     #[test]
@@ -3526,7 +4070,7 @@ mod tests {
                 let mut reference = src;
                 scalar::i8_deltas(&mut reference, &weights, a, s);
                 let mut dispatched = [0i16; ACC];
-                apply_threat_deltas_into(&mut dispatched, &src, &weights, a, s);
+                apply_threat_deltas_into(&mut dispatched, &src, &weights, a, s, &[]);
                 assert_eq!(dispatched, reference, "shape ({na}, {ns})");
                 if na == 0 && ns == 0 {
                     assert_eq!(dispatched, src, "the empty shape must be a pure copy");
@@ -3567,7 +4111,7 @@ mod tests {
                 let mut reference = src;
                 scalar::i8_deltas(&mut reference, &weights, a, s);
                 let mut folded = [0i16; ACC];
-                apply_threat_deltas_into(&mut folded, &src, &weights, a, s);
+                apply_threat_deltas_into(&mut folded, &src, &weights, a, s, &[]);
                 assert_eq!(folded, reference, "lengths ({na}, {ns})");
             }
         }

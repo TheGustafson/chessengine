@@ -659,7 +659,7 @@ pub const PRED_NAMES: [&str; PRED_N] = [
     // shifts a predictor — cannot repair a SCALE error. Carrying both is how the
     // census answers "is it the signal or the units?" without a second run.
     "hcpsqt2", // The parent's corrected static eval, negated. Free.
-    "parent", // The same side's eval two plies ago. Free.
+    "parent",  // The same side's eval two plies ago. Free.
     "gparent",
     // The parent's eval negated, corrected by the move's OWN delta in the
     // hand-crafted score: `−parent + (hc_now − (−hc_parent))`.

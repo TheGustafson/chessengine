@@ -231,6 +231,7 @@ impl SotaContext {
                 large.threat_psqt(),
                 large.threat_remap.as_deref(),
             )
+            .with_narrow(&large.threat_narrow)
         });
         SotaContext {
             net,
@@ -240,7 +241,8 @@ impl SotaContext {
                 &net.threat_weights,
                 net.threat_psqt(),
                 net.threat_remap.as_deref(),
-            ),
+            )
+            .with_narrow(&net.threat_narrow),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -308,7 +310,8 @@ impl SotaContext {
                 &net.threat_weights,
                 net.threat_psqt(),
                 net.threat_remap.as_deref(),
-            ),
+            )
+            .with_narrow(&net.threat_narrow),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -349,7 +352,8 @@ impl SotaContext {
                 &net.threat_weights,
                 net.threat_psqt(),
                 net.threat_remap.as_deref(),
-            ),
+            )
+            .with_narrow(&net.threat_narrow),
             last_sigma: None,
             last_wdl: None,
             last_l2: [0.0; super::sota_head::L2],
@@ -366,11 +370,14 @@ impl SotaContext {
                 &largenet.ft_bias,
                 largenet.halfka_psqt(),
             )),
-            largenet_threats: Some(ThreatContext::new(
-                &largenet.threat_weights,
-                largenet.threat_psqt(),
-                largenet.threat_remap.as_deref(),
-            )),
+            largenet_threats: Some(
+                ThreatContext::new(
+                    &largenet.threat_weights,
+                    largenet.threat_psqt(),
+                    largenet.threat_remap.as_deref(),
+                )
+                .with_narrow(&largenet.threat_narrow),
+            ),
             largenet_sigma_gate: sigma_gate,
             tiers_armed: false, // recomputed by `with_tier_flag`
         }
@@ -678,6 +685,7 @@ impl SotaContext {
             &self.net.halfka_weights,
             &self.net.ft_bias,
             &self.net.threat_weights,
+            &self.net.threat_narrow,
             board,
             self.net.threat_remap.as_deref(),
         );

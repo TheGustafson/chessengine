@@ -155,6 +155,34 @@ sota = []
 # per accumulator-kernel call and dumps the totals on stderr at the end of
 # `bench`. Instrumentation only: the search tree, node count and eval hash are
 # untouched (verified), but the binary is NOT a timing reference. Never shipped.
+# ---- perf study 65 -- the NARROW WEIGHT ROW. The single largest BIT-EXACT
+# route left in the engine, and the only byte-cut compatible with the owner
+# ruling that `L1 = 1280` stays (it cuts bytes per LANE, not lanes per row).
+#
+# 53.06% of the FullThreats rows this engine folds have a peak magnitude <= 31,
+# i.e. they fit six signed bits losslessly. Such a row is stored packed --
+# 960 B = exactly 15 cache lines against 20 -- inside its OWN unshrunk
+# 1280-byte slot, so `feature * ACC` offset arithmetic, every producer and
+# every non-kernel consumer are untouched and the route costs none of the
+# 243 KB permutation table study 64 SS6.1 priced it with. The fold kernel
+# decodes with vpermb + vpmultishiftqb + vpternlogd + vpmovzxbw: four ops per
+# 32 lanes against one, for 3.4 GB less traffic over the study frame (7.40% of
+# all weight-row bytes; study 64 SS2.1 measured weight rows at 55.25% of the
+# engine's L1-miss latency).
+#
+# Dispatch is per ROW, not per fold, and study 65 measured why: only 9.99% of
+# folded rows live in a fold whose EVERY row is narrow, so a whole-fold "all
+# narrow?" predicate converts 5.3x less. HalfKA is excluded because 97.30% of
+# its folded rows need the full eight bits.
+#
+# Bit-exact by construction (a narrower store of the same values) and gated as
+# such: eval hash and node total must both be unchanged.
+#
+# The packing needs AVX512_VBMI, which the compile-time direct dispatch does
+# NOT imply (Cascade Lake has VNNI, no VBMI), so `narrow_supported()` decides
+# once at LOAD time; when it is false the table is left 8-bit, the bitmap stays
+# empty and every path is byte-for-byte the pre-study one.
+narrow65 = ["sota"]
 foldcount = ["sota"]
 # perf study 51: the fold-weighted row probes (all-zero rows, per-row bit width).
 # They walk every folded row's bytes, so they must be OFF in the binary the IBS

@@ -161,6 +161,18 @@ pub struct SotaNetwork {
     /// FullThreats FT weights, feature-major: `[threat_rows · ACC]` i8.
     /// Empty if the net has no threats channel.
     pub threat_weights: Aligned<i8>,
+    /// Perf study 65 — the per-feature "this row is stored narrow" bitmap over
+    /// [`threat_weights`](Self::threat_weights), or empty when the table was
+    /// left in its 8-bit form (no `narrow65` feature, or a CPU without the
+    /// AVX512_VBMI the decode needs).
+    ///
+    /// The row keeps its 1280-byte slot either way — packing rewrites the first
+    /// [`NARROW_BYTES`](super::sota_simd::NARROW_BYTES) and abandons the rest —
+    /// so `feature * ACC` offset arithmetic, every producer and every consumer
+    /// that is not a fold kernel are untouched, and the 3.4 GB the frame stops
+    /// fetching is bought without the 243 KB permutation table study 64 §6.1
+    /// costed this route at.
+    pub threat_narrow: Vec<u64>,
     /// Number of rows in [`threat_weights`](Self::threat_weights):
     /// `THREAT_DIMS` for every identity-coded net, the compressed row count
     /// for a TRM1-carrying net, 0 for a threat-less net.
@@ -572,11 +584,13 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         .collect();
 
     // Threats FT weights: i8[threat_rows · ACC], feature-major (if present).
-    let threat_weights = if has_threats {
+    let mut threat_weights = if has_threats {
         read_i8s_aligned(payload, &mut cur, threat_rows * ACC)
     } else {
         Aligned::from_iter_len(0, std::iter::empty())
     };
+    // Perf study 65 — pack the narrow rows in place. See `threat_narrow`.
+    let threat_narrow = pack_narrow_plane(&mut threat_weights);
 
     // The head's five bucket-major tables. Read as `Blocks`, not as one flat
     // aligned run: the bucket stride is fixed at load, so it belongs in the
@@ -682,6 +696,7 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         halfka_weights,
         ft_bias,
         threat_weights,
+        threat_narrow,
         threat_rows: if has_threats { threat_rows } else { 0 },
         threat_remap,
         psqt_weights,
@@ -821,6 +836,65 @@ fn halfka_column_scales(raw: &[u8]) -> sota_head::FtScale {
 #[inline]
 fn round_half_away_reciprocal(scale: u8) -> u64 {
     (1u64 << 32) / (2 * u64::from(scale)) + 1
+}
+
+/// Perf study 65 — rewrite every ≤ 6-bit FullThreats row into its packed form,
+/// in place, and return the bitmap that tells the fold kernel which rows those
+/// are.
+///
+/// Returns empty (and touches nothing) unless the `narrow65` feature is on AND
+/// [`narrow_supported`] says the kernel that will run can decode the format.
+/// That predicate is evaluated **here, once**, rather than in the kernel: the
+/// packing and the decode have to agree, and the only way to make that
+/// impossible to get wrong is to let one decision produce both.
+///
+/// [`narrow_supported`]: super::sota_simd::narrow_supported
+fn pack_narrow_plane(weights: &mut Aligned<i8>) -> Vec<u64> {
+    #[cfg(not(feature = "narrow65"))]
+    {
+        let _ = weights;
+        return Vec::new();
+    }
+    #[cfg(feature = "narrow65")]
+    {
+        use super::sota_simd::{NARROW_BYTES, NARROW_MAX, narrow_supported, pack_narrow_row};
+        // `ARCHON_NARROW=0` is this arm's NULL: the same binary, the same
+        // `.text`, the same dispatch — and no packed rows. Every instruction
+        // and cache counter the arm moves is then attributable to the DATA
+        // change alone, which is the only way to tell the decode's cost apart
+        // from the new dispatch's. CLAUDE.md rule 1 wants the null run first,
+        // and the only null that cannot drift from the arm is one inside it.
+        if std::env::var("ARCHON_NARROW").is_ok_and(|v| v == "0") {
+            return Vec::new();
+        }
+        if weights.is_empty() || !narrow_supported() {
+            return Vec::new();
+        }
+        let rows = weights.len() / ACC;
+        let mut bits = vec![0u64; rows.div_ceil(64)];
+        let mut packed = [0u8; NARROW_BYTES];
+        for r in 0..rows {
+            let row = &mut weights[r * ACC..r * ACC + ACC];
+            let peak = row
+                .iter()
+                .map(|&w| i16::from(w).unsigned_abs())
+                .max()
+                .unwrap_or(0);
+            if peak > NARROW_MAX as u16 {
+                continue;
+            }
+            pack_narrow_row(row, &mut packed);
+            // The tail of the slot is now dead. It is deliberately NOT zeroed:
+            // nothing reads it, and leaving it makes an accidental wide read of
+            // a packed row produce a WRONG evaluation the gate catches rather
+            // than a plausible one it does not.
+            for (dst, &src) in row.iter_mut().zip(packed.iter()) {
+                *dst = src as i8;
+            }
+            bits[r >> 6] |= 1 << (r & 63);
+        }
+        bits
+    }
 }
 
 /// Divide the FT_QUANT-frame i16 table by its per-column scale into i8.
@@ -1168,9 +1242,25 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
         payload.extend_from_slice(&b.to_le_bytes());
     }
     // Threats FT weights (if present).
+    //
+    // Perf study 65: a loaded net's threat table may be PACKED in place (rows
+    // whose peak fits six signed bits are rewritten into 960 bytes of their own
+    // 1280-byte slot). Serialisation has to undo that, or `serialize ∘ load`
+    // would stop being the identity and every net-surgery tool that
+    // round-trips a net — `uci.rs`'s `EvalFile` rewrite among them — would
+    // silently write a corrupt file. The round-trip test is what caught this,
+    // and it is the reason the unpack lives here rather than in a comment.
     if has_threats {
-        for &w in net.threat_weights.iter() {
-            payload.push(w as u8);
+        for (r, row) in net.threat_weights.chunks_exact(ACC).enumerate() {
+            if super::sota_simd::is_narrow(&net.threat_narrow, r * ACC) {
+                for j in 0..ACC {
+                    payload.push(super::sota_simd::unpack_narrow_lane(row, j) as i8 as u8);
+                }
+            } else {
+                for &w in row {
+                    payload.push(w as u8);
+                }
+            }
         }
     }
     // L1 weights (i8).
@@ -1475,6 +1565,7 @@ pub(crate) mod tests {
             halfka_weights,
             ft_bias,
             threat_weights,
+            threat_narrow: Vec::new(),
             threat_rows: THREAT_DIMS,
             threat_remap: None,
             psqt_weights: Vec::new().into(),
@@ -1665,6 +1756,7 @@ pub(crate) mod tests {
             refresh_threat_into(
                 &mut a,
                 &compressed.threat_weights,
+                &compressed.threat_narrow,
                 &board,
                 persp,
                 compressed.threat_remap.as_deref(),
@@ -1672,6 +1764,7 @@ pub(crate) mod tests {
             refresh_threat_into(
                 &mut b,
                 &scattered.threat_weights,
+                &scattered.threat_narrow,
                 &board,
                 persp,
                 scattered.threat_remap.as_deref(),
