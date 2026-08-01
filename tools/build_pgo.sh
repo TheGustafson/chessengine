@@ -89,7 +89,12 @@ fi
 echo "[pgo] phase 3: merge profiles"
 "$PROFDATA" merge -o "$PROF/merged.profdata" "$PROF"
 echo "[pgo] phase 4: optimized rebuild"
-RUSTFLAGS="-C target-cpu=${PGO_CPU:-native} -C profile-use=$PROF/merged.profdata" \
+# `PGO_EXTRA_RUSTFLAGS` (perf study 68) appends codegen flags to the OPTIMIZED
+# rebuild only. Phase 1 must stay flag-clean: the instrumented binary exists to
+# produce counts, and any layout flag there would change nothing but the
+# fingerprint (forcing a needless rebuild). Empty by default, so an unset
+# environment reproduces the previous pipeline byte-for-byte.
+RUSTFLAGS="-C target-cpu=${PGO_CPU:-native} -C profile-use=$PROF/merged.profdata ${PGO_EXTRA_RUSTFLAGS:-}" \
   nice -n 10 cargo build --release --features "$FEATURES" --target-dir "$TD" -q
 cp "$TD/release/chessengine" "engines/bin/$OUT"
 echo "[pgo] done: engines/bin/$OUT"
