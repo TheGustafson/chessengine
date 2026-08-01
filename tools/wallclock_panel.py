@@ -33,6 +33,19 @@ THE DESIGN, AND WHY EACH PIECE IS THERE
    with sd 6.3-9.5, wrecked by single contention rounds. Deciding the statistic
    after seeing the data is the failure this file exists to prevent.
 
+A LOADED BOX SILENTLY RUINS THIS PANEL -- SO IT IS CHECKED
+---------------------------------------------------------
+cycles and wall-clock are NOT load-robust. Measured 2026-07-31: the same binary
+read 17.95 B cycles on a quiet box and 26.92 B (+49.9%) while a match and a build
+ran; instructions:u over the same pair drifted 0.08%. Panels run under load have
+produced a byte-identical null that moved FURTHER than the arm.
+
+This script now samples system CPU busy-fraction before the first round and after
+the last, and prints both. If either exceeds QUIET_THRESHOLD it says so loudly --
+a panel that was not quiet end-to-end should be VOIDED AND RE-RUN, not salvaged.
+Interleaving the null within each round (below) makes the panel robust to steady
+load, but not to load that ARRIVES or LEAVES mid-run.
+
 STARTUP IS NOT A GAME WIN -- SUBTRACT IT
 ----------------------------------------
 The 5M-node bench frame charges process startup ONCE PER RUN. An arm that cuts
@@ -69,6 +82,26 @@ from math import comb, log2
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_NET  = os.path.join(ROOT, "engines/canonical/net.cenn")
 DEFAULT_FENS = os.path.join(ROOT, "tools/nnue/calib/wl50.fens")
+
+QUIET_THRESHOLD = 0.15  # fraction of total CPU busy with anything other than us
+
+
+def cpu_busy(window=1.0):
+    """System-wide non-idle CPU fraction over `window` seconds.
+
+    Sampled when this script is NOT benching, so anything it sees is somebody
+    else's work. /proc/stat field 4 is idle, field 5 is iowait.
+    """
+    def snap():
+        with open("/proc/stat") as fh:
+            v = [int(x) for x in fh.readline().split()[1:]]
+        return sum(v), v[3] + v[4]
+    t0, i0 = snap()
+    time.sleep(window)
+    t1, i1 = snap()
+    dt, di = t1 - t0, i1 - i0
+    return 0.0 if dt <= 0 else max(0.0, 1.0 - di / dt)
+
 
 def sign_p(k, n):
     """Two-sided sign test."""
@@ -111,6 +144,7 @@ def main():
 
     order = [(a.base, null, a.arm), (null, a.arm, a.base), (a.arm, a.base, null)]
     nulls, arms = [], []
+    busy_before = cpu_busy()
     try:
         for r in range(a.rounds):
             res = {b: t(b) for b in order[r % 3]}
@@ -120,6 +154,13 @@ def main():
                 print(f"  ...{r + 1}/{a.rounds}", flush=True)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+    busy_after = cpu_busy()
+    print(f"\nbox CPU busy (excluding this panel): before {100*busy_before:.1f}%, "
+          f"after {100*busy_after:.1f}%")
+    if max(busy_before, busy_after) > QUIET_THRESHOLD:
+        print(f"*** NOT QUIET: exceeds {100*QUIET_THRESHOLD:.0f}%. This panel should be "
+              f"VOIDED and re-run on an idle box, not salvaged. ***")
 
     def rep(v, tag):
         m, sd = st.median(v), st.stdev(v)
