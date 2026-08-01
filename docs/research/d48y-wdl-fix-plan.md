@@ -14760,3 +14760,50 @@ Gate: `gate66.service` verifying (agent reports exit 0, all three pins unmoved,
 724 tests green, off-path +48 B `.text` / +0.163 instructions/node, node- and
 eval-identical). It also stripped 14 MB of arm binaries a `git add -A` had swept
 into branch history and gitignored `bin66/`.
+
+---
+
+## 2026-08-01 03:47 — MY PRE-REGISTERED PREDICTION IS REFUTED. The frame has an INTERIOR OPTIMUM, and we are already on it.
+
+**D49:** sb1402, 187.9k pos/s, heldout ema **0.010452** — another run low.
+
+**THE FRAME CURVE IS COMPLETE. All four arms final, n=1500, ebcea3ef margins,
+PGO binary, D49 sb1300 vs canonical @ 25k fixed nodes:**
+
+| pack scale | slope vs SF internal | Elo vs canonical |
+|---:|---:|---:|
+| 535 | 0.339 | **-13.67 +/- 11.03** |
+| **756 (shipped)** | **0.477** | **-1.39 +/- 11.60** |
+| **1068** | **0.672** | **-3.01 +/- 11.09** |
+| 1585 (parity) | 0.995 | **-19.71 +/- 11.48** |
+
+**I PREDICTED 535 WOULD BEAT +3.24, IN WRITING, BEFORE MEASURING IT. IT CAME IN
+AT -13.67.** The pre-registration named the falsification condition exactly —
+*"If instead it turns DOWN, then 756 is a genuine interior optimum and the
+monotonic reading is wrong"* — and that is what happened. **Both of my theories
+were wrong:** parity is not optimal (theory 1) and further-from-parity is not
+monotonically better (theory 2).
+
+**The truth is an INTERIOR OPTIMUM with cliffs on BOTH sides.** A plateau across
+slope **0.48-0.67** (756 and 1068 indistinguishable, 1.6 Elo apart), falling
+~12 Elo at 0.34 and ~18 Elo at parity.
+
+**THE PRACTICAL CONCLUSION IS THE OPPOSITE OF WHERE THIS STARTED: the frame is
+NOT A LEVER. The shipped scale is already on the optimum.** There is no Elo
+sitting in the eval frame, and the ~5 h of games spent here bought the
+*knowledge* that a plausible 20-Elo lever does not exist. That is a real result
+and it is why the arms were run instead of argued.
+
+**Writing the prediction down first is what made this clean.** Without it I could
+have narrated -13.67 as "confirming an interior optimum I always suspected." The
+handoff shows I did not suspect it.
+
+**Caveat that still stands:** fixed 25k nodes throughout. A frame decision at
+real TC could differ ([[nodestime-not-a-real-clock-proxy]]: +52.6 fixed-node vs
+-31.4 real-clock). Since the conclusion is "change nothing", no real-TC run is
+owed unless someone proposes moving the scale.
+
+**STUDY 66 MERGED (`dd2104d0`)** — gate verified BY ME: `Bench: 486897`, eval
+hash `2e1ede95…79c4`, d13 `1743308`, **all three pins unmoved**, all checks
+passed. `d49rerun` completed cleanly and **re-armed `d49xml` itself**, which is
+now screening exports again unattended.
