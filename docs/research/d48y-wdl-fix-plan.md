@@ -16912,3 +16912,42 @@ per-corpus frame handling already exists in the config, which is the good news.
 **Next step, still ~1 h and now fully specified:** `sf-eval` a sample from each
 corpus, regress teacher output against that corpus's stored labels, and compare
 each slope to its existing `per_corpus_target` pair.
+
+---
+
+## 2026-08-01 12:25 — ALL THREE CYCLES COMPLETE. A cgroup OOM was MY cap, and it cost nothing.
+
+**The OOM was mine and it was CONTAINED.** Kernel line:
+`oom_memcg=…/d49c3.service`, `constraint=CONSTRAINT_MEMCG` — a **cgroup** kill,
+not a global one. I launched `d49c3` with **`MemoryMax=512M`**, which was correct
+for the original orchestrator (it only supervised) but **wrong for
+`cycle3_finish.sh`, which also PACKS** — `requant_threats.py` + `netpack.py` need
+~1.5–2 GB. It died at the pack.
+
+**Timing made it harmless: the kill landed at 12:23:52, ONE SECOND after the
+checkpoint save at 12:23:51.**
+
+| | |
+|---|---|
+| cycle 3 training | **complete, reached sb1630** |
+| sb1630 export | present, 433,755,450 B |
+| protected `d49lrc3-sb1630-*` | **all 4 files** |
+| `export_every` | **held — exactly ONE export across sb1601–1630** |
+| lost | only the A/B run |
+
+**So the owner's experiment is fully delivered**: anchor plus three
+jump→anneal checkpoints, all saved, and the bottom-only export change verified
+end-to-end on a real cycle.
+
+**Relaunched the A/B as `d49ab2` with `MemoryMax=3G`.** It packs sb1630, logs its
+stdev as a frame sanity check, waits for the matcher and for ≥3000 MB, then runs
+**cycle-3 sb1630 vs the sb1540 anchor — one match, one bar**.
+
+**The lesson, and it is specifically about MY habit:** I have been setting
+`MemoryMax` per unit all session and got it right every time for *builds* and
+*matches*. This one I sized for what the script did when I wrote it, then added
+packing to the same script without revisiting the cap. **A memory cap is part of
+a script's contract; changing what the script does invalidates it.**
+
+Cycle results so far: anchor **+3.47**, cycle 1 **+9.27**, cycle 2 **+9.50** —
+non-compounding, pooled **+9.38 ± 7.78** vs anchor. The A/B resolves it.
