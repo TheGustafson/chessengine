@@ -16426,3 +16426,38 @@ third CPU load recreates exactly the squeeze that hit at 08:02. It waits for a
 genuinely quiet slot; its games are safe on disk.
 
 **Live:** cycle 1 sb1543→1570, anchor screen at n=750, memory 7459 MB.
+
+---
+
+## 2026-08-01 09:17 — the LR jump is CONFIRMED ACTIVE from the dynamics, not the config
+
+**Cycle 1 at sb1548 of 1570** (8 of 30), 189.4k pos/s. All seven units green,
+memory 5982 MB.
+
+**Independent confirmation the 5× ramp is really applied** — verified from
+behaviour rather than by re-reading the JSON:
+
+| window | mean train value | spread (max−min) |
+|---|---:|---:|
+| pre-jump sb1537–1540 (base LR 3.58e-6) | 0.0068100 | **0.000008** |
+| post-jump sb1541–1548 (LR 1.79e-5) | 0.0068324 | **0.000064** |
+
+**8× the spread**, mean up ~0.3 %. That is the signature of a 5× learning rate:
+larger steps, noisier descent, slightly worse *training* loss in the short run.
+Had the ramp silently failed to apply — the exact failure mode that killed the
+first orchestrator launch — the variance would have stayed at the pre-jump
+0.000008.
+
+**This matters because the config-level check is not sufficient.** Reading
+`lr_ramp` back from the JSON proves the file is right; it does not prove
+`jnp.interp` is being consulted with the absolute superbatch, that
+`start_superbatch` lines up, or that the warm resume did not reset something. The
+dynamics prove the whole chain.
+
+**Explicitly NOT a result about the experiment.** Training loss rising under a
+higher LR is expected and says nothing about whether jump→anneal helps —
+[[loss-is-not-elo]] applies with full force, and this is a *training* loss, one
+step further from Elo than the heldout is. The answer comes from the anchor and
+cycle screens against canonical.
+
+Next heldout at sb1550; anchor baseline screen still running.
