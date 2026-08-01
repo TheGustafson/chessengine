@@ -16183,3 +16183,27 @@ one. Configs `tools/nnue/runs/d49_lrcycle{1,2,3}_1280.json`.
 
 Working directory pinned to `chessengine/jax` — the trainer's config path is
 relative (`../tools/nnue/runs/...`) and `--same-dir` would have broken it.
+
+---
+
+## 2026-08-01 08:47 — tick: sb1540 imminent, tunables SPRT early
+
+**D49:** sb1536 — the **sb1540** export (the LR-experiment anchor) is ~10 min out.
+`d49lrc` waiting correctly; `d49y`/`d49wd` still up, and the orchestrator stops
+the watchdog BEFORE the trainer so it cannot be resurrected mid-handover.
+Memory 4873 MB, `ckptreap` and `oomshield` green.
+
+**Tunables SPRT (`d49retest3`), n=240: +1.45 ± 23.26.** **Not a reading** — the
+bar is ±23 and I have been burned by exactly this twice tonight.
+
+Recorded only because the CONTRAST is the point: the void PSQT run said
+**−29.49 ± 14.88**, and the properly-configured NNUE run is so far sitting near
+zero. If that holds, the 154 values are roughly NEUTRAL rather than harmful, and
+**the revert I made at 05:32 was unjustified** — which is what the fixed
+instrument was built to find out. Verdict at n=1500 only.
+
+**Standing state of the three live threads:**
+- `d49lrc` — LR jump→anneal, armed, waiting on sb1540.
+- `d49retest3` — tunables, NNUE-verified, ~50 min to n=1500.
+- study 70 — landed and gated, **paused** at +7.06 ± 8.34 over 2412 games
+  (LOS 95.2 %, bar crosses zero); resumes after the priority jobs.
