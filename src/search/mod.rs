@@ -884,6 +884,142 @@ pub struct SearchStats {
     /// Null-move-pruning attempts and cutoffs.
     pub nmp_try: u64,
     pub nmp_cut: u64,
+    /// Per-gate fire counters (search-simplification census, 2026-08-01),
+    /// indexed by [`Gate`]. Same zero-cost discipline as the fields above:
+    /// the disabled twin has no array and `gate()` is an empty body.
+    pub gates: [u64; Gate::COUNT],
+}
+
+/// One countable search-gate event (search-simplification census,
+/// 2026-08-01). Exists in every build — the *type* is free; only the
+/// enabled [`SearchStats`] carries the array it indexes. Names mirror the
+/// node-step labels in `search()`/`qsearch()`.
+#[derive(Clone, Copy)]
+#[repr(usize)]
+pub enum Gate {
+    /// Main-search node entries (post depth<=0 boundary) — the denominator.
+    MainEntry,
+    /// Main-search node entries while in check.
+    MainInCheck,
+    /// N9 razoring returns (drop to qsearch).
+    Razor,
+    /// N10 RFP returns.
+    Rfp,
+    /// N11 NMP verification searches run.
+    NmpVerify,
+    /// N12 IIR depth reductions applied.
+    Iir,
+    /// N6 hindsight depth += 1.
+    HindUp,
+    /// N6 hindsight depth -= 1.
+    HindDown,
+    /// N13 ProbCut candidate moves actually searched (qsearch probe made).
+    ProbcutMove,
+    /// N13 ProbCut fail-high returns.
+    ProbcutCut,
+    /// N14 in-check small-ProbCut returns.
+    CheckCut,
+    /// N6b wrong-direction-bound TT penalize writes.
+    TtPenalize,
+    /// N6b quiet-ttMove history bonus fired on a TT cutoff.
+    TtcutBonus,
+    /// N8 eval-diff parent history nudge fired.
+    EvalDiff,
+    /// Move-loop LMP threshold reached (skip_quiet_moves called).
+    LmpSkip,
+    /// Move-loop capture-futility prunes.
+    CfutPrune,
+    /// Move-loop capture/check SEE prunes.
+    CseePrune,
+    /// Move-loop continuation-history prunes.
+    ChistPrune,
+    /// Move-loop parent-futility prunes.
+    PfutPrune,
+    /// Move-loop quiet-SEE prunes.
+    QseePrune,
+    /// Singular exclusion searches run.
+    SeTry,
+    /// Singular verdict: extend (value < singular_beta).
+    SeSingular,
+    /// Singular double extension granted.
+    SeDouble,
+    /// Singular triple extension granted.
+    SeTriple,
+    /// Singular verdict: multicut return.
+    SeMulticut,
+    /// Singular verdict: negative extension (either arm).
+    SeNegExt,
+    /// Step-12 equal-value dither promotions offered (inc == 1).
+    Dither,
+    /// Step-14 fail-low parent bonus, quiet-parent arm.
+    FlQuiet,
+    /// Step-14 fail-low parent bonus, capture-parent arm.
+    FlCapture,
+    /// Node-exit correction-history update fired.
+    CorrUpd,
+    /// Qsearch node entries (the qsearch denominator; distinct from
+    /// `qnodes`, which counts made moves).
+    QsEntry,
+    /// Qsearch TT-cutoff returns.
+    QsTtcut,
+    /// Qsearch stand-pat cutoff returns.
+    QsStandpat,
+    /// Qsearch late-move prunes.
+    QsLatemove,
+    /// Qsearch futility prunes.
+    QsFut,
+    /// Qsearch SEE-vs-window prunes.
+    QsSeeWindow,
+    /// Qsearch hard-SEE-floor prunes.
+    QsSeeFloor,
+    /// Qsearch narrow stalemate scans (generate_legal paid).
+    QsStaleScan,
+}
+
+impl Gate {
+    /// Number of gates — the census array length.
+    pub const COUNT: usize = Gate::QsStaleScan as usize + 1;
+    /// Display names, index-aligned with the enum.
+    pub const NAMES: [&'static str; Gate::COUNT] = [
+        "main_entry",
+        "main_in_check",
+        "razor",
+        "rfp",
+        "nmp_verify",
+        "iir",
+        "hind_up",
+        "hind_down",
+        "probcut_move",
+        "probcut_cut",
+        "check_cut",
+        "tt_penalize",
+        "ttcut_bonus",
+        "evaldiff",
+        "lmp_skip",
+        "cfut_prune",
+        "csee_prune",
+        "chist_prune",
+        "pfut_prune",
+        "qsee_prune",
+        "se_try",
+        "se_singular",
+        "se_double",
+        "se_triple",
+        "se_multicut",
+        "se_negext",
+        "dither",
+        "fl_quiet",
+        "fl_capture",
+        "corr_upd",
+        "qs_entry",
+        "qs_ttcut",
+        "qs_standpat",
+        "qs_latemove",
+        "qs_fut",
+        "qs_see_window",
+        "qs_see_floor",
+        "qs_stale_scan",
+    ];
 }
 
 /// The shipped shape: no fields, therefore no stores. See the enabled twin.
@@ -909,6 +1045,7 @@ impl SearchStats {
         lmr_plies: 0,
         nmp_try: 0,
         nmp_cut: 0,
+        gates: [0; Gate::COUNT],
     };
 }
 
@@ -918,6 +1055,18 @@ impl SearchStats {
 }
 
 impl SearchStats {
+    /// One census gate event (search-simplification census, 2026-08-01).
+    /// Same discipline as every other bump: empty body when disabled.
+    #[inline(always)]
+    pub fn gate(&mut self, g: Gate) {
+        #[cfg(any(test, feature = "search-stats"))]
+        {
+            self.gates[g as usize] += 1;
+        }
+        #[cfg(not(any(test, feature = "search-stats")))]
+        let _ = g;
+    }
+
     /// One qsearch node.
     #[inline(always)]
     pub fn qnode(&mut self) {
@@ -2236,6 +2385,12 @@ impl Worker {
                 st.nmp_cut,
                 st.nmp_cut as f64 / st.nmp_try.max(1) as f64
             );
+            // The per-gate census (search-simplification study, 2026-08-01).
+            let mut line = String::from("SSTATS3");
+            for (name, count) in Gate::NAMES.iter().zip(st.gates.iter()) {
+                line.push_str(&format!(" {name}={count}"));
+            }
+            eprintln!("{line}");
         }
     }
 
@@ -2530,6 +2685,10 @@ impl Worker {
         self.stack[cur].in_check = in_check;
         self.stack[cur].move_count = 0;
         self.stack[cur].stat_score = 0;
+        self.stats.gate(Gate::MainEntry);
+        if in_check {
+            self.stats.gate(Gate::MainInCheck);
+        }
         // followPV (SF search.cpp:752-755, toggled by FOLLOW_PV_MODE): this
         // node sits on the previous iteration's PV path iff its parent did
         // AND the parent's move was that PV's move at the parent's ply. Read
@@ -2776,6 +2935,7 @@ impl Worker {
         let opponent_worsening = self.stack[cur].static_eval > -self.stack[cur - 1].static_eval;
         if prior_reduction >= params::HINDSIGHT_RED_UP() && !opponent_worsening {
             depth += 1;
+            self.stats.gate(Gate::HindUp);
         }
         if prior_reduction >= params::HINDSIGHT_RED_DOWN()
             && depth >= 2
@@ -2783,6 +2943,7 @@ impl Worker {
                 > params::HINDSIGHT_EVAL_SUM()
         {
             depth -= 1;
+            self.stats.gate(Gate::HindDown);
         }
 
         // N6b — the NonPV TT cutoff runs for ALL nodes, in check or not
@@ -2835,6 +2996,7 @@ impl Worker {
                             .piece_on(ttm.from())
                             .is_some_and(|p| p.color == us)
                     {
+                        self.stats.gate(Gate::TtcutBonus);
                         let bonus =
                             (params::TTCUT_BONUS_MULT() * depth).min(params::TTCUT_BONUS_CAP());
                         self.histories.update_quiet_histories(
@@ -2846,7 +3008,7 @@ impl Worker {
                         );
                     }
                     // Penalize the parent's early non-capturing quiet.
-                    if let Some(sq) = prev_sq
+                        if let Some(sq) = prev_sq
                         && self.stack[cur - 1].move_count < params::TTCUT_PARENT_MOVECOUNT()
                         && !prior_capture
                         && let Some(pc) = self.board.piece_on(sq)
@@ -2920,6 +3082,7 @@ impl Worker {
                 // Wrong-direction bound (item 20): the only reason the cutoff
                 // failed is a bound pointing the wrong way — age the mismatching
                 // entry out faster.
+                self.stats.gate(Gate::TtPenalize);
                 probe.writer.penalize(1);
             }
         }
@@ -2961,6 +3124,7 @@ impl Worker {
                 && !self.stack[cur - 1].in_check
                 && !prior_capture
             {
+                self.stats.gate(Gate::EvalDiff);
                 let them = self.board.side_to_move().flip();
                 let eval_diff = (-self.stack[cur - 1].static_eval - self.stack[cur].static_eval)
                     .clamp(params::EVALDIFF_CLAMP_LO(), params::EVALDIFF_CLAMP_HI())
@@ -3009,6 +3173,7 @@ impl Worker {
                         crate::eval::nnue::foldcount::Sc::MainFreshRazor,
                     );
                 }
+                self.stats.gate(Gate::Razor);
                 return self.qsearch::<NonPv>(tt, stop, alpha, beta, ply);
             }
 
@@ -3197,6 +3362,7 @@ impl Worker {
                             crate::eval::nnue::foldcount::Sc::MainFreshRfp,
                         );
                     }
+                    self.stats.gate(Gate::Rfp);
                     return (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval)
                         / params::RFP_RET_DEN();
                 }
@@ -3286,6 +3452,7 @@ impl Worker {
                     // here confirms the cutoff. The disable window spans the
                     // whole verification subtree, so it cannot recursively
                     // null-move back to the same (possibly zugzwang) cutoff.
+                    self.stats.gate(Gate::NmpVerify);
                     self.nmp_min_ply = ply as i32
                         + params::NMP_VERIFY_NUM() * (depth - r) / params::NMP_VERIFY_DEN();
                     let v = self.search::<NonPv>(tt, stop, beta - 1, beta, depth - r, false, ply);
@@ -3315,6 +3482,7 @@ impl Worker {
                 && tt_data.mv == Move::NULL
             {
                 depth -= params::IIR_REDUCTION();
+                self.stats.gate(Gate::Iir);
             }
 
             // N13 — ProbCut (design/10 §3.4, Wave-E item 16): a cheap search
@@ -3358,6 +3526,7 @@ impl Worker {
                     // continuation-history mis-key if the picker ever changed.
                     let capture = self.board.capture_stage(m);
                     let moved_piece = self.board.piece_on(m.from());
+                    self.stats.gate(Gate::ProbcutMove);
                     self.do_move(tt, m, gives_check, capture, moved_piece, ply);
                     // Cheap qsearch verification first, then — if it held — a
                     // real reduced search.
@@ -3391,6 +3560,7 @@ impl Worker {
                         );
                         if !is_decisive(value) {
                             // Shift the surplus back onto our window.
+                            self.stats.gate(Gate::ProbcutCut);
                             return value - (probcut_beta - beta);
                         }
                     }
@@ -3412,6 +3582,7 @@ impl Worker {
             && !is_decisive(tt_value)
             && tt_value >= check_probcut_beta
         {
+            self.stats.gate(Gate::CheckCut);
             return check_probcut_beta;
         }
 
@@ -3648,6 +3819,7 @@ impl Worker {
                 // threshold there, but the `!is_loss` guard keeps the block
                 // dormant until an evasion has produced a non-loss value.
                 if move_count >= lmp_move_count(depth, improving) {
+                    self.stats.gate(Gate::LmpSkip);
                     mp.skip_quiet_moves();
                 }
 
@@ -3704,6 +3876,7 @@ impl Worker {
                             capt_hist,
                         ) <= alpha
                         {
+                            self.stats.gate(Gate::CfutPrune);
                             continue;
                         }
                     }
@@ -3718,6 +3891,7 @@ impl Worker {
                     if (alpha >= VALUE_DRAW || self.board.non_pawn_material(us) != moved_value)
                         && !self.board.see_ge(m, -capture_see_margin(depth, capt_hist))
                     {
+                        self.stats.gate(Gate::CseePrune);
                         continue;
                     }
                 } else if !self.stack[cur].follow_pv || !NT::PV {
@@ -3765,6 +3939,7 @@ impl Worker {
                             + self.histories.cont_ref(self.stack[cur - 2].cont_hist)[pci][to].get()
                             + self.histories.pawn_slot(self.board.pawn_key())[pci][to].get();
                     if continuation_history_prunes(cont_history, depth) {
+                        self.stats.gate(Gate::ChistPrune);
                         continue;
                     }
 
@@ -3814,6 +3989,7 @@ impl Worker {
                         {
                             best_value = futility_value;
                         }
+                        self.stats.gate(Gate::PfutPrune);
                         continue;
                     }
 
@@ -3827,6 +4003,7 @@ impl Worker {
                         .board
                         .see_ge(m, -params::QSEE_MULT() * lmr_depth * lmr_depth)
                     {
+                        self.stats.gate(Gate::QseePrune);
                         continue;
                     }
                 }
@@ -3869,6 +4046,7 @@ impl Worker {
                 let singular_depth =
                     new_depth * params::SE_VERIFY_DEPTH_NUM() / params::SE_VERIFY_DEPTH_DEN();
                 self.stack[cur].excluded_move = m;
+                self.stats.gate(Gate::SeTry);
                 let value = self.search::<NonPv>(
                     tt,
                     stop,
@@ -3881,6 +4059,7 @@ impl Worker {
                 self.stack[cur].excluded_move = Move::NULL;
 
                 if value < singular_beta {
+                    self.stats.gate(Gate::SeSingular);
                     // Singular: extend. `corr_adj` (Wave-F item 21, now live)
                     // tightens the double/triple margins under eval
                     // uncertainty — a large |correction_value| makes the extra
@@ -3900,9 +4079,16 @@ impl Worker {
                     extension = params::SE_EXT_BASE()
                         + Depth::from(value < singular_beta - double_margin)
                         + Depth::from(value < singular_beta - triple_margin);
+                    if value < singular_beta - double_margin {
+                        self.stats.gate(Gate::SeDouble);
+                    }
+                    if value < singular_beta - triple_margin {
+                        self.stats.gate(Gate::SeTriple);
+                    }
                     // The WHOLE node deepens, not just the ttMove.
                     depth += params::SE_NODE_DEEPEN();
                 } else if value >= beta && !is_decisive(value) {
+                    self.stats.gate(Gate::SeMulticut);
                     // Multicut: multiple moves beat beta without the ttMove —
                     // the node is not singular; prune the whole subtree.
                     self.histories
@@ -3913,8 +4099,10 @@ impl Worker {
                     // The ttMove is expected to fail high anyway — search it
                     // shallower in favor of alternatives.
                     extension = params::SE_NEG_EXT_TT_FAILHIGH();
+                    self.stats.gate(Gate::SeNegExt);
                 } else if cut_node {
                     extension = params::SE_NEG_EXT_CUTNODE();
+                    self.stats.gate(Gate::SeNegExt);
                 }
             }
             new_depth += extension;
@@ -4362,6 +4550,9 @@ impl Worker {
                     && (self.nodes & params::DITHER_NODE_MASK()) == 0
                     && !is_win(value.abs() + 1),
             );
+            if inc != 0 {
+                self.stats.gate(Gate::Dither);
+            }
 
             // Step 13 — best/alpha/beta updates (dither-biased compares).
             if value + inc > best_value {
@@ -4519,6 +4710,7 @@ impl Worker {
         // `move_count != 0` here is implied — this is the fail-low case.
         else if let Some(sq) = prev_sq {
             if !prior_capture {
+                self.stats.gate(Gate::FlQuiet);
                 let bonus_scale = (params::FL_SCALE_BASE()
                     - self.stack[cur - 1].stat_score / params::FL_STATSCORE_DIV()
                     + (params::FL_DEPTH_MULT() * depth).min(params::FL_DEPTH_CAP())
@@ -4558,6 +4750,7 @@ impl Worker {
                     }
                 }
             } else if let Some(moved) = self.board.piece_on(sq) {
+                self.stats.gate(Gate::FlCapture);
                 // The victim slot mirrors the in-search capture convention:
                 // en passant uses NO_VICTIM (None), every other capture its
                 // captured piece type.
@@ -4631,6 +4824,7 @@ impl Worker {
                 depth,
             )
         {
+            self.stats.gate(Gate::CorrUpd);
             self.histories
                 .update_correction_history(&self.board, &self.stack[..], cur, bonus);
         }
@@ -4946,6 +5140,7 @@ impl Worker {
         let cur = ss(ply);
         let in_check = !self.board.checkers().is_empty();
         self.stack[cur].in_check = in_check;
+        self.stats.gate(Gate::QsEntry);
         if NT::PV {
             self.pv_table[ply].clear();
             self.sel_depth = self.sel_depth.max(ply as i32 + 1);
@@ -5011,6 +5206,7 @@ impl Worker {
         {
             #[cfg(feature = "foldcount")]
             crate::eval::nnue::foldcount::note_search(crate::eval::nnue::foldcount::Sc::QsTtCut);
+            self.stats.gate(Gate::QsTtcut);
             return tt_value;
         }
 
@@ -5159,6 +5355,7 @@ impl Worker {
                         crate::eval::nnue::foldcount::Sc::QsFreshStandPat,
                     );
                 }
+                self.stats.gate(Gate::QsStandpat);
                 return best_value;
             }
             alpha = alpha.max(best_value);
@@ -5227,6 +5424,7 @@ impl Worker {
                     // all (§3.8 step 7).
                     if move_count > params::QS_LATE_MOVE_LIMIT() {
                         qtrace(ply, alpha, beta, best_value, m, "prune:latemove");
+                        self.stats.gate(Gate::QsLatemove);
                         continue;
                     }
 
@@ -5248,6 +5446,7 @@ impl Worker {
                     if futility_value <= alpha {
                         qtrace(ply, alpha, beta, best_value, m, "prune:futility");
                         best_value = best_value.max(futility_value);
+                        self.stats.gate(Gate::QsFut);
                         continue;
                     }
 
@@ -5260,6 +5459,7 @@ impl Worker {
                         params::scale_1024(alpha - futility_base, params::SEE_THRESH_MULT()),
                     ) {
                         best_value = best_value.max(alpha.min(futility_base));
+                        self.stats.gate(Gate::QsSeeWindow);
                         continue;
                     }
                 }
@@ -5274,6 +5474,7 @@ impl Worker {
                 // The hard SEE floor for everything left (§3.8 step 7).
                 if !self.board.see_ge(m, params::QS_SEE_FLOOR()) {
                     qtrace(ply, alpha, beta, best_value, m, "prune:seefloor");
+                    self.stats.gate(Gate::QsSeeFloor);
                     continue;
                 }
             }
@@ -5330,6 +5531,7 @@ impl Worker {
                     .captured_piece()
                     .is_some_and(|victim| victim.piece_type != PieceType::Pawn)
             {
+                self.stats.gate(Gate::QsStaleScan);
                 let mut legal = MoveList::new();
                 generate_legal(&self.board, &mut legal);
                 if legal.is_empty() {
