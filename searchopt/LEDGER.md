@@ -91,6 +91,29 @@ build for every candidate), both verified node-identical to the shipped tree.
 | `engines/bin/archon-s25` is a STALE baseline | it reads **1,799,710** on the wl50 d13 fingerprint against this tree's 1,739,588. Build a same-source PGO baseline for any SPRT |
 | `tools/sprt.sh` was passing NO `EvalFile` | an empty `EvalFile` silently evaluates PSQT, so every SPRT through that script measured a PSQT engine unless the caller appended the option by hand. Fixed: `NET=` defaults to `engines/canonical/net.cenn` and is printed |
 
+## MOVE ORDERING — the TT-less deficit, 2026-08-01 (perf study 71)
+
+Full writeup: `docs/research/perf-study-71-tt-less-move-ordering.md`. Same instruments,
+extended: `census70` now splits every TT-less node entry by WHY, and by which store site
+wrote it; `arm70` gains the `qsee` family and the `hidett` null.
+
+| claim | deciding evidence |
+|---|---|
+| **A node arrives TT-less for three different reasons, and only one is repairable** | uho300 @ d11, 757,789 TT-less NonPV node entries: **42.58 % probe MISS**, **57.41 % an entry with no move**, **0.001 % (8 events) a move that fails `pseudo_legal`**. Validation is not a source of the deficit |
+| **Half the moveless population is a MAIN-SEARCH FAIL LOW** | by the depth the moveless entry was stored at: eval-only cache 27.57 %, quiescence fail low 21.89 %, search fail low d1–3 **34.47 %**, d≥4 **16.08 %** — 220 k entries, 17.7 % of all NonPV nodes |
+| ~~Storing the fail-low argmax move fixes it~~ — **REFUTED** | against its own pruning control: **−0.06 pp fhf, +2.3 % nodes**. Alone it reads +0.08 pp (null ±0.03) and +3.9 % nodes. Mechanism: at an all-node the argmax is over LMR-reduced upper bounds of exactly the moves the static ordering already ranked first |
+| **A TT-availability arm is a PRUNING arm until controlled** — four sites read `ttMove == NULL` as "unresolved" | IIR, RFP's `ttMove == NULL \|\| ttCapture` gate, `RED_CUTNODE_NO_TTMOVE`, `RED_FULLDEPTH_NO_TTMOVE`. `TT_UPPER_PRUNE_BLIND` is a bitmask so the 2×2 is runnable in one binary |
+| **REJECTED: IIR on UPPER-bound entries** | **−27.7 % nodes from IIR alone** (the other three sites: +0.3 %, +0.6 %, −0.05 %), and **−24.17 ± 15.11 Elo over 792 fixed-node games, LOS 0.08 %**. SF `eca43a97` search.cpp:1029 says `(*Scaler) Making IIR more aggressive scales poorly`; now measured here |
+| **The 14.9 pp deficit is 1.55× over-priced as an ORDERING target** | `hidett=1` hides the TT move from the MOVE PICKER only (every pruning/reduction/extension gate still reads `tt_data.mv`): the same nodes cut first **0.8175** instead of 0.9134. So **9.6 pp is the TT move and 5.4 pp is population** — nodes with a TT move are re-visited nodes and are intrinsically easier |
+| **When a TT-less cutoff is not on move 1, the cutting move is a QUIET** | by index: move 2 is 78.8 % GoodQuiet, move 3 90.7 %. And of 156,444 TT-less quiet cutoffs, **85.5 % had ZERO captures before them** (mean 0.18) — the capture/quiet interleave is not the lever |
+| **The lever is the quiet SCORE: 28.5 % of TT-less quiet cutoffs were not the top-scored quiet** | 44,637 events, 15.1 % of the TT-less cutoff population |
+| **LANDED: `QUIET_SEE_PENALTY = 49152`**, clamped at `GOOD_QUIET_THRESHOLD + 1` | NonPV fhf **0.8435 → 0.8485**, TT-less **0.7632 → 0.7721** (+0.89 pp against a ±0.03 pp null), nodes −2.05 %. SF's `score<QUIETS>` has NO SEE term; its threat tier knows only STRICTLY cheaper attackers, ignores defence, and is `Bitboard::EMPTY` for a pawn |
+| **The CLAMP is the change, and only games could tell** | unclamped (the demotion may cross into the bad pile, where LMP can drop the move): **−6.34 % nodes, −3.13 % total instructions, −5.35 ± 9.26 Elo over 1,948 games**. Clamped: −2.05 % nodes, +1.86 % instructions, **+8.92 ± 9.40 Elo over 1,910 games, LOS 96.9 %**. The move loop already SEE-prunes quiets at `-QSEE_MULT·lmr_depth²`, so the unclamped form was a harsher depth-blind duplicate |
+| Two guards make the SEE call affordable | `all_threats.contains(to)` (already in hand) and `value > GOOD_QUIET_THRESHOLD()`, with the block placed AFTER the threat/offense terms: **0.093 `see_ge` per scored quiet**, +3.99 % instructions/node |
+| ~~A free "attacked by an EQUAL-or-cheaper piece" tier replaces the SEE call~~ — **REFUTED** | +0.19 pp at its best and **−0.59 pp** at the shipped magnitude. Without knowing the destination is defended the predicate is bad; the `see_ge` earns the term |
+| The predicate, not the demotion | size- and magnitude-matched RANDOM control (demote a pseudo-random 23 % of quiets, the same share, by the same amount): **−1.17 pp fhf, +17.2 % nodes** |
+| A fixed-node SPRT is BLIND to this term's cost | +3.99 % instructions/node ≈ 1.5 % wall clock (study 41's 2.6× ratio) ≈ 2.6 Elo at ~120 Elo/doubling. A real-TC confirmation is owed |
+
 ## WHY WE LOSE — the holistic answer (2026-07-28, full 404-game corpus)
 
 Full writeup: `searchopt/results/WHY-WE-LOSE-d48x.md`. Counted, not estimated.
