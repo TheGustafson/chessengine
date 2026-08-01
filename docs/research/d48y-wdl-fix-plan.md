@@ -15712,3 +15712,32 @@ main.
    NNUE gate's eval hash + d13 in **both** `tools/check.sh` and CLAUDE.md's
    **CURRENT** slot, pushing the superseded pair into the history list. `859a442`
    got that wrong and the doc named a superseded gate for a day.
+
+**`gate69` PASSED — my own gate, not the agent's:** `Bench: 587683`, eval hash
+`2e1ede95…79c4`, d13 `1739588`, all checks passed. All three pins unmoved, which
+is the correct signature for a study whose only functional arm was reverted — and
+it independently confirms `archon-s69` still matches main's default build.
+
+### SESSION SCOREBOARD (2026-07-31 22:00 → 2026-08-01 07:20)
+
+**Landed and gated:** `qtrace` dead-work removal (−2.33 % of search time),
+`SearchStats` + env-probe hoisting (−0.559 % instructions, −29.9/node), plus
+~45 new perf instruments across `tools/perf65..69`.
+
+**Reverted on evidence:** the 154 SF `ebcea3ef` tunables (**−29.49 ± 14.88 over
+1500 games**) and study 69's `LazyLock` arm (**+0.321 %, 0/16**). Both were built,
+measured, and undone — which is the loop working, not the loop failing.
+
+**Closed with numbers, so nobody re-opens them:** FT precision / sub-byte /
+locality / prefetch; code layout at every granularity; branch mispredicts
+(6.02 % of cycles, no concentration); the dead-work class (now empty); the eval
+frame (interior optimum, the shipped scale is already on it).
+
+**Measured about D49:** **+9.70 ± 4.47 Elo over canonical across 9000 games**
+(sb1350–1450 pooled), heldout still falling at sb1490 (t = −3.82), no plateau.
+
+**Instrument failures found tonight, which is why so few numbers survived:**
+`ic_cache_fill_l2`, `de_op_queue_empty`, `task-clock` and `branch-misses:u` all
+fail a byte-identical null; `cycles:u` is not load-robust; the wall-clock panel
+voided itself on a busy box. **`instructions:u` and node counts are the only
+things that decided anything.**
