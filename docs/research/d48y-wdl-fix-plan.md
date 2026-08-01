@@ -13739,3 +13739,37 @@ than the earlier points regardless of schedule. **Final number at completion.**
 
 **D49:** sb1272, five services active, **sb1700 in 15.4 h.** Memory recovered to
 5349 MB avail, swap 3768/4095.
+
+## Tick — 2026-07-31 23:1x, sb1270 MATCH FINAL: D49 is level with canonical
+
+**1500 games, 25k nodes: −2.08 ± 11.32**, DrawRatio 45.20%,
+Ptnml [29, 187, 339, 154, 41]. Clears the 1500-game floor, so it is quotable.
+
+| checkpoint | Elo vs canonical | games |
+|---|---:|---:|
+| sb400 | −21.24 ± 5.67 | 5880 |
+| **sb700** (end of extend) | **−4.14 ± 5.56** | 5880 |
+| sb900 | −11.59 ± 11.51 | 1500 |
+| sb1060 | −9.50 ± 11.27 | 1500 |
+| **sb1270** (decay leg) | **−2.08 ± 11.32** | 1500 |
+
+**Three tests, all read conservatively:**
+
+- **vs mid-cycling: +8.44 ± 13.89 = 0.61σ — NOT significant.** The decay leg
+  *looks* ~8 Elo better; the gap does not clear the bars.
+- **vs sb700: +2.06 ± 12.61 = 0.16σ.** Indistinguishable from where the extend
+  run ended, 570 superbatches ago.
+- **vs canonical: 0.18σ.** Level.
+
+**So: closed from −21 to level, direction right, and nothing since sb700 is yet
+statistically distinguishable.** At ±11 Elo the 1500-game screen cannot resolve the
+movements being discussed. **The sb1700 verdict wants the 5880-game screen (±5)**,
+which is what `d49_verdict.sh` is set up for and which now skips the ladder (frame
+stable to sb1270: stdev 427.3).
+
+**The instrument held through the OOM:** the match ran across the trainer kill and
+restart untouched, with a normal draw ratio and pentanomial — no repeat of the
+PSQT-style silent failure.
+
+**D49:** sb1273, five services active, **sb1700 in ~15.4 h.** Memory recovered:
+avail 8164 MB, swap 3326/4095 (from full). 138 GB disk.
