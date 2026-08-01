@@ -17516,3 +17516,34 @@ converter** at SF's own dims (1024/32/32) — tractable only because **the featu
 are identical** (83,248 inputs). It is verified against `sf-eval` as an oracle and
 **instructed to report BEFORE launching** so the GPU is freed deliberately rather
 than by collision.
+
+---
+
+## 2026-08-01 14:47 — matcher still down; a THIRD starvation shape, and why I am accepting it
+
+**D49 continuation sb1691**, 182.3k pos/s. Memory recovered to **4040 MB** with 6
+builds live; **zero OOM since 14:00**. Disk 133 GB.
+
+**`xmlrestore` waits for `builds == 0 && avail ≥ 4000`. With two agents building
+on and off, `builds == 0` may effectively never occur** — the same starvation
+shape that hit the 535 arm (`is-active` on a loop service) and the A/B twice
+(`pgrep fastchess == 0` while a loop restarts it). **Third variant of one
+mistake: waiting on a condition a busy box does not produce.**
+
+**Accepting it deliberately this time, on my own prior analysis rather than
+convenience:** a single per-export screen **cannot resolve 30 superbatches**
+(~0.9 Elo at the measured +30.31/1000 sb, against a ±11 bar). The screens are
+only worth anything **pooled**, and missing a handful of points costs little,
+whereas restarting the matcher now would add ~1.3 GB (nets + the packing spike)
+on top of six builds and put the floor near 2700 MB — the same setup that hit
+**1861 MB** at 14:02.
+
+**And the picture changes shortly anyway:** the teacher build is instructed to
+report before launching, at which point the GPU is deliberately freed and the box
+is re-planned. Restarting the matcher for a few uninformative points immediately
+before that would be churn.
+
+**What is owed and NOT forgotten:** the continuation's strength question needs
+either a pool of checkpoints or a direct A/B against sb1630 at ~300 sb (~sb1930).
+The pre-registered heldout abort check stands: **below 0.010432 by ~sb1900** or
+the 5× restart cost more than it bought. Currently **0.010462**.
