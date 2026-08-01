@@ -13928,3 +13928,70 @@ stays a watch item. Disk 137 GB free.
 measurements. Tolerable *because of what study 65 is gated on* — `instructions:u`
 (load-robust, 0.000 null) and bit-exactness. Any `cycles:u` number it reports
 from this window is not evidence; `cycles:u` read +49.9% under load tonight.
+
+---
+
+## 2026-08-01 00:20 — "What spread should we want?" — MEASURED, and D49 has been screened in the WRONG FRAME
+
+**Answer: the spread that puts slope at 1.00 vs Stockfish's INTERNAL frame.**
+Not a free parameter. Our razoring/futility/RFP/ProbCut margins are SF
+`eca43a97` internal constants transcribed verbatim; a margin prunes what it was
+tuned to prune only if our eval distribution matches the one those numbers were
+fitted against.
+
+Measured with `tools/nnue/net_scale_check.sh` (n=503, SF_BIN =
+`/home/nick/sf-eca43a97/src/stockfish`), spread on `wl50.fens`:
+
+| net | pack scale | stdev | slope vs SF internal | constants too large | relative gate |
+|---|---:|---:|---:|---:|---|
+| D49 sb1300 | **756** (today) | 431 | **0.477** | **2.10x** | **PASS** |
+| canonical D48X | 600 | 610 | 0.674 | 1.48x | **FAIL** |
+| D49 sb1300 | 1068 | 605 | 0.672 | 1.48x (canonical's frame) | — |
+| D49 sb1300 | **1585** | **895** | **0.995** | **1.00x (PARITY)** | — |
+
+Nothing saturates: absmax 2386 at parity, far below the +/-15000 mate boundary.
+
+**THE DEFECT: every D49-vs-canonical screen has been frame-handicapped.** D49 is
+packed at the old lineage scale 756 (slope 0.477) and screened against canonical
+at 600 (slope 0.674). So "D49 is statistically level with canonical"
+(-2.08 +/- 11.32 at sb1270; +1.6 interim at sb1300) is a result obtained with our
+own candidate in the worse frame.
+
+**And note WHICH net passes the relative gate.** D49 passes (1.030) precisely
+because it faithfully reproduces the lineage's wrong scale; canonical FAILS
+(1.457) because it was deliberately fixed. The gate's own header says it:
+*"the tighter it passes, the more perfectly the mismatch is preserved."* A PASS
+on the relative check is not reassurance — here it is the symptom.
+
+**TWO ERRORS OF MINE, both caught by measurement:**
+
+1. **I assumed `network_scale` was a divisor. It is a MULTIPLIER.** I packed
+   sb1300 at 535 expecting canonical's frame and got slope 0.339 — worse than
+   the 0.477 I started from (535/756 = 0.708; 0.477 x 0.708 = 0.338 vs 0.339
+   measured). Corrected direction then predicted 1068 -> 0.674 and 1585 -> 1.000
+   and measured **0.672** and **0.995**. Pack-and-check, never reason about
+   header semantics.
+2. **It follows that the canonical promotion was 479 -> 600, not 756 -> 600** as
+   I had assumed when reading the +14.78 note (600/1.253 = 479).
+
+**Prior evidence, direction only:** the single previous move toward parity
+(0.538 -> 0.674, header-only, payload byte-identical) was **+14.78 +/- 5.45 Elo
+over 5880 games** with -12.4% nodes. That is evidence the mechanism is real. It
+is **NOT** evidence for the magnitude at slope 1.0 — nobody has tested parity,
+and the SPSA tunables co-adapted to the wrong frame. Extrapolating that gain
+linearly would be exactly the chained-inference error the rules forbid.
+
+**ACTIONS TAKEN:**
+- Recurring matcher (`d49xml`) repointed 756 -> **1068**, so future per-export
+  screens are frame-FAIR against canonical instead of handicapped.
+- **`d49frame.service` armed: the frame experiment.** Same payload, byte-identical
+  from offset 64, only the 4-byte header differing — 1068 and 1585 each vs
+  canonical, 1500 games @ 25k. The 756 arm already running is the third point
+  against the same opponent, so no rerun. Any Elo difference is the frame and
+  nothing else. Sequenced behind the running match (memory), and it re-arms
+  `d49xml` when done.
+
+**Open question this does NOT answer:** whether parity (1585) beats canonical's
+frame (1068). That is what the experiment is for. If parity wins, the whole
+lineage — including the canonical net — should be rescaled, and the SPSA
+campaign rerun in the corrected frame.
