@@ -13217,3 +13217,49 @@ frame, and studies 52–58 (was the void +1.58). The surviving **+1.77 Elo for
 
 **D49 unaffected and healthy throughout:** sb1238, heldout ema **0.010506** — still
 the run's lowest, still falling. 188k pos/s, four services active.
+
+## Tick — 2026-07-31 22:2x, RE-MEASUREMENT: studies 61+62 do NOT reproduce their void figure
+
+Re-ran the 61+62 panel on the guarded tool with an explicit resolved `--net`,
+40 rounds:
+
+| | void run (dangling net) | **valid re-run** |
+|---|---|---|
+| ARM median | −1.879% | **+0.141%** |
+| ARM sign | 29/40, p=0.0064 | **17/40, p=0.4296** |
+| NULL median | −0.011% | +0.489% |
+| licence | LICENSED | **NOT LICENSED** |
+| derived Elo | +3.14 | **none — refused** |
+
+**The valid instrument shows no measurable wall-clock gain, and the point
+estimate is slightly the WRONG WAY (+0.141% = marginally slower).** The retraction
+was right, and the replacement is not a smaller positive number — it is **nothing
+distinguishable from zero.**
+
+**Stated precisely: the panel was NOT LICENSED, so this is "inconclusive", not
+"proven zero".** The box read 15.1% busy at the start. But it decisively fails to
+reproduce −1.879%, which is what matters for the retracted claim.
+
+**The new guards worked, and one of them is why I trust this run's shape:**
+mid-run stability read **first half 3.430s, second half 3.430s, drift +0.00%** —
+the panel itself was perfectly stable, so the failure to license is the box and
+the null, not drift. That check did not exist this morning.
+
+**And it corroborates study 63 independently.** Study 63 measured its rungs at
+**−0.6513% of instructions buying +0.111% of time** and explained why: those
+instructions come off the **tail**, which a backend-bound-2:1 machine absorbs in
+spare slots. Studies 61+62 landed −217 shipped i/n and now show **+0.141%** of
+time. **Two independent measurements now say instruction cuts in this region do
+not convert.**
+
+**The startup frame licensed at −0.578%** (null −0.131%) but flagged a −2.94%
+mid-run regime shift, so it is void by the tool's own rule.
+
+**The 52–58 re-run is still going**; its result lands next tick.
+
+**What survives, unchanged:** the instruction counts themselves — verified by my
+own rebuild at every merge, on a counter with a 0.000 null — and the **+1.77 Elo
+for studies 52–56**, measured by a different script that never touched the
+default net.
+
+**D49:** sb1245+, four services active, heldout ema still the run's lowest.
