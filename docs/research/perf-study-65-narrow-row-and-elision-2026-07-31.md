@@ -1,7 +1,7 @@
 # Perf study 65 — the narrow row is BUILT and BIT-EXACT and it LOSES; the 45 % elision prize has no free predictor
 
 **Date:** 2026-07-31 · **Box:** 7700X (Zen 4), AVX-512 VBMI2, SMT on, 32 KB
-L1d, 1 MB L2/core, 32 MB L3, 15 GB · **Base:** `main` at **`bc2b446a`**
+L1d, 1 MB L2/core, 32 MB L3, 15 GB · **Base:** `main` at **`bc2b446a`**, rebased onto **`24891527`**
 (post-study-64 handoff) · **Net/arch:** D48X @ `network_scale=600`,
 `sota,arch-d48x`, ACC 1280 · **Branch:** `worktree-agent-ab1cf725d9c6150b4`
 
@@ -450,8 +450,10 @@ Most doubtful first.
 | `cargo test --features sota,arch-d48x,narrow65` | **724 passed, 0 failed, 8 ignored** |
 | `cargo clippy --all-targets`, default / `sota,arch-d48x` / `+narrow65` | clean (the two surviving dead-code notes, `read_i8s` and `NNZ_IOTA`, pre-date this study) |
 | `cargo fmt` | clean |
-| `CHECK_NNUE_GATE=1 bash tools/check.sh` | see the appended line below |
-| `cargo test --release --test perft_suite -- --ignored perft_full_suite` | see below |
+| `CHECK_NNUE_GATE=1 bash tools/check.sh` | **exit 0 — `All checks passed.`, `Bench: 587683`, eval hash `2e1ede95…79c4`, d13 nodes `1739588`; all three pins unmoved** |
+| release perft suite (run inside `check.sh`) | **ok** |
+| `narrow65` added to `check.sh`'s feature matrix | yes — the arm cannot silently rot |
+| rebase re-gate (study 56's `bcmisc55` rule) | opened on `bc2b446a`; `main` moved to **`24891527`** during the study. `git diff --stat bc2b446a 24891527 -- src/ Cargo.toml tools/check.sh` is **empty** (five docs-only commits), so no measurement expired. Rebased; `base3`/`n65b` rebuilt from the rebased tree reproduce `.text` md5 `db59ab90`/`8b9ed663` and sizes 758,101/906,885 **exactly**, both node-identical and eval-hash exact. |
 | shipped `sota` `.text` | **760,085 → 758,101 B**, node-identical, eval-exact, **−0.218 % `instructions:u`** — §2.4 |
 
 D24 perft ritual not strictly required (nothing under `movegen`, `board`
