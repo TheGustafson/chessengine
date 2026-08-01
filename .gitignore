@@ -135,3 +135,6 @@ docs/research/perf-artifacts-61/*.lock
 docs/research/perf-artifacts-62/*.lock
 # perf study 62 scratch (binaries, panel logs, raw census runs)
 perfout62/
+
+# perf study 66 scratch (arm binaries -- one .text per data-mode build)
+bin66/
