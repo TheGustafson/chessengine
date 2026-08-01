@@ -351,7 +351,10 @@ belongs to a per-node study; it is flagged here, not acted on.
 ## 5. Reproducing
 
 - `tools/perf70/nodes70.sh BIN` — the three node totals (the weak metric; kept
-  because it is what a `Bench:` trailer is)
+  ONLY because it is what a `Bench:` trailer is — never read a verdict off it).
+  Its multi-arm wrapper `screen70.sh` was deleted rather than kept: it is the
+  script that produced §1.1's three phantom findings, and a superseded
+  instrument left lying around is a trap.
 - `tools/perf70/cscreen70.py ARM...` — census screen with the null panel first
 - `tools/perf70/screen70.py ARM...` — paired node screen with the null panel first
 - `tools/perf70/paired70.py` — the paired statistics themselves
