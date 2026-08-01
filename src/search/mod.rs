@@ -864,7 +864,6 @@ impl Default for SearchManager {
 /// The methods take `Copy` scalars already live in registers, so the disabled
 /// arm has nothing to construct either (the other half of the `qtrace` lesson).
 #[cfg(any(test, feature = "search-stats"))]
-#[derive(Default)]
 pub struct SearchStats {
     /// Qsearch slice of `nodes` (bumped at the qsearch `do_move` site only).
     pub qnodes: u64,
@@ -889,8 +888,34 @@ pub struct SearchStats {
 
 /// The shipped shape: no fields, therefore no stores. See the enabled twin.
 #[cfg(not(any(test, feature = "search-stats")))]
-#[derive(Default)]
 pub struct SearchStats;
+
+/// The zeroed value, spelled once per shape. **Not `Default`:** the disabled
+/// shape is a unit struct, and `SearchStats::default()` on a unit struct is
+/// `clippy::default_constructed_unit_structs`, which this crate denies. A
+/// `const` also makes the per-`go` reset a compile-time constant rather than a
+/// call.
+#[cfg(any(test, feature = "search-stats"))]
+impl SearchStats {
+    pub const NEW: Self = Self {
+        qnodes: 0,
+        fh: 0,
+        fh_first: 0,
+        fh_moves: 0,
+        ttcut: 0,
+        ext: 0,
+        research: 0,
+        lmr_n: 0,
+        lmr_plies: 0,
+        nmp_try: 0,
+        nmp_cut: 0,
+    };
+}
+
+#[cfg(not(any(test, feature = "search-stats")))]
+impl SearchStats {
+    pub const NEW: Self = Self;
+}
 
 impl SearchStats {
     /// One qsearch node.
@@ -1265,7 +1290,7 @@ impl Worker {
             stack: Box::new([Stack::default(); STACK_SIZE]),
             pv_table: Box::new([EMPTY_PV; MAX_PLY + 1]),
             nodes: 0,
-            stats: SearchStats::default(),
+            stats: SearchStats::NEW,
             sel_depth: 0,
             root_depth: 0,
             root_delta: 2 * VALUE_INFINITE,
@@ -1385,7 +1410,7 @@ impl Worker {
         self.multi_pv = self.options.multipv().max(1) as usize;
         self.minimal = self.options.minimal();
         self.nodes = 0;
-        self.stats = SearchStats::default();
+        self.stats = SearchStats::NEW;
         self.counters.reset();
         *self.pool.shells[self.thread_idx]
             .report
@@ -1868,7 +1893,7 @@ impl Worker {
         // Per-`go` reset (§3.2.4, §3.9): stack, counters, root moves.
         init_stack(&mut self.stack);
         self.nodes = 0;
-        self.stats = SearchStats::default();
+        self.stats = SearchStats::NEW;
         self.sel_depth = 0;
         self.root_depth = 0;
         self.completed_depth = 0;
@@ -3196,11 +3221,7 @@ impl Worker {
             // hotter cutNode LMR) shrinks the trees that gate leaves behind,
             // and we did not port those. ARCHON_NMP_ALLNODE=1 tries the
             // SF16-style gate for measurement; landing is a post-D47 decision.
-            let nmp_node_ok = if self.nmp_allnode {
-                !NT::PV
-            } else {
-                cut_node
-            };
+            let nmp_node_ok = if self.nmp_allnode { !NT::PV } else { cut_node };
             if nmp_node_ok
                 && self.stack[cur].static_eval
                     >= beta
