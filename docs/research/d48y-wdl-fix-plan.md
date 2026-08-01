@@ -14625,3 +14625,40 @@ capped and could not take the box down. Sampled the trend rather than reacting:
 recovered to ~6300 MB within a minute, and **zero kernel OOM kills since 02:00**.
 The failed scopes visible in `list-units` are stale ones from a retired worktree,
 not live failures.
+
+---
+
+## 2026-08-01 03:17 — study 66 closes study 65's surviving route; 756 arm running
+
+**D49:** sb1389, 188.2k pos/s, heldout ema 0.010456. **sb1700 is ~12.4 h out**
+(311 sb at ~2.4 min/sb).
+
+**STUDY 66 HAS ALREADY KILLED THE ROUTE STUDY 65 LEFT OPEN.** Its commit
+`42a3445a`: *"the COMPACTED threat table — built, bit-exact, and it does NOT
+rescue study 65."* That is precisely the compacted two-plane layout study 65
+named as "the version that can still win" — built, proven bit-exact, and
+measured as not rescuing it. Three commits landed, one file uncommitted, still
+running. Committing as it goes, as instructed.
+
+Taken together, 65 and 66 have now closed the whole narrow-row/compaction family
+by construction rather than by argument. That is exactly what these studies are
+for: the route is dead with a mechanism attached, not merely unattempted.
+
+**Frame re-run, arm 3 in flight. INTERIM — deliberately not concluded:**
+
+| pack scale | BEFORE | AFTER |
+|---:|---:|---:|
+| 1585 | -18.08 +/- 10.79 | **-19.71 +/- 11.48** (final) |
+| 1068 | -8.57 +/- 10.57 | **-3.01 +/- 11.09** (final) |
+| 756 | +3.24 +/- 10.65 | -6.77 +/- 12.0 **(INTERIM n=1027)** |
+| 535 | not run | pending |
+
+**If** the 756 interim holds it would put 1068 ABOVE 756 and **break the
+monotonic reading under the new margins** — but the two are inside each other's
+bars, and I read an n=529 interim wrongly one tick ago and published it. **No
+conclusion until n=1500.** Recording the possibility here so the outcome cannot
+be narrated after the fact either way.
+
+**Memory:** 4164 MB available, lower than earlier because study 66 is building,
+but well above the 2500 MB floor and its builds are capped at 6G with swap off.
+Zero kernel OOM kills tonight since 22:53.
