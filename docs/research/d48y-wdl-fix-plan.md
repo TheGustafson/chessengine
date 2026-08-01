@@ -14451,3 +14451,50 @@ it, and re-arm it after** — do not just fire and hope.
 canonical net as the profile eval-file (mandatory — a bench-only profile leaves
 the NNUE kernels unprofiled and PGO inert). Memory checked first: 6703 MB avail,
 capped 6G / no swap, `-j2`.
+
+---
+
+## 2026-08-01 02:18 — PGO binary VERIFIED and the frame RE-RUN is live under the new tunables
+
+**D49:** sb1361, 187.0k pos/s, heldout ema **0.010460** — another run low.
+
+**PGO build done and verified, not assumed.** `[pgo] done` alone is not evidence,
+and 39.5 s CPU / 80 s wall looked far too fast for a full instrument -> profile ->
+rebuild cycle. All four phases DID run (`build_pgo.sh` keeps a warm separate
+target dir). Checked the artifact directly:
+
+| binary | bench nodes | nps |
+|---|---:|---:|
+| **`archon-tunables` (PGO, ebcea3ef)** | **486897** | **4,426,336** |
+| `target-sota/release/chessengine` (old) | 587683 | — |
+
+486897 is the new-tunable tree, so **the values are genuinely in the binary**, and
+it loads CENN nets (-885/-1017/-506, canonical's range). Two traps avoided: the
+binary was written into `chessengine-mainwt/engines/bin/`, NOT the primary
+checkout (I ran the build from the worktree), and "done" would have been taken on
+trust without the bench check.
+
+**FRAME RE-RUN LIVE — `d49rerun.service`, tag `ebcea3ef`.** Four arms
+(**1585 / 1068 / 756 / 535**), 1500 games each @ 25k fixed nodes, D49 sb1300 vs
+canonical, **all on the new PGO binary**. ~100 min total.
+
+**I stopped `d49xml` first** — exactly the starvation trap I flagged last tick and
+would otherwise have walked into: it screens every export continuously, so the
+re-run's wait loop would never have cleared. `frame_rerun.sh` now RE-ARMS the
+matcher itself when it finishes, so the box hands back automatically.
+
+**The comparison this sets up** (same nets, same positions, same node budget —
+only the margins differ):
+
+| pack scale | slope vs SF | BEFORE (eca43a97) | AFTER (ebcea3ef) |
+|---:|---:|---:|---|
+| 535 | 0.339 | not run | pending |
+| 756 | 0.477 | +3.24 +/- 10.65 | pending |
+| 1068 | 0.672 | -8.57 +/- 10.57 | pending |
+| 1585 | 0.995 | -18.08 +/- 10.79 | pending |
+
+If the monotonic "further from SF parity is better" curve SURVIVES the margin
+refresh, it is a property of our eval rather than an artifact of stale constants.
+If it FLATTENS or inverts, the old curve was measuring the mismatch between our
+eval and out-of-date margins — and that is the outcome that would vindicate the
+original frame theory after all.
