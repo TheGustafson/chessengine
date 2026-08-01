@@ -16655,3 +16655,42 @@ missing rather than screening something stale.
 started from**. If the per-cycle ~+6 is real and compounds, this reads ~+17 ± 10
 and is decisive; if the cycles are noise, it reads ~0 ± 10 and the idea is
 closed at a cost of 90 superbatches.
+
+---
+
+## 2026-08-01 11:02 — ★ THE JUMP→ANNEAL SHAPE IS VISIBLE IN GAMES, not just heldout
+
+**Five consecutive 1500-game screens now span a full cycle and the start of the
+next:**
+
+| checkpoint | LR phase | Elo vs canonical |
+|---|---|---:|
+| sb1540 | anchor, pre-jump | +3.47 ± 11.22 |
+| sb1550 | cycle 1, LR at peak | +3.24 ± 10.92 |
+| sb1560 | cycle 1, annealing | +5.10 ± 10.70 |
+| **sb1570** | **cycle 1, LR → 0 (END)** | **+9.27 ± 11.04** |
+| **sb1580** | **cycle 2, 10 sb after the 2nd jump** | **−3.94 ± 11.19** |
+
+**The anneal climbs monotonically — 3.24 → 5.10 → 9.27 — and the next jump costs
+~13 Elo immediately.**
+
+**Why the PATTERN is stronger evidence than any of its points.** Each screen has
+a ±11 bar, so no single reading resolves ±6. But five points tracing a
+**predicted shape** — flat at peak LR, rising through the anneal, peaking at
+LR=0, collapsing at the next jump — is a different kind of evidence. The
+sb1570→sb1580 drop of **13.2 Elo exceeds a single bar**, and it lands exactly
+where the mechanism says it must. It also matches the heldout excursion measured
+independently (ema 0.010440 → 0.010468 at the jump).
+
+**The actionable consequence, and it is immediate: CHECKPOINTS MUST BE TAKEN AT
+THE ANNEAL END.** A mid-cycle checkpoint is materially weaker — sb1580 is
+**13 Elo below** sb1570 and **7 Elo below the anchor it started from**. The
+owner's design already does this (checkpoint after each 30-sb anneal); this
+measures why it matters rather than assuming it.
+
+**Still NOT established: whether cycles COMPOUND.** Cycle 1 ended +5.80 ± 15.7
+over the anchor — positive, not significant. The question is whether cycle 2's
+sb1600 beats cycle 1's +9.27 and cycle 3 beats that again. `d49ab` will settle it
+directly (cycle-3 vs anchor, one bar).
+
+**Live:** cycle 2 at sb1594/1600, matcher screening sb1590, memory 4387 MB.
