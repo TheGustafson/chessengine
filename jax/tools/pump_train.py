@@ -115,6 +115,7 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
             (float(a), float(b)) for a, b in spec.get("distill_alpha_ramp", [])),
         lr_ramp=tuple(
             (float(a), float(b)) for a, b in spec.get("lr_ramp", [])),
+        export_every=int(spec.get("export_every", 10)),
         lr=spec["lr"], lr_end_superbatch=spec["lr_end_superbatch"],
         superbatches=spec["superbatches"], pol_lambda=spec["pol_lambda"],
         ft_sparsity_lambda=spec["ft_sparsity_lambda"],
@@ -254,7 +255,14 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
                   f"ft_density {c.get('ft_density', 0):.6f} | "
                   f"{rate:,.0f} pos/s", flush=True)
             running = {}
-            if sb % 10 == 0 or sb == cfg.superbatches:
+            # Export cadence. Default 10, overridable per-run with
+            # "export_every". The LR jump->anneal cycles set it to the cycle
+            # length so checkpoints land ONLY at the BOTTOM of the cycle
+            # (LR -> 0): measured 2026-08-01, a mid-cycle checkpoint taken just
+            # after a 5x LR jump was 13 Elo weaker than the anneal-end one
+            # (sb1580 -3.94 vs sb1570 +9.27, 1500 games each).
+            _every = int(getattr(cfg, 'export_every', 10) or 10)
+            if sb % _every == 0 or sb == cfg.superbatches:
                 host = jax.tree.map(np.asarray, params)
                 save_pair(host, arch, out, f"{net_id}-sb{sb}")
                 hv = heldout_value_loss(host, arch,

@@ -15741,3 +15741,1643 @@ frame (interior optimum, the shipped scale is already on it).
 fail a byte-identical null; `cycles:u` is not load-robust; the wall-clock panel
 voided itself on a busy box. **`instructions:u` and node counts are the only
 things that decided anything.**
+
+---
+
+## 2026-08-01 07:18 — 15000 games pooled: D49 is +8.41 ± 3.89, and it is FLAT across sb1340–1480
+
+**D49:** sb1498 (sb1500 permanent checkpoint imminent), 188.6k pos/s, heldout ema
+0.010436. Disk 147 GB. Study 70 running.
+
+**Ten completed frame-fair screens, 1500 games each = 15000 games:**
+
+| sb | Elo | sb | Elo |
+|---:|---:|---:|---:|
+| 1340 | +0.69 | 1440 | +3.71 |
+| 1350 | +12.75 | 1450 | +10.66 |
+| 1410 | +15.06 | 1460 | +0.46 |
+| 1420 | +14.14 | 1470 | +16.46 |
+| 1430 | +1.85 | 1480 | +8.34 |
+
+**POOLED: +8.41 ± 3.89 Elo** (sd 6.27 across checkpoints, SE 1.98). Supersedes the
+six-screen +9.70 ± 4.47 from 06:18 — same conclusion, tighter bar.
+
+**AND THE TREND IS FLAT: slope +0.0116 Elo/sb, t = +0.25, NOT significant.**
+Over the 140 superbatches spanned that is **+1.6 Elo**, against a per-screen bar
+of ±11. So across sb1340→1480 **D49 is not measurably getting stronger** — it is
+sitting at a stable ~+8 Elo over canonical.
+
+**This is the sharpest thing measured about D49 tonight, and it cuts against the
+natural reading of the series.** At 04:32 I reported "D49 has overtaken canonical,
++15.06" off sb1410; at 06:18 I pooled six screens and implied a rising story. With
+ten screens the level is solid and the *slope is indistinguishable from zero*.
+The apparent climb was the spread (sd 6.27, range +0.46 to +16.46) being read as
+motion.
+
+**What this does NOT say:** that training has stopped helping. The heldout is
+still falling significantly (t = −3.82 at sb1360–1470) — but
+[[loss-is-not-elo]] applies in both directions, and 140 superbatches of a decayed
+LR simply may not move Elo enough to see against ±3.9. **It does say the sb1700
+verdict should not be expected to show a large jump**, and that any claim of
+"D49 improved from sb1400 to sb1700" needs the 5880-game screen at ±5, not a
+comparison of two 1500-game points.
+
+---
+
+## 2026-08-01 07:32 — sb1500 landed; the remaining 195 sb are at a 2.2x-decayed LR
+
+**D49:** sb1505, 188.6k pos/s, heldout ema 0.010437. **sb1500 permanent
+checkpoint written** (433,755,450 B, 07:20). Matcher screening sb1490
+(stdev 599.1). Disk 146 GB. Study 70 running. All units green.
+
+**A decision point worth putting in front of the owner rather than deciding
+silently.** Two measurements now sit together:
+
+- **Elo is FLAT across sb1340–1480**: pooled **+8.41 ± 3.89** over 15000 games,
+  trend slope +0.0116 Elo/sb, **t = +0.25**.
+- **The LR is nearly spent**: 4.12e-6 now, 2.82e-6 at sb1600, **1.89e-6 at
+  sb1700** — the remaining 195 superbatches run at a **2.2× decayed** rate
+  relative to now, and ~8.4× below the sb1170 value where this leg started.
+
+So the last 195 superbatches are the flattest part of a schedule whose Elo
+contribution is already unmeasurable at ±3.9.
+
+**Set against that: the GPU is the binding resource for the single largest
+remaining engine lever.** Study 65 measured that **61.41 % of evals feed one
+threshold comparison** and priced the elision ceiling at **~45 % of engine
+latency**; the only live route is a **trained HalfKA-only tier** (break-even
+28.2 % coverage), and the `smallnet_*` call sites already exist inert — verified
+2026-08-01 that no loader references them and no artifact exists. **That training
+cannot start until D49 releases the GPU.**
+
+**I am continuing to sb1700 as instructed** ("keep an eye on the training and keep
+it going", plus the standing prediction that it crushes canonical by 1700). The
+trade-off is recorded here, not acted on: **stopping early would buy ~8 h of GPU
+for the elision tier, at the cost of the sb1700 verdict the run was designed to
+produce.** Owner's call, and the run continues by default.
+
+**Note the heldout does NOT settle this either way** — it is still falling
+(t = −3.82) while Elo is flat, which is [[loss-is-not-elo]] in its purest form:
+the two instruments disagree and only games decide strength.
+
+---
+
+## 2026-08-01 07:50 — tick: the counter TRUST TABLE promoted to memory
+
+**D49:** sb1511, 188.5k pos/s, heldout ema **0.010432** — another run low.
+Matcher screening sb1500 (stdev 603.0). Study 70 committing as it goes
+(census landed, plus "the instrument it had to be rebuilt on"). All units green,
+5618 MB free.
+
+**Promoted tonight's most reusable finding to memory**, because it is the reason
+so few numbers survived and it will silently waste the next session otherwise:
+
+| counter | byte-identical null | usable |
+|---|---|---|
+| **`instructions:u`** | **0.000 %** (five panels) | **YES** |
+| **node counts** | exact | **YES, and load-immune** |
+| `ic_cache_fill_l2` | −0.491 / +0.431 / +0.826 / **+2.290 %** | no |
+| `branch-misses:u` | **−0.803 %** (11/16) | no |
+| `de_op_queue_empty`, `task-clock` | fail | no |
+| `cycles:u` | σ 1.57 % quiet, **+49.9 % loaded** | no |
+
+A genuinely different `.text` moved the fill counter **+0.055 %** — **the wander
+is the box, not the code.**
+
+**The corollary is what actually changes behaviour:** aim studies at **node
+counts** wherever the question allows, because they are discrete, exact and
+immune to a busy box — and this box carries a GPU trainer plus a continuous match
+at all times. That is precisely why study 70 was pointed at nodes-per-move rather
+than another per-node microarch arm.
+
+---
+
+## 2026-08-01 07:55 — UNDERTRAINING: the owner supplied the fact that dissolves my confound
+
+**Owner: "D49 was behind d48 at 520."** That is the missing control, and it
+answers the objection I had just raised.
+
+I had said the +8.41 ± 3.89 could not be attributed to training LENGTH because
+D49 and D48X differ in recipe too. **But if D49 is BEHIND D48X at equal length
+and AHEAD at sb1500, the recipe is not what is winning — the recipe is WORSE at
+equal length.** The gain must then come from length. Confound dissolved by a
+control, not by argument.
+
+**Our own series confirms it:**
+
+| D49 checkpoint | Elo vs canonical |
+|---|---:|
+| sb400 | **−21.24 ± 5.67** |
+| sb700 | −4.14 ± 5.56 |
+| sb1060 | −9.50 ± 11.27 |
+| sb1270 | −2.08 ± 11.32 |
+| sb1300 | +3.24 ± 10.65 |
+| **sb1340–1480 pooled (15000 games)** | **+8.41 ± 3.89** |
+
+**~30 Elo climbed from sb400 to sb1480 with the recipe held FIXED.** That is the
+undertraining signal, and it is a far stronger claim than "we are ahead of
+canonical."
+
+**It also reframes the flat sb1340–1480 trend I reported at 07:18.** Flat at the
+END of a decayed-LR schedule is not evidence against undertraining — it is
+evidence that THIS run has now spent its budget. The gain lives in sb400→1300,
+where the LR was still meaningful.
+
+**LAUNCHED `d49len` — the clean isolation.** D49 **sb1500 vs sb500**, same
+recipe, same data, same everything, **only length differs**; sb500 is within 20
+superbatches of canonical's own sb520, so it doubles as a like-for-like
+comparison against the incumbent's training budget. Both packed at scale 1068,
+stdev **603.0** and **596.7** against canonical's 610 — frame-fair, so neither
+side is handicapped. 1500 games @ 25k fixed nodes, CONC=2 so it coexists with the
+matcher.
+
+**This measures directly what the D48X-vs-D49 comparison can only infer**, and it
+is the number that should govern how long the NEXT run trains.
+
+---
+
+## 2026-08-01 08:02 — MEMORY FLOOR BREACHED (1568 MB). Shed load, no OOM.
+
+**D49:** sb1518, 188.4k pos/s — trainer unaffected throughout.
+
+**`MemAvailable` fell to 1568 MB, below the standing 2500 MB floor.** Cause was
+cumulative, not any single job: **13 match engine processes** (`d49xml` at CONC=3
+plus `d49len` at CONC=2, ~138 MB of net each), study 70's `cargo test`, the
+trainer at 2.6 GB, and ~1.4 GB of the owner's browser.
+
+**Shed the least valuable load rather than the newest.** Stopped **`d49xml`**,
+the per-export trajectory matcher — it is the redundant one now: the trajectory
+already has **15000 pooled games (+8.41 ± 3.89)** and a flat trend, whereas
+`d49len` is answering the live undertraining question. Kept `d49len`.
+
+**Result: 1568 → 3713 MB available, 13 → 7 engine processes, zero kernel OOM
+kills.** The trainer never faltered (188.4k pos/s throughout).
+
+**Armed `d49rearm`** so the matcher restores itself: it waits for `d49len` to
+finish AND for ≥3500 MB to be free, then relaunches `export_match_loop.sh`. No
+manual step, and it cannot re-create the squeeze it was stopped for.
+
+**The judgement worth recording: when the box is over-committed, stop the job
+whose information is already collected, not the job that is running.** Three
+concurrent matches was one too many, and the failure would have been an OOM-killed
+trainer — the exact thing that cost 3 superbatches at 22:53 last night.
+
+---
+
+## 2026-08-01 08:10 — ★ STUDY 70 FOUND A TOOL BUG THAT VOIDS MY TUNABLE REVERT
+
+**`tools/sprt.sh` never passed `option.EvalFile`.** It set `option.Hash` and
+`option.Threads` and nothing else. EvalFile defaults to `<empty>`, and an empty
+EvalFile **silently evaluates PSQT** — the exact trap `tools/screen.sh:30-32`
+documents and guards against. So the project's designated **merge gate for
+functional search/eval changes** (design/14 §3.8, D25) has been running the wrong
+evaluator.
+
+**This voids the decision I made at 05:32.** I reverted the 154 SF `ebcea3ef`
+tunables (`d5f89245`) on a measured **−29.49 ± 14.88 over 1500 games**. That match
+went through this tool with no `NET=`, so **it compared two PSQT engines.** Search
+constants co-adapted to an NNUE eval frame, arbitrated by a PSQT eval, is not the
+experiment I believed I had run. **The revert rests on nothing.**
+
+Verified both ways before acting: `sprt.sh:118` on main had no EvalFile in its
+`-each` line, and the journal shows my invocation
+(`NODES=25000 ROUNDS=750 CONCURRENCY=3 BOOK=...`) passed no `NET=`.
+
+**Fix taken onto main as `991fbf43`** (study 70's): `NET=` defaults to
+`engines/canonical/net.cenn`, resolves to an absolute path, and errors if
+missing; set `NET=` empty to test PSQT deliberately.
+
+**What is now OWED:** a clean re-test of the tunables with the fixed tool.
+`archon-s68` (tunables, bench 486897) still exists. **But s68 vs s69 is NOT a
+clean pair either** — they differ by study 68's `SearchStats` fix as well as the
+tunables. A proper arm needs two binaries built from the same base differing ONLY
+in the tunable values. Not started; the box is running `d49len`.
+
+**The pattern this makes four of tonight:** `Bench:` −17.2 %, bench-nps +5.6 %,
+the contaminated depth regex, and now an entire strength harness measuring the
+wrong engine. **Every one was caught by checking the instrument rather than the
+result** — and this one was caught by a subagent I had pointed at something else
+entirely.
+
+**`d49retest` LAUNCHED — the tunables get the test they never actually had.**
+
+Status to be unambiguous: **the 154 SF `ebcea3ef` values are OUT of main right
+now** (razoring reads 465/300, the `eca43a97` pair), removed by `d5f89245` on a
+result that measured **PSQT on both sides**. So they were never tested; they were
+discarded on an experiment about a different engine.
+
+**Both failures of the first arm are fixed in this one:**
+1. **PSQT instead of NNUE** — `sprt.sh` now defaults `NET=engines/canonical/net.cenn`
+   (fix `991fbf43`).
+2. **The pair differed by more than the tunables** — `archon-s68` vs `archon-s25`
+   also differed by study 68's `SearchStats` fix and by whatever `s25` predates
+   (study 70 additionally found `s25` is STALE: 1,799,710 vs this tree's
+   1,739,588). **Both binaries here are built from TODAY'S main, differing ONLY in
+   the 154 values**, via `git revert` of the revert.
+
+Deliberately **not** churning main by restoring-then-maybe-re-reverting: the
+branch `tunables-retest` exists only to build the candidate, and main is left
+alone until games say something.
+
+Sequenced behind `d49len` and gated on ≥3000 MB before each build — the box hit
+1568 MB at 08:02 and the trainer must not be the thing that pays.
+
+---
+
+## 2026-08-01 08:20 — the OOM was EXTERNAL, the shield held, and a stray SPRT was respawning
+
+**Owner: the OOM was an npm build in another project.** Confirmed from the
+kernel log — `cuda-EvtHandlr invoked oom-killer` at 08:15:21, global OOM, and the
+victim was **`fastchess`** (`oom_score_adj:1000`), a disposable.
+
+**The protection did exactly what it was built for under load I did not cause:**
+the kernel took a match process and **left the trainer untouched** — D49 never
+faltered (sb1523, 187.3k pos/s). That is the `oomshield` ordering working
+end-to-end, and it is the first external test it has had.
+
+**`d49len` survived** — verified by watching it advance (game 752 → 763 in 25 s),
+not by assuming.
+
+**Found and stopped a STRAY JOB: study 70's agent finished but left its SPRT
+running** (`s70-cand` vs `s70-base`). A third match, competing with the two that
+matter — and study 70 is not even gated or merged yet. Stopped it to protect the
+tunable re-test the owner just prioritised.
+
+**Two process lessons from doing it:**
+1. **It RESPAWNED.** Killing the `fastchess` children left `bash tools/sprt.sh`
+   alive, which immediately started a new one — a different pid appeared within
+   seconds. **Kill the WRAPPER first, then the children**, or you are playing
+   whack-a-mole with a supervisor.
+2. **`pgrep -f 's70-cand'` self-matched AGAIN** and reported 3 survivors that were
+   my own shell — the second time tonight. The count only became truthful after
+   excluding `shell-snapshots`/`pgrep`/`grep` and reading `/proc/<pid>/cmdline`
+   directly. **A raw `pgrep -f` count is never evidence when the pattern appears
+   in the command that types it.**
+
+Final: one `fastchess` (the length test), 4515 MB available, trainer healthy,
+`d49retest` and `d49len` both alive.
+
+---
+
+## 2026-08-01 08:20 — the undertraining number, interim: sb1500 beats sb500 by +26.33 ± 13.3
+
+**D49:** sb1524, 187.1k pos/s. Memory recovered to 5784 MB after the external OOM.
+All eight units green.
+
+**`d49len` at n=833 of 1500 — INTERIM, not a verdict:**
+
+| arm | | |
+|---|---:|---:|
+| D49 **sb1500** vs D49 **sb500** | **+26.33 ± 13.3** | 53.78 % |
+
+Same recipe, same data, same frame (stdev 603.0 vs 596.7, canonical 610), **only
+1000 superbatches of training separate them.**
+
+**Flagged as interim deliberately — but this one differs in KIND from the two
+interims that misled me tonight.** Those were *near-zero* readings I quoted as
+precise (−8.54 became −3.01; −6.77 became −1.39). This is a **large effect at
+~2σ**; the risk of it collapsing to zero is far lower than the risk was of a
+small one moving. Final at n=1500 in ~15 min regardless.
+
+**INDEPENDENT CROSS-CHECK, and it agrees.** If sb1500 − sb500 ≈ +26 and
+sb1500 − canonical = **+8.41 ± 3.89** (15000 games), then sb500 should sit near
+**−18 vs canonical**. Directly measured earlier in this run: **sb400 = −21.24 ±
+5.67**. Two independent measurements land in the same place, and both match the
+owner's recollection that D49 was behind D48X at 520.
+
+**So the undertraining claim now has three legs**: the owner's control (behind at
+equal length), the run's own trajectory (−21 → +8 across sb400→1480), and a
+direct same-recipe A/B (this arm). **The recipe is not what improved; the
+training length is.**
+
+**`d49retest` is correctly parked**, waiting for `d49len` to release the box
+before it builds either binary — the sequencing that stops a third match from
+recreating the 1568 MB squeeze.
+
+---
+
+## 2026-08-01 08:25 — study 70 reported; its match PAUSED (not discarded) for the tunables test
+
+**Study 70's games VERIFIED BY ME**, re-pooling its own tool over its five run
+dirs: **+7.36 ± 8.52 Elo over 2312 games, LOS 95.50 %**, Ptnml
+[30, 260, 541, 281, 44]. Matches its claimed +7.53 ± 8.64 (it reported at fewer
+games). **Positive, close, and NOT a verdict** — the bar crosses zero.
+
+**It had relaunched detached as `s70-chain.service` after I stopped its SPRT** —
+reasonable from its side, but a third match while `d49retest` still has TWO PGO
+builds to do, on a box that hit 1568 MB this morning. **Stopped it cleanly via
+`systemctl`** (not a kill), and **verified the accumulated games survive**: they
+live in
+`.claude/worktrees/agent-a1079a65f52226690/engines/runs/s70-{sprt,sprt2,sprt3,chain-001,chain-002}/sprt.out`
+and re-pool exactly. **Paused, not discarded** — it resumes with `chain70.sh`.
+
+Owner's priority is explicit ("DO redo that test… the tunables are important"), so
+the box goes: `d49len` → `d49retest` → resume `s70-chain`.
+
+**What study 70 landed, pending my gate and a merge decision:**
+- **The census the project never had:** NonPV first-move cutoff **0.845**, hiding
+  **0.9135 with a TT move vs 0.7645 without** — and **46 % of NonPV cutoffs are
+  TT-less, owning ~70 % of the wasted cutoff work.** Qsearch is worse: 90 %
+  TT-less, 0.976 vs **0.826**. **3.64 % of NonPV LMR scouts force a full-depth
+  re-search, costing 21.4 % of the tree, 41.5 % of them at move two.**
+- Two arms: qsearch recapture discount (**+3.51 pp qsearch fhf**) and capture
+  history on evasion captures (**+0.64 pp in-check fhf**).
+- Pins move `Bench: 587683 → 401733`, d13 `1739588 → 1979892`; **eval hash
+  unchanged** (correct — search-only).
+
+**★ It also falsified the instrument I told it to use.** My brief said node counts
+were "discrete, exact and load-immune". They are load-immune and **NOT
+jitter-immune**: an inert ±1 tie-break moves the **wl50 d13 total +18.3 %** — and
+**that is the set the NNUE gate pins**. Its first screen read three "findings" off
+that noise. It rebuilt on census statistics (±0.15 pp null) and a paired sign test
+(505 ± 6). **Correcting my own brief for the second study running.**
+
+---
+
+## 2026-08-01 08:32 — ★ THE UNDERTRAINING NUMBER: +30.31 ± 11.0 for 1000 superbatches
+
+**Stopped `d49len` at owner's call ("good enough").** Final tally over the games
+that completed:
+
+| | |
+|---|---:|
+| **D49 sb1500 vs D49 sb500** | **+30.31 ± 11.0 Elo** |
+| n | **1218 games** |
+| W / L / D | 407 / 301 / 510 |
+| score | 54.35 % |
+
+(fastchess's own last periodic print, at n=1000: **+33.11 ± 12.84**.)
+
+**2.75σ — significant.** Same recipe, same data, same frame (stdev 603.0 vs
+596.7 against canonical's 610), **the ONLY difference is 1000 superbatches of
+training.**
+
+### Undertraining is established, on three independent legs
+
+1. **The owner's control:** D49 was BEHIND D48X at equal length (~520). So the
+   recipe is not what wins — it is *worse* at equal length.
+2. **The run's own trajectory:** sb400 **−21.24** → sb1340–1480 pooled
+   **+8.41 ± 3.89** (15000 games). ~30 Elo climbed with recipe fixed.
+3. **This direct A/B:** **+30.31 ± 11.0**, sb1500 over sb500.
+
+**Leg 3 quantifies what legs 1 and 2 imply, and the three agree numerically:**
+if sb1500 − sb500 = +30 and sb1500 − canonical = +8.41, then sb500 ≈ **−22**
+vs canonical — against a directly measured **sb400 = −21.24**. Three
+measurements, one number.
+
+**THE ACTIONABLE FORM: the previous generation was trained ~3× too short.**
+D48X was promoted at **sb520**; this says ~1000 more superbatches were worth
+~30 Elo that we simply never collected. **That is the single largest measured Elo
+number of this session** — larger than every microarchitectural win of the past
+week combined, and it cost only the decision to keep training.
+
+**Caveat kept honest:** measured at 25k FIXED NODES. The gain is in eval quality,
+which fixed-node testing measures well (it is not a speed effect), so this
+transfers more safely than a speed result would — but a real-TC confirmation is
+still owed before it governs a release.
+
+**Box handed to `d49retest`** — the tunables test the owner prioritised. Cleared
+study 70's ORPHANED `fastchess` first: its service was stopped but the child
+survived, the same supervisor/child gap seen at 08:20. `fastchess: 0`, 6714 MB
+free, two PGO builds then 1500 NNUE games.
+
+---
+
+## 2026-08-01 08:45 — LR JUMP→ANNEAL experiment armed; tunables SPRT finally on the NNUE net
+
+### The tunables test took THREE launches to actually run the right engine
+
+1. `d49retest` — died instantly: **`fastchess not found`**. It ran from
+   `chessengine-mainwt`, whose `engines/bin/` is gitignored and empty.
+2. `d49retest2` — ran, but **still PSQT**: I had committed the `sprt.sh`
+   EvalFile fix to **main via mainwt**, then invoked the tool from the **primary
+   checkout**, which sits on `repr-gap-study` and still carried the OLD script.
+   `NET=` was silently ignored.
+3. `d49retest3` — **verified live before trusting it**:
+   `option.EvalFile=…/d48x-1280-sb520-ema-s600.cenn` is on the fastchess command
+   line. Binaries confirmed `archon-notun` **587683** vs `archon-tun` **486897**,
+   both from today's main, differing only in the 154 values.
+
+**That is the FIFTH time tonight the worktree/gitignore split has bitten**
+(gate net, merge conflict, wallclock tool, fastchess, sprt.sh). The pattern is
+always the same: **a fix committed on main is not present in a checkout on another
+branch, and gitignored binaries exist in only one of them.** Checking the running
+process's argv — not the script's source — is what caught it.
+
+### LR jump→anneal, per owner instruction
+
+`d49lrc.service` armed. Waits for the **sb1540** export, then:
+1. **Stops the watchdog FIRST**, then the trainer (or `d49wd` would restart it).
+2. **Saves the anchor as `d49anchor-sb1540-*.bin`.** Necessary: `ckpt_reaper`
+   globs `d49-1280-sb*-raw.bin` and keeps only multiples of 100 plus the latest
+   4 — **it would have deleted sb1540.** A different prefix is invisible to it.
+3. Runs three cycles, each **warm-starting at 5× the base LR and annealing
+   linearly to 0 over 30 sb**, saving a protected checkpoint after each:
+   **sb1540→1570, 1570→1600, 1600→1630**, peak **1.7919e-5** (5 × the base
+   schedule's 3.5837e-6 at sb1540).
+
+**Interpretation flagged rather than assumed:** "5× the LR" cannot mean 5× the
+*ending* LR for cycles 2–3, since that is 0. Each cycle therefore repeats the
+**same** peak — which is also what isolates the cycling effect from a decaying
+one. Configs `tools/nnue/runs/d49_lrcycle{1,2,3}_1280.json`.
+
+Working directory pinned to `chessengine/jax` — the trainer's config path is
+relative (`../tools/nnue/runs/...`) and `--same-dir` would have broken it.
+
+---
+
+## 2026-08-01 08:47 — tick: sb1540 imminent, tunables SPRT early
+
+**D49:** sb1536 — the **sb1540** export (the LR-experiment anchor) is ~10 min out.
+`d49lrc` waiting correctly; `d49y`/`d49wd` still up, and the orchestrator stops
+the watchdog BEFORE the trainer so it cannot be resurrected mid-handover.
+Memory 4873 MB, `ckptreap` and `oomshield` green.
+
+**Tunables SPRT (`d49retest3`), n=240: +1.45 ± 23.26.** **Not a reading** — the
+bar is ±23 and I have been burned by exactly this twice tonight.
+
+Recorded only because the CONTRAST is the point: the void PSQT run said
+**−29.49 ± 14.88**, and the properly-configured NNUE run is so far sitting near
+zero. If that holds, the 154 values are roughly NEUTRAL rather than harmful, and
+**the revert I made at 05:32 was unjustified** — which is what the fixed
+instrument was built to find out. Verdict at n=1500 only.
+
+**Standing state of the three live threads:**
+- `d49lrc` — LR jump→anneal, armed, waiting on sb1540.
+- `d49retest3` — tunables, NNUE-verified, ~50 min to n=1500.
+- study 70 — landed and gated, **paused** at +7.06 ± 8.34 over 2412 games
+  (LOS 95.2 %, bar crosses zero); resumes after the priority jobs.
+
+**Study 70's match relaunched a FOURTH time** (`s70-chain2`, now with
+`Restart=always`) and was stopped again — a deliberate `systemctl stop` does not
+trigger the restart policy, so it stays down. `fastchess` back to 1 (the tunables
+SPRT), memory 5368 → **6186 MB**.
+
+**Sent the agent a stand-down message** rather than fighting it each tick: its
+work is accepted, its games are verified and preserved on disk (+7.36 ± 8.52 over
+2312 games, re-pooled by me with its own tool), and I will resume the chain
+myself once the tunables SPRT and the LR handover are done.
+
+**Worth recording as a pattern**: a finished subagent that owns a long-running
+job will keep resurrecting it on every wake-up, because from its side the job is
+unfinished. The fix is to tell it explicitly that the work is accepted and the
+box is prioritised — not to keep killing processes. **Its own last report also
+admitted the `setsid nohup` launch had silently died and it had reported 119
+games three times as "healthy"**, which is the same detached-job verification gap
+this project has hit repeatedly.
+
+---
+
+## 2026-08-01 08:52 — study 70 stood down cleanly, with three corrections I am taking
+
+**It confirmed clean and will not relaunch.** It also owned the error precisely:
+it gated every `cargo build` on the 2500 MB rule as instructed, then launched a
+**6-concurrency fixed-node match — twelve engine processes, heavier than any
+build it had gated** — without applying the rule once, and read the resulting
+deaths as an infrastructure problem to engineer around rather than as the box
+being full.
+
+**CORRECTION TO MY OWN NUMBER.** At 08:25 I wrote that I had "verified" its games
+and got **+7.36 ± 8.52 over 2312** matching its claim. **That matched an EARLIER
+pool, not its final.** Its last figure was **+6.86 ± 8.29 over 2432 games**,
+which additionally includes segment 002's partial and segment 003's opening
+games. Both are correct at their own `n`; they are **not the same measurement**
+and I should not have called mine a confirmation of theirs. Either way **the bar
+crosses zero and there is no verdict.**
+
+**FLAG CHECKED AND CLEAR:** it warned that the merged `sprt.sh` fix **changes
+default behaviour** — the tool now passes `option.EvalFile=engines/canonical/net.cenn`
+unless `NET=` is set empty, so any harness that deliberately wanted PSQT, or that
+appended its own `-each option.EvalFile=…`, would now get the canonical net or a
+**duplicated** option. **Verified on the live process: exactly ONE `EvalFile`,
+pointing at the canonical net.** The running tunables SPRT is unaffected.
+
+**Artifact note for whoever resumes the chain:** `s70-chain-001` and
+`s70-chain-001-recovered` are **disjoint** — the latter is PGN-recovered, the
+former is a different 35-game run that appended to the same PGN. Pool with
+`tools/perf70/pool_sprt.py engines/runs/s70-*/sprt.out`. Its two PGO binaries
+(`s70-base`, `s70-cand`) are left in the shared `engines/bin/`.
+
+**Live:** D49 sb1537 (sb1540 anchor ~7 min out, `d49lrc` waiting), tunables SPRT
+running NNUE-verified.
+
+---
+
+## 2026-08-01 08:58 — MY LR ORCHESTRATOR FAILED SILENTLY. Root-caused, fixed, relaunched.
+
+**It reported "ALL CYCLES COMPLETE" in 11 minutes** — impossible for three
+30-superbatch cycles. **And it left D49 not training at all**: `d49y` and `d49wd`
+both stopped, with nothing running in their place.
+
+**TWO bugs, both mine:**
+
+1. **Missing environment.** `d49lrc1` died in 1.5 s:
+   `RuntimeError: refusing to import jax without JAX_PLATFORMS=cpu (set
+   ARCHON_JAX_ALLOW_GPU=1 for a deliberate GPU session)`. The real launcher sets
+   `PYTHONUNBUFFERED=1 ARCHON_JAX_ALLOW_GPU=1 ARCHON_JAX_FT_IMPL=pallas`; I
+   copied the `uv run` line and **not the env prefix**.
+2. **The wait loop read failure as success.** It was
+   `is-active || break` — so a unit that never started looked identical to one
+   that finished. Cycles 2 and 3 then "completed" instantly at sb1540 and wrote
+   checkpoints for training that never happened.
+
+**Bug 2 is the worse one**: bug 1 is a missing variable, bug 2 is an orchestrator
+that CANNOT TELL SUCCESS FROM FAILURE. The fix now sleeps 45 s, aborts loudly if
+the unit is not up, and on exit checks whether the target superbatch was actually
+reached before declaring a cycle done — three `[lrc] ... aborting` paths where
+there were none.
+
+**Nothing was lost.** The **anchor is intact** — all four `d49anchor-sb1540-*.bin`
+saved before the failure, which was the one irreversible step. Deleted the two
+bogus `d49lrc{2,3}-sb1540-*.bin` that represented no training.
+
+**Relaunched and VERIFIED, not assumed:**
+- `out=data/nnue/experiments/d49-1280` for the cycle configs — same dir the
+  poller globs (the `name` field I set is cosmetic; **`out` controls the path**,
+  and had it differed the orchestrator would have hung forever).
+- LR ramp reads `[1539.999, 1.7919e-5] → [1540, 1.7919e-5] → [1570, 0.0]`.
+- `[pump d49-1280] RESUME from sb1540 (fresh Adam transient)` — warm from the
+  anchor, optimizer state reset, which is inherent to a warm restart and is part
+  of the treatment being tested.
+
+**The lesson to carry:** I gated the *builds* in this script on memory and
+working directory, and never asked what the script would do **if a child failed**.
+A "wait until the unit stops" loop is a success/failure conflation by
+construction. Every orchestrator wait needs a completion CRITERION, not just an
+exit signal.
+
+---
+
+## 2026-08-01 09:02 — cycle 1 training confirmed; telemetry armed; a third bogus checkpoint removed
+
+**Cycle 1 IS training** — verified from the unit's own journal, not from its
+status: `components sb 1541 | value 0.006857 | 177,967 pos/s`, GPU **93 %,
+7599 MiB**. Warm-resumed from the anchor with the ramp
+`1.7919e-5 → 0` over sb1540→1570.
+
+**Removed a THIRD bogus checkpoint.** The failed run had also written
+`d49lrc1-sb1540-*.bin` before I caught it — I deleted the cycle-2 and cycle-3
+fakes earlier but missed cycle 1's, because I stopped looking after finding two.
+Protected set is now exactly the 4 anchor files, which is what it should be.
+
+**Armed telemetry, per the standing rule that every training run gets tb at
+launch.** The cycles run as their own units and log to **journald**, so the
+existing `cyc.log` shim is blind to them — the twin ran dark for a whole session
+once for exactly this reason. Bridged with `lrctail` (journal → `lrcycles.log`,
+filtered to `components sb`/`heldout sb`) plus `lrcshim` feeding
+`data/nnue/tb/d49-1280/lrcycles`.
+
+**The bridge is EMPTY as of this tick and that is expected** — `journalctl -f -n 0`
+emits only new lines and superbatches are ~2.4 min apart. **Deliberately NOT
+declaring it working: verification happens on a LATER tick.** This session has
+now seen three detached jobs report healthy while dead (study 70's chain twice,
+my own LR orchestrator once), and every one looked fine at launch.
+
+**Live:** cycle 1 → sb1570; tunables SPRT running NNUE-verified; memory 6179 MB.
+
+---
+
+## 2026-08-01 09:05 — ★ THE TUNABLES ARE NEUTRAL. My revert was unjustified.
+
+**Tunables SPRT, NNUE-verified, n=1420 of 1500: −0.98 ± 10.62.**
+
+| measurement | engine actually tested | result |
+|---|---|---|
+| `sprt68` (05:19) — **VOID** | **PSQT both sides** | −29.49 ± 14.88 |
+| `d49retest3` (08:43) — valid | **NNUE, EvalFile verified on the live argv** | **−0.98 ± 10.62** |
+
+**The 154 SF `ebcea3ef` values are statistically indistinguishable from our
+`eca43a97` set at 25k fixed nodes.** They are neither the disaster the broken
+instrument claimed nor an improvement.
+
+**So the revert at 05:32 (`d5f89245`) was made on a measurement of an engine we
+do not play, and its stated justification is gone.** What remains true is only
+that the values are *not proven better* — which is a completely different claim
+from the −29 Elo regression I reported.
+
+**Why this arm is trustworthy where the last one was not**, both fixed:
+1. **NNUE, not PSQT** — `option.EvalFile=…d48x-1280-sb520-ema-s600.cenn` read off
+   the RUNNING fastchess argv, not inferred from the script.
+2. **A clean pair** — `archon-notun` (587683) vs `archon-tun` (486897), both PGO
+   from today's main, differing ONLY in the 154 values. The original pair also
+   differed by study 68's changes, and its baseline `archon-s25` was separately
+   found to be stale.
+
+**Owner's call, and it is a real choice rather than a formality:** main currently
+does NOT have the tunables. Restoring them is one `git revert d5f89245`. The
+honest summary is *"no measured difference at our TC"* — so the argument for
+carrying them is that they are Stockfish's current values and closer to upstream,
+and the argument against is that a neutral change is churn. **The VVLTC
+hypothesis also remains untested**: the tip commit of that range is literally
+"VVLTC parameters tweak", and everything here was measured at 25k fixed nodes,
+which is very short.
+
+**Also this tick:** the tb bridge for the LR cycles is confirmed structurally
+sound — `tb_shim` uses `COMP.search()`, which matches the journald-prefixed lines
+(`match()` would not have). Cycle 1 at sb1542.
+
+**TUNABLES FINAL: −1.39 ± 10.43 over 1500 games**, W454 / L460 / D586 (49.80 %),
+LLR −0.30 well inside (−2.94, 2.94). **Definitively neutral at 25k fixed nodes.**
+The PSQT artifact said −29.49; the real answer is zero.
+
+**Deferred verification CLOSED:** the tb events file grew **40 → 245 bytes**, so
+the journald→`lrcycles.log`→shim chain works end to end. Confirmed on a later
+tick, as it should be — three detached jobs this session reported healthy while
+dead.
+
+**`d49xml` auto-restored** by the fixed rearm (both priority jobs now inactive).
+That is useful rather than merely tidy: it will screen the **LR-cycle
+checkpoints** against canonical as they export, giving the jump→anneal experiment
+an Elo readout at sb1550/1560/1570 without any extra plumbing.
+
+**Live:** cycle 1 at sb1543 → sb1570; matcher screening; memory 6512 MB; no OOM
+since the owner's external npm build at 08:15.
+
+---
+
+## 2026-08-01 09:09 — the LR experiment will be MEASURABLE: the anchor baseline is being taken now
+
+**Checked the thing that would have silently ruined the experiment.** The
+jump→anneal question is "did each cycle improve on sb1540?", which needs a
+**baseline Elo for the anchor itself**. `xml-sb1540.out` existed but had **zero
+`Elo:` lines** — the first attempt was interrupted when I stopped `d49xml` for
+the tunables test.
+
+**It is running again and advancing** (game 727 → 753 in 25 s, verified by
+watching rather than by status). Interim **+10.19 ± 14.0 at n=750** — not a
+reading, but the baseline will exist by the time cycle 1 finishes.
+
+**How the experiment reads out, with no extra plumbing:** `d49xml` screens every
+export against canonical, so we get
+
+  anchor sb1540 vs canonical  ← baseline, in flight
+  cycle 1 sb1570 vs canonical
+  cycle 2 sb1600 vs canonical
+  cycle 3 sb1630 vs canonical
+
+and each cycle's effect is the difference from the anchor. Less powerful than a
+direct cycle-vs-anchor A/B (the bars add), but it costs nothing extra and the box
+is already committed to the LR run.
+
+**Deliberately did NOT resume study 70's chain**, though both priority jobs are
+now done and I said I would. The matcher is about to be near-continuously busy —
+cycle exports land every ~24 min and each screen takes ~25 min — so adding a
+third CPU load recreates exactly the squeeze that hit at 08:02. It waits for a
+genuinely quiet slot; its games are safe on disk.
+
+**Live:** cycle 1 sb1543→1570, anchor screen at n=750, memory 7459 MB.
+
+---
+
+## 2026-08-01 09:17 — the LR jump is CONFIRMED ACTIVE from the dynamics, not the config
+
+**Cycle 1 at sb1548 of 1570** (8 of 30), 189.4k pos/s. All seven units green,
+memory 5982 MB.
+
+**Independent confirmation the 5× ramp is really applied** — verified from
+behaviour rather than by re-reading the JSON:
+
+| window | mean train value | spread (max−min) |
+|---|---:|---:|
+| pre-jump sb1537–1540 (base LR 3.58e-6) | 0.0068100 | **0.000008** |
+| post-jump sb1541–1548 (LR 1.79e-5) | 0.0068324 | **0.000064** |
+
+**8× the spread**, mean up ~0.3 %. That is the signature of a 5× learning rate:
+larger steps, noisier descent, slightly worse *training* loss in the short run.
+Had the ramp silently failed to apply — the exact failure mode that killed the
+first orchestrator launch — the variance would have stayed at the pre-jump
+0.000008.
+
+**This matters because the config-level check is not sufficient.** Reading
+`lr_ramp` back from the JSON proves the file is right; it does not prove
+`jnp.interp` is being consulted with the absolute superbatch, that
+`start_superbatch` lines up, or that the warm resume did not reset something. The
+dynamics prove the whole chain.
+
+**Explicitly NOT a result about the experiment.** Training loss rising under a
+higher LR is expected and says nothing about whether jump→anneal helps —
+[[loss-is-not-elo]] applies with full force, and this is a *training* loss, one
+step further from Elo than the heldout is. The answer comes from the anchor and
+cycle screens against canonical.
+
+Next heldout at sb1550; anchor baseline screen still running.
+
+---
+
+## 2026-08-01 09:32 — ★ ANCHOR BASELINE MEASURED: sb1540 = +3.47 ± 11.22. The experiment now has a reference.
+
+**`d49xml` completed the anchor screen:** D49 **sb1540 vs canonical = +3.47 ±
+11.22** over 1500 games (W480 / L465 / D555, 50.50 %). **This is the number every
+LR cycle is measured against.** It sits inside the pooled sb1350–1450 band
+(+8.41 ± 3.89), as a single ±11 screen should.
+
+**Cycle 1 at sb1554 of 1570**, 185.5k pos/s. Heldout confirmed running in the
+cycle (it logs to journald, which is why the bridge exists).
+
+**The jump's effect on heldout, which is the dynamic to watch:**
+
+| | value | ema |
+|---|---:|---:|
+| sb1500 (pre) | 0.010444 | 0.010437 |
+| sb1510 (pre) | 0.010443 | **0.010432** |
+| sb1520 (pre) | 0.010446 | 0.010435 |
+| sb1530 (pre) | 0.010427 | 0.010440 |
+| **sb1550 (post-jump)** | **0.010485** | **0.010468** |
+
+**Heldout got WORSE at the jump** — ema 0.010440 → 0.010468 — exactly as a 5×
+LR should. **The question the experiment asks is whether the anneal to 0 brings
+it back BELOW the pre-jump 0.010432–0.010440 band by sb1570**, i.e. whether the
+excursion buys a better basin or merely costs 30 superbatches.
+
+**Two readouts, and they can disagree** — which is the point of having both:
+- **heldout** at sb1560/1570 (cheap, immediate, and NOT Elo);
+- **games**: cycle 1's sb1570 screen vs the **+3.47 anchor** (slow, and the only
+  thing that decides).
+
+[[loss-is-not-elo]] means a heldout recovery is not a success and a heldout
+failure is not a verdict. Both get reported; the screen arbitrates.
+
+---
+
+## 2026-08-01 09:47 — cycle 1 anneal is recovering the heldout excursion
+
+**Cycle 1 at sb1561 of 1570** (21 of 30), 185.0k pos/s. All units green,
+memory 5634 MB.
+
+**The jump→anneal shape is now visible in the heldout ema:**
+
+| point | ema |
+|---|---:|
+| pre-jump band sb1510–1530 | **0.010432 – 0.010440** |
+| sb1550, just after the 5× jump | **0.010468** (worse, as expected) |
+| sb1560, mid-anneal | **0.010447** (recovering) |
+
+The excursion peaked at +0.000028 over the pre-jump band and has given back
+three-quarters of it with **9 superbatches of anneal still to run**. LR is now
+heading into the last third of the ramp toward 0.
+
+**What would make this interesting vs merely break-even:** ema finishing at
+sb1570 **BELOW 0.010432** — the best the base run reached. Finishing inside the
+band means the excursion cost 30 superbatches and bought nothing; finishing above
+means it cost strength.
+
+**And the caveat that decides how much weight to put on it:** this is heldout,
+not Elo. The screen of cycle 1's sb1570 checkpoint against the **+3.47 ± 11.22
+anchor** is what arbitrates. `d49xml` will pick that export up automatically —
+verified it is running and screening, so no manual step is needed at the
+handover.
+
+**No new study commissioned:** the box is carrying the trainer plus a
+near-continuous matcher, and the per-node microarch surface is closed (65–69).
+The next real lever — a trained small-net eval tier, break-even 28.2 % coverage
+from study 65 — needs the GPU, which the LR cycles now hold through ~sb1630.
+
+---
+
+## 2026-08-01 10:02 — cycle 1 at sb1568/1570; my WAITER misreported, the run is healthy
+
+**Cycle 1 at sb1568**, 186.9k pos/s, ~5 min from the sb1570 export that triggers
+the checkpoint save and the cycle-2 handover. `d49lrc`, `d49lrc1`, `d49xml` all
+active; memory 4989 MB.
+
+**A background waiter reported FAILED (exit 4) and it was a false alarm.** Its
+loop ended with `grep -qE 'cycle 1 (DIED|FAILED)'`, which returns non-zero when —
+correctly — it finds nothing, so the script's exit status was the *absence of a
+failure*. The clock proves it never waited: 34 s elapsed, not the 20 min the loop
+would have taken.
+
+**Checked the underlying state rather than trusting either signal:** cycle 1 is
+at sb1568, `sb1570-ema-raw.bin` does not exist yet, newest export is sb1560. All
+consistent, nothing wrong.
+
+**Worth recording because it is the mirror image of this session's other
+failure mode.** Three times tonight a job reported HEALTHY while dead (study 70's
+chain twice, my first orchestrator once). This is the opposite: a job reported
+FAILED while healthy. **Both come from reading a status instead of the thing the
+status is about** — and the fix is the same, look at the superbatch counter and
+the files on disk.
+
+---
+
+## 2026-08-01 10:17 — CYCLE 1 COMPLETE, cycle 2 running, and the sb1570 screen is already under way
+
+**The chain handed over correctly and unattended**, which is the first time
+tonight an orchestrator of mine did that:
+
+- **Cycle 1 done at sb1570** (10:06:04). Checkpoint saved as
+  `d49lrc1-sb1570-{raw,quant,ema-raw,ema-quant}.bin` — **all four files present**,
+  433,755,450 B raw, verified on disk rather than from the log line.
+- **Cycle 2 started immediately** (sb1570 → sb1600, same 1.7919e-5 → 0 ramp) and
+  is training at **191.6k pos/s**, sb1575.
+- `d49lrc1` shows `failed` — that is the orchestrator's own `systemctl stop`
+  producing a non-zero exit, not a fault.
+
+**`d49xml` picked up sb1570 on its own** (10:08:35, stdev 609.6 — right on
+canonical's 610), so **cycle 1's Elo reading against the +3.47 ± 11.22 anchor is
+already being taken**. No manual step was needed, which is what the earlier
+rearm-ordering work bought.
+
+**One gap, stated rather than papered over: there is NO sb1570 heldout.** The
+last heldout in cycle 1's journal is sb1560 (ema 0.010447); the cycle stopped at
+the sb1570 export before the heldout for that superbatch ran. So the "did the
+anneal finish below the pre-jump 0.010432 band?" question **cannot be answered
+from heldout for cycle 1** — only from games. Cycles 2 and 3 will have the same
+boundary behaviour, so the games are the readout for all three, as intended.
+
+**Live:** cycle 2 sb1575 → 1600; sb1570 screen in flight; memory 6703 MB; all
+units green.
+
+---
+
+## 2026-08-01 10:32 — ★ CYCLE 1 RESULT: +9.27 ± 11.04 vs the +3.47 anchor. Positive, NOT significant.
+
+| checkpoint | Elo vs canonical | n |
+|---|---:|---:|
+| **anchor sb1540** | **+3.47 ± 11.22** | 1500 |
+| **cycle 1 sb1570** | **+9.27 ± 11.04** | 1500 |
+| **difference** | **+5.80** | combined bar **±15.7** |
+
+**One jump→anneal cycle (5× LR, annealed to 0 over 30 sb) moved D49 from +3.47 to
++9.27 against canonical.** The two screens are independent so their bars add:
+**+5.80 ± 15.7 does not clear zero.** Encouraging, not established.
+
+**Why this cannot be called a win yet, in the terms this session has been paying
+for all night:** a single 1500-game screen has a ±11 bar, and the *measured*
+point-to-point swing between adjacent D49 checkpoints is **13 Elo** (+1.85 at
+sb1430 vs +15.06 at sb1410) — larger than the effect being claimed. **+9.27 is
+comfortably inside the ordinary spread of this series.** I reported "+15.06, D49
+has overtaken canonical" off exactly this kind of single draw at 04:32 and had to
+walk it back when ten screens pooled to +8.41 ± 3.89.
+
+**What would settle it, in order of cost:**
+1. **Cycles 2 and 3** — if each adds ~+6, three cycles compound to ~+17 over the
+   anchor and the trend itself becomes the evidence. Running now (cycle 2 at
+   sb1581).
+2. **A direct A/B**: cycle-3 checkpoint vs the sb1540 **anchor**, one screen, no
+   added bars — the same design that gave the undertraining number **+30.31 ±
+   11.0** cleanly.
+3. 5880 games (±5) on the winner.
+
+**Cycle 2 is behaving like cycle 1**: heldout ema rose again at the second jump
+(sb1580 = 0.010462), the same excursion-then-anneal shape. sb1600 checkpoint due
+in ~45 min.
+
+**Memory 5892 MB, all units green, no OOM since the owner's 08:15 npm build.**
+
+---
+
+## 2026-08-01 10:47 — armed the DECISIVE A/B so the experiment ends with one bar, not two
+
+**Cycle 2 at sb1587 of 1600**, 181.5k pos/s. Matcher screening the mid-cycle
+sb1580. Memory 6103 MB, disk 141 GB, all units green.
+
+**The problem with how the experiment currently reads out.** Every per-export
+screen measures a checkpoint against **canonical**, so comparing a cycle to the
+anchor **adds two independent bars**: cycle 1's +9.27 ± 11.04 against the anchor's
++3.47 ± 11.22 gives **+5.80 ± 15.7**, which cannot clear zero no matter how real
+the effect is. Three cycles measured that way would still be arguing with ±15.7.
+
+**`d49ab` armed:** when all three cycles finish it packs the **cycle-3 sb1630**
+checkpoint at scale 1068 and screens it **DIRECTLY against the sb1540 anchor** —
+one match, **one bar (±10 at 1500 games)**, no addition. The anchor pack already
+exists and is verified (`d49-sb1540-1068.cenn`, 138,283,648 B).
+
+**This is the same design that produced the undertraining number cleanly**
+(sb1500 vs sb500 = **+30.31 ± 11.0**): put the two things being compared on
+opposite sides of one match rather than inferring the difference from two
+separate comparisons against a third party.
+
+Sequenced so it cannot cause harm: it waits for `d49lrc` to finish, then for
+`d49xml` to be idle, then for ≥3000 MB, and aborts if the cycle-3 checkpoint is
+missing rather than screening something stale.
+
+**What it will answer:** whether **three jump→anneal cycles beat the anchor they
+started from**. If the per-cycle ~+6 is real and compounds, this reads ~+17 ± 10
+and is decisive; if the cycles are noise, it reads ~0 ± 10 and the idea is
+closed at a cost of 90 superbatches.
+
+---
+
+## 2026-08-01 11:02 — ★ THE JUMP→ANNEAL SHAPE IS VISIBLE IN GAMES, not just heldout
+
+**Five consecutive 1500-game screens now span a full cycle and the start of the
+next:**
+
+| checkpoint | LR phase | Elo vs canonical |
+|---|---|---:|
+| sb1540 | anchor, pre-jump | +3.47 ± 11.22 |
+| sb1550 | cycle 1, LR at peak | +3.24 ± 10.92 |
+| sb1560 | cycle 1, annealing | +5.10 ± 10.70 |
+| **sb1570** | **cycle 1, LR → 0 (END)** | **+9.27 ± 11.04** |
+| **sb1580** | **cycle 2, 10 sb after the 2nd jump** | **−3.94 ± 11.19** |
+
+**The anneal climbs monotonically — 3.24 → 5.10 → 9.27 — and the next jump costs
+~13 Elo immediately.**
+
+**Why the PATTERN is stronger evidence than any of its points.** Each screen has
+a ±11 bar, so no single reading resolves ±6. But five points tracing a
+**predicted shape** — flat at peak LR, rising through the anneal, peaking at
+LR=0, collapsing at the next jump — is a different kind of evidence. The
+sb1570→sb1580 drop of **13.2 Elo exceeds a single bar**, and it lands exactly
+where the mechanism says it must. It also matches the heldout excursion measured
+independently (ema 0.010440 → 0.010468 at the jump).
+
+**The actionable consequence, and it is immediate: CHECKPOINTS MUST BE TAKEN AT
+THE ANNEAL END.** A mid-cycle checkpoint is materially weaker — sb1580 is
+**13 Elo below** sb1570 and **7 Elo below the anchor it started from**. The
+owner's design already does this (checkpoint after each 30-sb anneal); this
+measures why it matters rather than assuming it.
+
+**Still NOT established: whether cycles COMPOUND.** Cycle 1 ended +5.80 ± 15.7
+over the anchor — positive, not significant. The question is whether cycle 2's
+sb1600 beats cycle 1's +9.27 and cycle 3 beats that again. `d49ab` will settle it
+directly (cycle-3 vs anchor, one bar).
+
+**Live:** cycle 2 at sb1594/1600, matcher screening sb1590, memory 4387 MB.
+
+---
+
+## 2026-08-01 11:19 — CHECKPOINTS NOW TAKEN AT THE BOTTOM OF THE CYCLE (owner instruction)
+
+**Measured reason for the change**, from the five-point cycle trace: a
+checkpoint 10 sb after a 5× LR jump is **13 Elo weaker** than the anneal-end one
+(**sb1580 −3.94 vs sb1570 +9.27**, 1500 games each) and **7 Elo below the anchor
+it started from**. Exporting every 10 sb was manufacturing weak checkpoints.
+
+**Implemented as a real config knob rather than a one-off:**
+- `jax/archon_jax/spec.py` — new field `export_every: int = 10` (the historical
+  default, so every existing run is unchanged).
+- `jax/tools/pump_train.py:257` — `sb % 10 == 0` became
+  `sb % cfg.export_every == 0`, with the comment carrying the measurement that
+  justifies it.
+- Cycle 3 config: `export_every=1000000`, `superbatches=1630` ⇒ the **only**
+  export is sb1630, the bottom of the cycle. Verified by enumeration:
+  `exports at: [1630]`.
+
+**A subtlety that would have silently defeated this: cycle 3 had ALREADY
+LAUNCHED** when cycle 2 hit sb1600 at 11:14:34, i.e. it had loaded the old config
+before my edit. Editing the JSON would have changed nothing. It had to be
+restarted — checked rather than assumed.
+
+**Also note `export_every=30` was WRONG** and I caught it by enumerating: 1620 is
+divisible by 30, so it would still have exported mid-cycle. Only the
+`superbatches` condition gives exactly one export.
+
+**Took over the orchestrator's remaining work** (`d49c3`), because stopping
+cycle 3 under the old orchestrator would have tripped the new
+DIED-before-target abort I added this morning. `d49c3` relaunches cycle 3 from
+sb1600, waits for sb1630, saves the protected checkpoint, then runs the
+**decisive A/B: cycle-3 sb1630 vs the sb1540 anchor, one match, one bar**.
+
+**Verified live:** `[pump d49-1280] RESUME from sb1600 (fresh Adam transient)`,
+cycle 3 training. **Cycle 2's checkpoint survived** the handover — all four
+`d49lrc2-sb1600-*.bin` present, confirmed on disk. Memory 8877 MB.
+
+---
+
+## 2026-08-01 11:21 — cycle 3 relaunched and confirmed; cycle 2's result is in flight
+
+**Cycle 3 (new instance, `env[3243962]`) resumed from sb1600** — verified from
+the journal since 11:18, not from the pre-restart line which belonged to the old
+instance `env[3240355]`. Distinguishing the two mattered: the stale line showed
+sb1601 and would have read as progress from the wrong process.
+
+**`export_every` is holding so far**: zero `sb161*` exports exist, which is the
+correct state — under the old cadence sb1610 would already be due. The real proof
+comes at sb1630, when exactly one export should appear.
+
+**`d49xml` is screening sb1600 — cycle 2's end-of-anneal checkpoint** (stdev
+597.8). That gives the second point of the compounding question:
+
+| checkpoint | phase | Elo vs canonical |
+|---|---|---:|
+| sb1540 | anchor | +3.47 ± 11.22 |
+| sb1570 | cycle 1 anneal end | **+9.27 ± 11.04** |
+| **sb1600** | **cycle 2 anneal end** | **in flight** |
+| sb1630 | cycle 3 anneal end | pending |
+
+**If cycles compound, sb1600 should read above +9.27.** If it reads back near the
+anchor, the cycle-1 number was the ordinary ±11 spread of this series and the
+idea is not working — which is why the `d49c3` A/B against the anchor is armed
+regardless of what any single screen says.
+
+Memory 6881 MB, all units green, no OOM.
+
+---
+
+## 2026-08-01 11:32 — committed the trainer change; it was sitting UNCOMMITTED on the wrong branch
+
+**Cycle 3 at sb1606** (6 of 30), 194.4k pos/s. Memory 7033 MB. Cycle 2's sb1600
+screen still in flight.
+
+**Caught my own version of the study-20 failure.** The `export_every` edits to
+`jax/archon_jax/spec.py` and `jax/tools/pump_train.py` were **uncommitted, in the
+primary checkout, which sits on `repr-gap-study`** — and **not on main at all**
+(`git grep -c export_every` on main returned 0). A live training run was
+depending on a change that existed only as a dirty working tree on a feature
+branch. That is exactly the shape that left main not compiling once tonight.
+
+**Diffed before moving, rather than copying blind:** main's versions differed
+from the primary's by *only* my edit (4 lines in `spec.py`, 9 in
+`pump_train.py`), so the copy could not clobber anything. Both files re-parsed on
+main before committing. Landed as **`a7a9133f`** with the five-screen measurement
+in the commit body, so the constant's justification travels with the code.
+
+**The cycle configs are NOT committed and should not be** — `tools/nnue/runs` is
+gitignored as run artifacts. Recorded here instead: `export_every=1000000` +
+`superbatches=1630` on `d49_lrcycle3_1280.json`.
+
+**A general point worth keeping:** I have been committing handoff prose to main
+via `mainwt` all session while *code* edits landed in the primary checkout on a
+different branch. Those two habits are individually fine and together they
+silently split the work. Any source edit made in the primary checkout needs the
+same "which branch am I on" check that the handoff file got at 23:48.
+
+---
+
+## 2026-08-01 11:47 — ★ CYCLE 2 DOES NOT COMPOUND: +9.50 vs cycle 1's +9.27
+
+| checkpoint | phase | Elo vs canonical |
+|---|---|---:|
+| sb1540 | anchor | +3.47 ± 11.22 |
+| sb1570 | cycle 1 anneal end | +9.27 ± 11.04 |
+| **sb1600** | **cycle 2 anneal end** | **+9.50 ± 10.86** |
+
+**Cycle 2 landed +0.23 above cycle 1 — indistinguishable.** The second
+jump→anneal bought essentially nothing on top of the first.
+
+**Pooling the two anneal-end checkpoints (3000 games): +9.38 ± 7.78.**
+Against the anchor's +3.47 ± 11.22 that is **+5.91 ± 13.65 — still NOT
+significant.**
+
+**But the CONSISTENCY is the informative part.** Two independent 1500-game
+screens of two different checkpoints landed within **0.23 Elo** of each other, in
+a series whose measured point-to-point spread is **13 Elo**. That is not what
+noise usually does. The reading it supports: **jump→anneal moves the net to a
+level around +9.4 and holds it there** — a one-time relocation rather than a
+per-cycle gain.
+
+**If that is right, the practical recipe changes**: one jump→anneal cycle is
+worth running, three are not, and the 60 superbatches spent on cycles 2 and 3
+would be better spent on plain training — which the undertraining result
+(**+30.31 ± 11.0** for 1000 superbatches) says is worth ~0.03 Elo/sb, i.e. ~1.8
+Elo for 60 sb. So the cycles are not obviously *worse* than plain training; they
+are just not compounding.
+
+**NOT concluded, and the A/B is what decides it.** `d49c3` runs cycle-3 sb1630
+against the sb1540 anchor directly — **one match, one bar (±10)** — which
+resolves +5.91 ± 13.65 into something that can clear zero. If three cycles read
+~+6 ± 10 there, the effect is real but small and non-compounding; if ~0, cycle 1
+was the series' ordinary spread.
+
+**Cycle 3 at sb1613** (13 of 30), 196.3k pos/s, no mid-cycle exports —
+`export_every` holding. Memory 7979 MB.
+
+---
+
+## 2026-08-01 12:05 — SF-NET TEACHER: the pipeline works, and the frame is MEASURED
+
+**Owner's design decision: blend, 60 % existing labels / 40 % SF-net teacher.**
+Rationale is forgetting — the labels carry search depth the static net does not,
+so a pure-teacher target would discard it.
+
+**The teacher pipeline is verified working.** Two dead ends cleared first:
+- `nnue-eval` **cannot** take a raw SF `.nnue` (`CENN bad magic`) — it wants a
+  CENN container.
+- The `sf_swap` **source is not on the current branch** (added in `9b9d5aa1`,
+  absent from `repr-gap-study`); only the binary survives. Read the interface out
+  of the commit rather than guessing.
+- **My own shell bug**: `SF_NET=… cmd "$SF_NET"` expands `$SF_NET` BEFORE the
+  assignment applies, so it passed an empty path. The variable must be set in a
+  separate statement.
+
+**Correct invocation: `archon-sfswapbin sf-eval <sf-net>`**, FENs on stdin —
+**50 evals for 50 positions**, confirmed.
+
+**MEASURED FRAME, teacher vs our canonical, same 50 positions:**
+
+| | stdev | mean |
+|---|---:|---:|
+| SF-net teacher (`sf-eval`) | **779.2** | −66.7 |
+| our canonical net | 610.3 | −39.1 |
+| **zero-intercept slope ours/teacher** | **0.7604** | |
+| sign agreement | **96.0 %** | |
+
+**So the teacher outputs ~1.31× our canonical's scale**, and the 96 % sign
+agreement says the stm/White convention is being handled correctly — a
+convention error would have shown up as ~50 %.
+
+**This is the number to calibrate the blend with, and it is MEASURED, not
+derived.** My earlier derivation from `SFBINPACK_SCORE_DIV` predicted the
+teacher and the stored labels would sit within ~2 % of each other; that
+prediction is about teacher-vs-LABELS, which is still untested — this is
+teacher-vs-OUR-NET. **Both must be checked before training**, and only the
+teacher-vs-labels one governs the 60/40 mix.
+
+**Next concrete step, unblocked and ~1 h:** run `sf-eval` over a slice of
+already-labelled positions, regress teacher output against the stored label with
+`tools/nnue/paired_label_calibration.py`, and confirm the slope lands near the
+derived ~1.02. If it does not, the blend would train toward a corrupted target
+and that must be found in the regression, not 12 superbatches later.
+
+**Cycle 3 at sb1620/1630**; GPU frees shortly, anchor A/B fires automatically.
+
+---
+
+## 2026-08-01 12:17 — cycle 3 at sb1627/1630; the teacher calibration is unblocked
+
+**Cycle 3 at sb1627**, 195.1k pos/s — **3 superbatches from the bottom**, ~7 min.
+No mid-cycle exports have appeared, so `export_every` is holding all the way
+through. `d49c3` will then save `d49lrc3-sb1630-*` and fire the anchor A/B
+automatically. Memory 6874 MB, all units green.
+
+**Located the labelled corpus for the teacher calibration** —
+`data/nnue/jaxcorpora/` holds the shuffled training shards
+(`uho-band75-100.shuf.bin`, `pylon-band75-88.shuf.bin`,
+`wrongnnue-band75-95.shuf.bin`), plus `data/nnue/binpacks/farseerT76.binpack`.
+The D49 config's `per_corpus_target` has **12 (a, b) pairs**, i.e. twelve corpora
+with per-corpus frame targets already fitted — which is itself the evidence that
+**label frames differ per corpus** and that a single global teacher↔label
+constant would be wrong.
+
+**That sharpens the calibration plan concretely:** the regression must be run
+**per corpus**, not pooled. `per_corpus_target` already ranges from
+(142.8, 91.2) to (247.0, 122.3) — a **1.73× spread in the `a` term alone**. A
+single pooled slope fitted across all twelve would absorb that spread into the
+residual and produce a teacher target that is wrong for most shards.
+
+**So the 60/40 blend needs twelve calibrations, not one** — and the machinery for
+per-corpus frame handling already exists in the config, which is the good news.
+
+**Next step, still ~1 h and now fully specified:** `sf-eval` a sample from each
+corpus, regress teacher output against that corpus's stored labels, and compare
+each slope to its existing `per_corpus_target` pair.
+
+---
+
+## 2026-08-01 12:25 — ALL THREE CYCLES COMPLETE. A cgroup OOM was MY cap, and it cost nothing.
+
+**The OOM was mine and it was CONTAINED.** Kernel line:
+`oom_memcg=…/d49c3.service`, `constraint=CONSTRAINT_MEMCG` — a **cgroup** kill,
+not a global one. I launched `d49c3` with **`MemoryMax=512M`**, which was correct
+for the original orchestrator (it only supervised) but **wrong for
+`cycle3_finish.sh`, which also PACKS** — `requant_threats.py` + `netpack.py` need
+~1.5–2 GB. It died at the pack.
+
+**Timing made it harmless: the kill landed at 12:23:52, ONE SECOND after the
+checkpoint save at 12:23:51.**
+
+| | |
+|---|---|
+| cycle 3 training | **complete, reached sb1630** |
+| sb1630 export | present, 433,755,450 B |
+| protected `d49lrc3-sb1630-*` | **all 4 files** |
+| `export_every` | **held — exactly ONE export across sb1601–1630** |
+| lost | only the A/B run |
+
+**So the owner's experiment is fully delivered**: anchor plus three
+jump→anneal checkpoints, all saved, and the bottom-only export change verified
+end-to-end on a real cycle.
+
+**Relaunched the A/B as `d49ab2` with `MemoryMax=3G`.** It packs sb1630, logs its
+stdev as a frame sanity check, waits for the matcher and for ≥3000 MB, then runs
+**cycle-3 sb1630 vs the sb1540 anchor — one match, one bar**.
+
+**The lesson, and it is specifically about MY habit:** I have been setting
+`MemoryMax` per unit all session and got it right every time for *builds* and
+*matches*. This one I sized for what the script did when I wrote it, then added
+packing to the same script without revisiting the cap. **A memory cap is part of
+a script's contract; changing what the script does invalidates it.**
+
+Cycle results so far: anchor **+3.47**, cycle 1 **+9.27**, cycle 2 **+9.50** —
+non-compounding, pooled **+9.38 ± 7.78** vs anchor. The A/B resolves it.
+
+---
+
+## 2026-08-01 12:28 — D49 CONTINUATION LAUNCHED on top of the cycle-3 checkpoint
+
+**Owner's spec, ratified:** warm from **sb1630**, LR **5× the floor**, decaying
+**0.996/sb for 500 sb**.
+
+**Interpretation, confirmed by the owner before it mattered:** the cycles annealed
+to **exactly 0**, so "5× the floor of the cycle" cannot be 5×0. Read as 5× the
+**base decay schedule's** value at sb1630 — consistent with how "5× the LR" was
+used for the cycles themselves (5 × 3.5837e-6 at sb1540).
+
+| | |
+|---|---:|
+| base decay LR at sb1630 | 2.4985e-06 |
+| **start LR (5×)** | **1.2492e-05** |
+| decay | 0.996 / sb |
+| span | **sb1630 → sb2130** (500 sb) |
+| end LR | 1.6839e-06 |
+| ramp points | 126 |
+
+Config `tools/nnue/runs/d49_x500_1280.json`; `export_every` back to **10** (the
+bottom-only setting was specific to a 30-sb anneal — a 500-sb monotone decay has
+no interior peak to avoid, so the old cadence is right again and gives the
+matcher checkpoints to screen).
+
+**`d49x500` is SELF-RESTARTING** — it relaunches on any death, resuming from the
+newest checkpoint, and stops itself at sb2130. That closes the gap that cost 3
+superbatches at 22:53 and again this morning: previous launches needed an
+external watchdog, this one carries its own loop.
+
+**Verified training, not just started:** `[pump d49-1280] RESUME from sb1630
+(fresh Adam transient)` then `components sb 1631 | 172,132 pos/s`.
+
+**Also live:** `d49ab2` running the anchor A/B (3 cycles vs sb1540), `d49xml`
+screening. Memory 5972 MB.
+
+**Standing results for the next session:** undertraining **+30.31 ± 11.0** per
+1000 sb (recipe fixed); LR cycles **non-compounding** (anchor +3.47, c1 +9.27,
+c2 +9.50); tunables **neutral** (−1.39 ± 10.43, NNUE-verified); eval frame has an
+**interior optimum we are already on**; per-node microarch surface **closed** by
+studies 65–69; the SF-net teacher pipeline **works** (`sf-eval`, 96 % sign
+agreement, slope 0.7604 ours/teacher) and its calibration must be **per corpus**.
+
+---
+
+## 2026-08-01 12:32 — SF-teacher calibration COMMISSIONED (CPU-only, the gate on the 60/40 blend)
+
+**D49 continuation at sb1632**, 177.4k pos/s, self-restarting. `d49ab2` packed
+cycle-3 (**stdev 601.7**, right in canonical's 610 band — the pack is frame-sane)
+and is waiting for the matcher to idle before running the anchor A/B. Memory
+5968 MB, all units green.
+
+**Commissioned the per-corpus teacher calibration.** It is the gate on the
+owner's 60/40 blend, it is **CPU-only** — so it does not contend with the
+500-superbatch GPU run — and it is the highest-value unblocked work now that the
+per-node microarch surface is closed.
+
+Handed it everything already established so it cannot re-derive or reopen:
+- the working invocation (`sf-eval`, 50/50 verified, 7/7 vs SF's own eval),
+- the two conventions that silently ruin the fit (stm-vs-White; SF's
+  material-dependent `a = p_a(material)`),
+- the measured teacher-vs-net numbers (slope 0.7604, 96 % sign agreement) **with
+  the warning that teacher-vs-LABELS is a different quantity**,
+- **the fit direction as SETTLED** — teacher → our frame, with the four-arm
+  6000-game interior-optimum table attached so it cannot argue for SF parity,
+- **the derived prediction ≈1.023** framed as *a hypothesis to test*, not an
+  answer to assume.
+
+**The core requirement is PER CORPUS**: twelve `per_corpus_target` pairs whose
+`a` term spans **1.73×**, so a pooled slope would be wrong for most shards. It
+must also produce the **corpus ↔ index mapping**, which nobody has written down
+and which the blend will need.
+
+Told explicitly that "the frames are close enough" and "this needs the training
+loop to verify" are not findings — the entire purpose is to catch a bad
+conversion in a regression rather than twelve superbatches later.
+
+---
+
+## 2026-08-01 12:48 — ★ ROOT-CAUSED THE STARVATION BUG: `is-active` on a LOOP service is always true
+
+**The anchor A/B (`d49ab2`) had been stuck since 12:25** and would have starved
+**forever**. Its wait condition is `while systemctl is-active --quiet d49xml`.
+**`d49xml` is a long-running LOOP service** — it stays `active` *between* screens,
+not just during them. So the condition never clears, no matter how idle the box
+actually is.
+
+**This is the same bug that killed the 535 arm this morning**, which I diagnosed
+then as "the matcher screens near-continuously so the arm never gets a slot". That
+description was wrong in an important way: it is not that the slot is rare, it is
+that **the slot can never be detected**. Same wrong wait-condition, and I wrote it
+twice.
+
+**The correct predicate is the WORK, not the SERVICE:** `pgrep -c fastchess`.
+A loop service's `is-active` says the supervisor is alive; it says nothing about
+whether a match is running.
+
+**Fixed with `d49abpri`**, which:
+1. waits for `fastchess` to hit **zero** — the actual work, letting the in-flight
+   sb1630 screen finish (23 min into ~25, and it is cycle 3's own checkpoint vs
+   canonical, so worth keeping);
+2. **stops the matcher** so the A/B genuinely has the box;
+3. waits for `d49ab2` to complete;
+4. **restores the matcher**.
+
+**Generalisation worth keeping:** never gate on `is-active` of a service that
+loops. Gate on the process that does the work, or on a file the work produces.
+Every "wait for X to be idle" in this project's scripts should be re-read with
+that distinction in mind.
+
+**Live:** D49 continuation sb1639 (177–185k pos/s, self-restarting), teacher
+calibration agent working CPU-only, memory 6252 MB.
+
+---
+
+## 2026-08-01 12:55 — ★ MY BRIEF'S PREMISE WAS WRONG. `sf-eval` prints SF's RAW INTERNAL units.
+
+**Verified by me on one position, decisively:**
+```
+our  sf-eval      : -1286
+stockfish's eval  : NNUE evaluation  -1286  (side to move, internal units)
+```
+**Identical.** So `sf-eval` = `evaluate_raw` = **Stockfish's raw internal NNUE
+units**, NOT ARCHON's frame. The 0.538 figure belongs to `evaluate()`, which
+applies `FRAME = 0.5126`. The agent found this and it is correct.
+
+**What this retracts, both mine:**
+1. **"slope 0.7604 ours/teacher"** (12:05) — a real measurement, but I described
+   the teacher as being in our frame. It is our net against **SF internal
+   units**.
+2. **The derived ≈1.023 teacher→label prediction** — built on that wrong premise.
+   **It holds for NO corpus**; measured slopes run **0.325–0.865**.
+
+**The corrected prediction is `1/SCORE_DIV` per corpus** (divisors 1.49–2.25 from
+`ledger/data.jsonl` + `stage5_data_chain.sh`, plus two house corpora on a UCI-cp
+frame at 0.674/0.699) — **and that also fails for 9 of 12, by 17–33 %.** So the
+calibration genuinely has to be measured, which is the whole reason it was
+commissioned.
+
+**Its other results, with controls I would not have thought to demand:**
+- **`per_corpus_target[i]` ↔ `mix[i]` is positional — VERIFIED**: 11/12 corpora
+  reproduce their stored `(a,b)` to ≤1.6 % on an independent MLE refit. Slot 11
+  is a **deliberate duplicate of slot 0** (documented at
+  `d48y-wdl-fix-plan.md:234`), not a mapping error.
+- **A single constant is wrong by up to 2.66×**, and **41 % of the mix by weight
+  is mispriced >25 %** — the per-corpus requirement is quantified, not asserted.
+- **Material was a RED HERRING for this purpose**: `p_a` is effectively constant
+  (381–388, ±0.9 %). The real law is SF's `evaluate()` blend, whose exponent is
+  **not 1 for any corpus** (−1.62 to +2.17, splitting by labelling provenance).
+  I had told it to treat material as the thing to handle; it measured that and
+  found the actual mechanism elsewhere.
+- **Nulls pass**: a permuted-teacher null collapses slopes to |≤0.026| and sign
+  agreement to 0.46–0.52; decoder round-trips 4800/4800 byte-exact.
+- **Self-caught**: its first sampler used 500-record contiguous windows —
+  unbiased but **not independent** (same-game clustering), so its bootstrap CIs
+  were too narrow and an independent-seed replication fell outside them for 3–5
+  of 12. Fixed to iid draws; point estimates move <2 %.
+
+**Standing correction for anyone using the teacher:** `sf-eval` is raw SF
+internal. To reach a label frame you need that corpus's measured slope — not
+0.538, not 1.023, and not a single global constant.
+
+---
+
+## 2026-08-01 13:05 — ★ CYCLE 3 COLLAPSES TO THE ANCHOR: +0.69. The cycles do NOT hold.
+
+**All four points now measured, 1500 games each vs canonical:**
+
+| checkpoint | phase | Elo vs canonical |
+|---|---|---:|
+| sb1540 | **anchor** | +3.47 ± 11.22 |
+| sb1570 | cycle 1 end | +9.27 ± 11.04 |
+| sb1600 | cycle 2 end | +9.50 ± 10.86 |
+| **sb1630** | **cycle 3 end** | **+0.69 ± 10.76** |
+
+**Cycle 3 gave back everything cycles 1–2 gained.** Pooled over the three
+anneal-ends: **+6.49 ± 5.69**; against the anchor that is **+3.02 ± 12.58 — not
+significant**, and weaker than the +5.91 ± 13.65 the first two suggested.
+
+**This substantially undercuts the "cycles help" reading**, and it is the outcome
+the spread always allowed: the series' measured point-to-point swing is **13
+Elo**, and 0.69→9.50 is exactly 8.8. Two consecutive favourable draws looked like
+a plateau at +9.4; the third says they were draws. **I flagged that risk when I
+reported cycle 1** — "+9.27 sits comfortably inside the ordinary spread of this
+series" — and cycle 3 is what that caution was for.
+
+**The A/B is now the only thing that can settle it**, which is why it was armed
+before any of these landed.
+
+**MY WAIT PREDICATE FAILED A SECOND TIME, in a new form.** I fixed
+`is-active`-on-a-loop-service by gating on `pgrep -c fastchess == 0`. But the
+matcher **starts the next screen immediately**, so fastchess is never 0 for more
+than a few seconds — the A/B starved again. **Stopped the matcher outright**;
+fastchess reached 0 and the A/B can proceed.
+
+The real lesson is not about the predicate: **a background loop that
+self-perpetuates cannot be waited out, only stood down.** Any "wait for the box
+to be free" against a loop service is wrong however it is phrased.
+
+**Live:** D49 continuation sb1645+ (self-restarting), teacher calibration running
+CPU-only, memory 6745 MB, matcher deliberately down until the A/B completes —
+`d49abpri` restores it automatically.
+
+**A/B RUNNING AND VERIFIED** (13:03:31). Read off the live fastchess argv, not
+inferred from the script:
+
+```
+option.EvalFile=…/d49-cyc3-sb1630.cenn      (CAND — 3 jump→anneal cycles)
+option.EvalFile=…/d49-sb1540-1068.cenn      (REF  — the anchor)
+```
+
+Correct pairing, both packed at scale 1068, one match, **one bar (±10)**.
+Result in ~25 min. `d49abpri` restores the matcher automatically afterwards.
+
+**What the A/B decides, given cycle 3 collapsed to +0.69:** whether three cycles
+beat the point they started from at all. The four separate-screen readings give
++3.02 ± 12.58 — a bar wide enough to contain both "worth +6" and "worth nothing".
+This single match halves that bar by removing the anchor's independent error.
+
+---
+
+## 2026-08-01 13:20 — ★ TEACHER CALIBRATION COMPLETE. It caught a 2.45× error before it reached training.
+
+**The headline is a number I would have shipped.** My derived **≈1.023** holds
+for **no corpus**; the true conversion is **0.32–0.60**. Using it would have
+scaled every teacher target **~2.45× too large** — and a wrong distillation
+target is invisible in the loss for many superbatches. **This is precisely the
+failure the regression was commissioned to catch, and it caught it.**
+
+**Root cause, verified by me independently:** `sf-eval` is wired to
+`evaluate_raw()` (`src/uci.rs:100`), not `evaluate()` — so it prints Stockfish's
+**raw internal NNUE units**. The 0.538 / `FRAME = 0.5126` factor lives in
+`evaluate()`. My own one-position check agreed exactly: `sf-eval` −1286 vs
+Stockfish's `NNUE evaluation -1286 (side to move, internal units)`. Agent
+confirmed 36/36.
+
+**The corrected replacement ALSO fails.** `1/SFBINPACK_SCORE_DIV` (divisors
+1.49–2.25, recovered per pack from `ledger/data.jsonl` + `stage5_data_chain.sh`)
+is wrong by **17–34 % on nine of twelve**. The recorded divisors **order** the
+corpora correctly and **price** them wrongly.
+
+### Deliverables (branch `agent-a93f7f3c53481113a`, 6 commits)
+
+1. **The table** — `docs/research/sf-teacher-calibration-2026-08-01.md` + `.json`:
+   twelve `(k, p)` pairs for
+   **`label_frame_teacher = k·(1 + material/77871)^p · teacher_raw`**, with
+   slope/intercept/R²/sign-agreement/n and **measured** bars (1.96×SE over three
+   independent iid runs; 0.1–5.9 % on `k`).
+2. **The mapping** — `mix[i] ↔ per_corpus_target[i]` is **positional**, verified
+   two ways: consumer code (`data.py:151/176-182/187-189`, no name lookup) **and**
+   an independent MLE refit where **11/12 reproduce their stored `(a,b)` to
+   ≤1.6 %**. Slot 11 is a documented deliberate duplicate of slot 0.
+
+### Why per-corpus AND material are both required — quantified, not asserted
+
+**A single constant is wrong by up to +45 %**, and the conversion spans **1.90×**
+over the (corpus × material) grid. **`uho` alone is 25 % of the mix and is
+mispriced −20 % at low material and +19 % at high material by the same
+constant** — so **no better global scalar exists**. That settles the design
+question rather than arguing it.
+
+**`to_cp` was a red herring** (`p_a` varies ±0.9 %). The real law is SF's
+`evaluate()` blend, whose exponent is **not 1 for any corpus** (−1.57 to +2.25),
+with the **sign splitting cleanly by labelling provenance** — SF self-play
+positive, Leela-derived negative. **Mechanism not established; flagged open.**
+
+**Controls:** permuted-teacher null collapses every slope to **|≤0.026|** (real
+0.32–0.83), R²→0.000, sign→0.46–0.52; decoder round-trips **4800/4800**
+byte-exact; sign agreement 0.989–0.997 at |eval|>100 on every corpus.
+
+**It retracted its own retraction.** Mid-study it claimed contiguous-window
+sampling had broken its error bars; re-tested properly that used the wrong test
+(comparing one noisy estimate to another's interval, when the difference carries
+√2 the SE). Window vs iid is indistinguishable. It kept the iid sampler on
+principle and **said so in the doc rather than letting the stronger claim stand**.
+
+**Live:** A/B at game 676/1500; D49 continuation at sb1650 (heldout ema
+0.010457); memory 5376 MB.
+
+---
+
+## 2026-08-01 13:15 — calibration closed out; A/B at 747/1500
+
+**Calibration agent confirmed final and clean** — six commits on
+`agent-a93f7f3c53481113a`, tooling committed
+(`tools/nnue/sf_teacher_calibration.py`, `tools/nnue/verify_per_corpus_target.py`)
+so the table is **reproducible, not just recorded**.
+
+**THREE RULES FOR THE 60/40 BLEND, in the order they will bite:**
+1. **Do not ship 1.023** — `sf-eval` is raw SF internal (36/36 exact); real
+   conversion **0.32–0.60**; 1.023 scales targets **~2.45× too large**.
+   `1/SFBINPACK_SCORE_DIV` also fails (17–34 % on 9/12).
+2. **Do not ship one constant** — spans **1.90×** over (corpus × material);
+   worst pooled error **+45 %**; **uho, a quarter of the mix, is mispriced in
+   OPPOSITE directions at low vs high material**, so no global scalar can work.
+   Use the twelve `(k, p)` pairs, indexed positionally against `mix`.
+3. **Material is real but not in `to_cp`** — `p_a` is flat to ±0.9 %. The law is
+   SF's `evaluate()` blend, exponent **not 1 for any corpus** (−1.57 to +2.25),
+   sign splitting by labelling provenance. **Measured, not explained — the one
+   open question.**
+
+Bars are **measured from three independent runs**, not bootstrapped, because the
+agent found a ~1.1–1.2× bootstrap under-statement — after retracting a stronger
+claim it had made about the same thing.
+
+**Live:** A/B at **747/1500**; D49 continuation sb1650 → sb2130 (self-restarting);
+matcher deliberately down, `d49abpri` restores it; memory ~5.4 GB; no OOM since
+the owner's 08:15 npm build.
+
+---
+
+## 2026-08-01 13:18 — closed the last "healthy while dead" hole
+
+**A/B at 885/1500**; D49 continuation **sb1651**, 179.0k pos/s; memory 5349 MB.
+
+**Verified `d49x500`'s self-restart logic rather than assuming it** — `RESUME`
+resolves to **1650** (the newest checkpoint), it relaunches from there on any
+exit, and it stops itself at ≥2130. Correct.
+
+**But it has no instant-failure guard**, and that is the exact hole that has
+opened three times today: a trainer dying in 1.5 s (as mine did at 08:54 with
+`ARCHON_JAX_ALLOW_GPU` missing) would relaunch forever while `systemctl` still
+reported the unit **active**. Nothing would look wrong.
+
+**Did NOT edit the running script** — bash reads scripts incrementally and
+editing one mid-execution can corrupt it. Added an **external watchdog**
+(`x500watch`) instead, which is additive and cannot disturb the trainer.
+
+**It watches the WORK, not the status** — the `components sb` counter, sampled
+every 10 min against a ~2.4 min superbatch. Three consecutive no-progress windows
+logs a loud STALLED line plus the last five journal lines. That is the same
+predicate correction that fixed the A/B starvation an hour ago: **a unit's
+`is-active` describes the supervisor, never the work.**
+
+**Standing state:** D49 continuation self-restarting toward sb2130 with a
+progress watchdog; matcher down until the A/B completes, then auto-restored;
+teacher calibration delivered with reproducible tooling; per-node microarch
+surface closed by studies 65–69.
+
+---
+
+## 2026-08-01 13:27 — ★★ LR JUMP→ANNEAL: THE VERDICT IS A NULL. −7.41 ± 10.76.
+
+**Direct A/B, three cycles (sb1630) vs the anchor (sb1540), ONE bar, 1500 games:**
+
+| | |
+|---|---:|
+| **Elo** | **−7.41 ± 10.76** |
+| nElo | −12.12 ± 17.58 |
+| W / L / D | 431 / 463 / 606 (48.93 %) |
+| Ptnml | [30, 182, 353, 160, 25] |
+
+**Ninety superbatches of jump→anneal bought nothing.** The point estimate is
+**negative**; the bar crosses zero. Honest statement: **no measurable gain,
+plausibly a small loss.**
+
+**Consistent in sign with the separate screens:** cycle 3 (+0.69) − anchor
+(+3.47) = **−2.78**. The direct A/B gives **−7.41** and is the better number
+because it carries one bar instead of two.
+
+**The full arc, and the lesson in it:**
+
+| | Elo vs canonical |
+|---|---:|
+| anchor sb1540 | +3.47 ± 11.22 |
+| cycle 1 sb1570 | +9.27 ± 11.04 |
+| cycle 2 sb1600 | +9.50 ± 10.86 |
+| cycle 3 sb1630 | +0.69 ± 10.76 |
+| **A/B: 3 cycles vs anchor** | **−7.41 ± 10.76** |
+
+**Cycles 1 and 2 landing within 0.23 Elo of each other looked like a stable
+plateau at +9.4.** It was two favourable draws from a series whose measured
+point-to-point spread is **13 Elo**. I flagged that risk when reporting cycle 1
+("+9.27 sits comfortably inside the ordinary spread of this series") and again
+when cycle 2 agreed; the A/B is what converted the caution into an answer.
+
+**Design lesson worth keeping, independent of the result:** measuring two things
+against a THIRD party adds their bars and can never resolve a ~6 Elo effect at
+n=1500. Put the two things on opposite sides of ONE match. The same design gave
+the undertraining number cleanly (**+30.31 ± 11.0**) and this null cleanly.
+
+**What survives from the experiment:**
+- **Checkpoints must be taken at the anneal bottom** — measured 13 Elo penalty
+  for a mid-cycle checkpoint (sb1580 −3.94 vs sb1570 +9.27). Now a trainer knob
+  (`export_every`, committed `a7a9133f`).
+- The five-point within-cycle trace (flat at peak LR → rising through anneal →
+  peak at LR=0 → collapse at next jump) is real and reproducible; it is the
+  *shape* that is real, not a net gain.
+
+**Box handed back cleanly and automatically:** `d49abpri` restored the matcher at
+13:26:38 (baseline sb1650), `d49x500` continues to sb2130 under `x500watch`,
+memory 6481 MB.
+
+---
+
+## 2026-08-01 13:33 — PERF STUDY 71 COMMISSIONED: the TT-less deficit
+
+**D49 continuation sb1658**, 183.2k pos/s, self-restarting under `x500watch`.
+Matcher screening from baseline sb1650. Memory 5914 MB, disk 136 GB, all green.
+
+**Commissioned the largest quantified opportunity left in the engine**, the one
+study 70's census found and explicitly did not attack:
+
+- NonPV fhf **0.845** overall, hiding **0.9135 with a TT move vs 0.7645
+  without**;
+- **46 % of NonPV cutoffs are TT-less and own ~70 % of the wasted cutoff work**;
+- qsearch is **90 % TT-less** (0.976 vs 0.826);
+- the deficit **concentrates at shallow depth** — 76 / 68 / 51 % of nodes at
+  depths 1–3 arrive with no TT move.
+
+**Why this and not another microarch study:** the per-node surface is closed
+across ten studies (65–69 plus 42/43/44/46/47/48), and the dead-work class that
+produced the only two speed wins of the last 24 h was swept **empty** by 69.
+**The remaining lever is nodes per move, not time per node** — and this is where
+the census says the nodes are being wasted.
+
+**Handed it the full instrument state so it cannot repeat today's mistakes:**
+`instructions:u` is the only microarch counter surviving its null; **four others
+fail one**; **node counts on a position set fail a jitter null at +18.3 %** (and
+that is the NNUE gate's own set), so census statistics (±0.11–0.16 pp) and a
+paired sign test are the metrics; PGO inline re-decisions can invert an arm's
+sign; `sprt.sh` only started passing `EvalFile` today and must be verified on the
+live argv.
+
+**Also warned about the box:** `d49xml` is a **loop** service, so
+`systemctl is-active` is always true — any "wait for idle" starves. Gate on
+`pgrep -c fastchess` and stand the matcher down explicitly if it needs the box.
+That single confusion cost three starvations today.
