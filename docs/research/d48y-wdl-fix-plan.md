@@ -14135,3 +14135,19 @@ build-heavy agent at load 8.48. A third concurrent heavy job would slow all thre
 and buy nothing. The FT-LOCALITY brief (staged above, grounded: both weight
 tables are ALREADY i8, so the lever is rows-touched and ordering, not precision)
 fires the moment the tunable agent lands.
+
+**REQUIRED, user instruction 2026-08-01 00:45 — RE-RUN THE FRAME SCREEN AFTER THE
+TRANSCRIPTION LANDS.** Tonight's frame arms (756 / 1068 / 1585 vs canonical) were
+measured against the **eca43a97** tunable set. The refresh moves search constants
+to **ebcea3ef** values. A pruning margin only means what it means RELATIVE to the
+eval distribution it is compared against, so changing the margins can move the
+optimal frame. **Every frame conclusion below expires when the new tunables
+land** — including the early parity reading. Re-run, do not reuse.
+
+Staged: `/home/nick/.local/share/archon-d49/frame_rerun.sh <engine-binary>
+[games] [tag]`. Runs 1585, 1068, 756 vs canonical, memory-gated at 3500 MB,
+serialised behind any live match. **Deliberately NOT auto-armed**: the standing
+perf loop is verify-the-agent-myself -> `CHECK_NNUE_GATE=1 tools/check.sh` ->
+build PGO -> merge, and only THEN test. The binary is an argument because both
+sides of the screen must use the SAME binary — the comparison is between NETS
+with tunables held fixed.
