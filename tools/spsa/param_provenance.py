@@ -4,13 +4,14 @@
 Answers three questions that kept getting answered wrong by hand:
 
 1. **Which Stockfish commit are our constants actually from?**  `src/search/
-   params.rs`'s header names one (`eca43a97`).  This checks it, because
+   params.rs`'s header names one (`ebcea3ef`).  This checks it, because
    reading the WRONG SF revision has now cost us twice: once when the clone
    sat at `sf_16` and a bare grep returned SF16 constants, and once when it
-   moved to `sf_18` — which is 223 commits OLDER than our real source, so
-   `sf_18` is just as wrong a reference, in the other direction.
+   moved to `sf_18` — which is OLDER than our source, so `sf_18` is just as
+   wrong a reference, in the other direction.
    Razoring is the canary: 456/252 at sf_16, 485/281 at sf_18, 465/300 at
-   eca43a97 — and 465/300 is what we ship.
+   eca43a97, 483/318 at ebcea3ef — and 483/318 is what we ship (the
+   2026-08-01 reference refresh).
 
 2. **Did we transcribe faithfully?**  Screens every tunable's value against
    every integer literal in SF's search/movepick/evaluate/timeman sources at
@@ -36,7 +37,7 @@ import subprocess
 import sys
 
 SF_DIR = "stockfish_reference/Stockfish"
-REF_DEFAULT = "eca43a97"
+REF_DEFAULT = "ebcea3ef"
 SF_FILES = [
     "src/search.cpp",
     "src/movepick.cpp",
@@ -54,9 +55,9 @@ CAMPAIGN_GLOB = "tools/spsa/campaigns"
 MIN_INTERESTING = 20
 
 # The canary: (name, our value, expected value at the reference commit).
-# Razoring moved at both sf_16->sf_18 and sf_18->eca43a97, so it detects a
-# reference slip in either direction.
-CANARIES = [("RAZOR_BASE", 465), ("RAZOR_DEPTH_MULT", 300)]
+# Razoring moved at sf_16->sf_18, sf_18->eca43a97 AND eca43a97->ebcea3ef, so
+# it detects a reference slip in any direction.
+CANARIES = [("RAZOR_BASE", 483), ("RAZOR_DEPTH_MULT", 318)]
 
 
 def sf_show(ref, path):

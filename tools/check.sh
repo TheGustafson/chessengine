@@ -132,7 +132,7 @@ fi
 # in the same commit that changes the number (that is exactly what the
 # `Bench:` trailer records). Set BENCH_PIN= (empty) to skip, e.g. while
 # bisecting.
-BENCH_PIN="${BENCH_PIN-587683}"
+BENCH_PIN="${BENCH_PIN-553609}"
 if [ -n "$BENCH_PIN" ] && [ "$bench_nodes" != "$BENCH_PIN" ]; then
     printf '\nFAIL: depth-6 bench is %s, pin is %s\n' "$bench_nodes" "$BENCH_PIN" >&2
     printf '  If this change is INTENTIONALLY functional (search, eval,\n' >&2
