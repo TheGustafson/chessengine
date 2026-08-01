@@ -14807,3 +14807,46 @@ owed unless someone proposes moving the scale.
 hash `2e1ede95…79c4`, d13 `1743308`, **all three pins unmoved**, all checks
 passed. `d49rerun` completed cleanly and **re-armed `d49xml` itself**, which is
 now screening exports again unattended.
+
+---
+
+## 2026-08-01 04:05 — study 67 commissioned on the SEARCH side; the small-net route is BLOCKED, verified
+
+**D49:** sb1409, 188.4k pos/s, heldout ema 0.010452. `d49xml` re-armed itself
+after the re-run and is screening again (baseline sb1400). Disk **123 GB free
+(87%)**, down from 137 GB — ~29 exports remain to sb1700 at ~1.14 GB each, so
+expect ~90 GB at the end. Watch, not act.
+
+**I intended to commission the small-net eval tier — study 65's strongest
+remaining lever (break-even 28.2% coverage) — and CHECKED FEASIBILITY FIRST.
+It is blocked.** The eval context does carry the hooks
+(`mod.rs:465 active_smallnet()`, `sota_context.rs:127 smallnet`,
+`smallnet_thresh`), but **`grep smallnet src/eval/nnue/sota_loader.rs` returns
+NOTHING and no small-net artifact exists on disk.** So there is no way to load
+one, and training one needs the GPU that D49 holds for ~11 more hours. Study 65's
+phrase "`smallnet_*` already ships inert" is true of the CALL SITE only, not of a
+loadable net. **Recorded so the next person does not commission it blind.**
+
+**PERF STUDY 67 COMMISSIONED — the SEARCH side**, which is genuinely unmined:
+every study tonight (65, 66) was eval-side, and 66 closed those routes with
+mechanisms. Verified live before writing the brief: `init_quiets`
+(`movepick.rs:971`), `search<NT: NodeType>` (`search/mod.rs:2281`, 14 NonPv
+refs), `next_move` (`movepick.rs:734`).
+
+**Its step 0 is MANDATORY re-derivation of the profile**, because the standing
+list provably contains dead symbols (`i16_deltas_into`, quoted at 13.14%, does
+not exist). The brief tells it to profile the current PGO binary and report the
+live hot list before targeting anything — that output is useful to the project
+on its own.
+
+Handed over as CLOSED so it starts where 66 stopped: sub-byte FT formats (the
+243 KB map costs more than the bytes saved, so even a free map loses), locality
+and reordering (miss-parallel, MSHR-limited, transpose moved everything <=1.5%),
+prefetch-next-row (dead by construction), FT precision (already i8). Also told to
+read study 47 so it does not re-derive the fourteen closed issue-throughput
+rewrites — while being told explicitly that 47 closing those is **not** the same
+as closing the search side.
+
+Told to measure whether the search side is branch/compute-bound rather than
+assuming the engine-wide memory-bound result applies, and to report
+branch-mispredict and icache counters alongside misses.
