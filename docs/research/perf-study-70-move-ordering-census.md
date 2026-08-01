@@ -292,19 +292,20 @@ fingerprint against this tree's 1,739,588, so an SPRT against it would have
 confounded these changes with everything else that has landed since. A fresh
 same-source PGO baseline was built instead.)
 
-**No SPRT verdict — the match was OOM-killed twice, and that is stated as a
-failure rather than dressed up as a result.** Pooled over both runs with
+**No SPRT verdict — the match died three times, and that is stated as a
+failure rather than dressed up as a result.** Pooled with
 `tools/perf70/pool_sprt.py`:
 
 | run | pairs | games | score | Elo | LOS |
 |---|---|---|---|---|---|
 | `s70-sprt` | 991 | 1,982 | 51.21 % | **+8.42 ± 9.33** | 96.16 % |
 | `s70-sprt2` | 40 | 80 | 45.00 % | −34.86 ± 39.00 | 3.83 % |
-| **pooled** | **1,031** | **2,062** | 50.97 % | **+6.74 ± 9.10** | **92.68 %** |
+| `s70-chain-001` | 125 | 250 | 51.80 % | +12.51 ± 23.87 | 84.85 % |
+| **pooled (+ a partial segment)** | **1,166** | **2,332** | 51.09 % | **+7.60 ± 8.48** | **96.05 %** |
 
 LLR reached 0.93 of the +2.94 needed for H1 before the first kill. **The bar
-still crosses zero**: this is a positive trend at 2,062 games, not an accepted
-change. A third run (`s70-sprt3`) is accumulating.
+still crosses zero** (+7.60 − 8.48 < 0): a positive trend at 2,332 games, not an
+accepted change. `s70-chain` is accumulating more.
 
 Pooling is legitimate here and the tool proves its own arithmetic: the runs
 differ only in the book's random order, so pairs are exchangeable, and pooling
@@ -326,10 +327,33 @@ OOM killer, and both were self-inflicted:
   worked: the trainer lived, the match died. On a memory-tight box the lever is
   therefore **concurrency, not a cgroup cap**.
 
-`tools/perf70/chain70.sh` is the fix, running as the detached `--user` unit
-`s70-chain`: short segments (125 rounds each) that each write their own
-`sprt.out`, with a `free -m` wait before each so it backs off while the trainer
-is hungry instead of competing with it. A kill now costs at most one segment —
+`tools/perf70/chain70.sh` is the fix: short segments (125 rounds each) that
+each write their own `sprt.out`, with a `free -m` wait before each so it backs
+off while the trainer is hungry instead of competing with it. It runs
+`setsid`-detached, **not** as a `systemd-run --user` unit — the first attempt
+did, and the unit was stopped from outside after 4.5 minutes.
+
+**Two more self-inflicted losses, both now fixed in the tool.**
+
+- `tools/sprt.sh` pipes fastchess through `tee`, which **truncates**.
+  Relaunching the chain with the same tag re-entered segment 001 and destroyed
+  the `sprt.out` of a *completed 250-game segment*. `chain70.sh` now scans for
+  the highest existing index and resumes past it, so a segment directory is
+  never reused.
+- The progress line used `grep -m1 'Games:'`, which reports fastchess's
+  **first** `ratinginterval` block — so a finished 250-game segment printed
+  "Games: 20" and read as truncated. Exactly backwards for a line whose only
+  job is saying whether a segment survived. Now `tail -1`.
+
+The games themselves were never lost, because **fastchess appends to its PGN
+even though its stdout summary is truncated**. `tools/perf70/pgn_ptnml.py`
+recovers `Ptnml(0-2)` from a PGN by pairing on `[Round]`, and it is validated
+rather than trusted: against a run whose summary survived it reproduces
+`[28, 221, 457, 245, 40]` and 51.21 % **exactly**. The clobbered segment came
+back as `[1, 27, 63, 30, 4]` / 51.80 %, independently matching the value backed
+out of the earlier pooled total.
+
+A kill now costs at most one segment —
 and in practice less than that, because **fastchess prints `Ptnml(0-2)` every
 `ratinginterval`**, so `pool_sprt.py` reads the last one and a killed segment
 still contributes everything up to its final interval. That property is what
