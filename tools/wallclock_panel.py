@@ -52,6 +52,24 @@ saw only the GPU trainer, while a concurrent session on the same box ran a
 400-game fixed-node match and a wall-clock smoke test of its own inside that
 window (`d990a1bd`, `4fecb7c1`). Sample DURING the panel when you can.
 
+TWO DEFECTS THE NULL CAUGHT, FIXED IN PERF STUDY 63
+---------------------------------------------------
+A 400-round PGO panel had the byte-identical null read +0.646% at p < 1e-4, in
+every rotation phase and every quarter, with the three position medians inside
+0.25% of each other -- so not position, not drift. Two asymmetries, both in this
+file, both now fixed and both documented at their code:
+
+1. The null copy went to /tmp, which is TMPFS on this box while the binaries
+   under test are on the NVMe. The copy now lands beside the base binary.
+2. Runs were NOT pinned, while every counter panel in the 45-62 chain pins to
+   one physical core. Unpinned per-round sd was 3.58% against 0.98-1.13% for
+   study 62's panels. `--cpu` now defaults to core 2; `--cpu -1` restores the
+   old behaviour.
+
+The lesson is the ordinary one: the null is not a formality, it is the only
+part of the harness that can fail loudly, and when it fails the answer is to
+FIX THE INSTRUMENT, not to re-run hoping for a quieter box.
+
 RAW ROUNDS ARE THE ARTIFACT (--dump, perf study 63)
 ---------------------------------------------------
 Until study 63 a panel left behind five printed lines, so nothing downstream
@@ -140,12 +158,18 @@ def main():
     ap.add_argument("--elo", action="store_true",
                     help="convert to DERIVED Elo; only valid if the binaries are "
                          "node-identical (see module docstring)")
+    ap.add_argument("--cpu", type=int, default=2,
+                    help="physical core to pin every run to (default 2, the "
+                         "core every counter panel in this series uses); pass "
+                         "-1 to leave runs unpinned as before study 63")
     ap.add_argument("--dump", default=None,
                     help="write the per-round raw timings to this TSV so the "
                          "panel is auditable and its sd is recoverable; see "
                          "RAW ROUNDS ARE THE ARTIFACT in the module docstring")
     a = ap.parse_args()
 
+    if a.cpu is not None and a.cpu < 0:
+        a.cpu = None
     net = os.path.realpath(a.net)
     nodes = "1" if a.startup_frame else a.nodes
     cmd = ["bench", "16", "1", nodes, a.fens, "nodes", net]
@@ -155,13 +179,37 @@ def main():
 
     # The null arm is a byte-identical copy of base: any reading it produces is
     # pure instrument noise, by construction.
-    tmp = tempfile.mkdtemp(prefix="wcpanel-")
+    #
+    # PERF STUDY 63 -- THE COPY MUST LIVE ON THE SAME FILESYSTEM AS THE BASE.
+    # `tempfile.mkdtemp()` lands in $TMPDIR, i.e. /tmp, which on this box is
+    # TMPFS while the binaries under test sit on the NVMe. Executing an ELF out
+    # of tmpfs is not the same as executing it out of the ext4 page cache (this
+    # /tmp is mounted `huge=advise`, so the two differ in whether the text
+    # mapping can be backed by huge pages, and tmpfs pages are swap-backed).
+    # Measured 2026-07-31, 400 PGO rounds: the byte-identical null read
+    # **+0.646%, 125/400 negative, p < 1e-4** -- the harness resolved a
+    # difference between two identical binaries more confidently than it
+    # resolved the arm, in EVERY rotation phase (+0.407 / +0.661 / +0.864) and
+    # EVERY quarter of the run, with the three position medians within 0.25% of
+    # each other. It is an asymmetry between the null and the two real arms,
+    # built into the tool, and it had been there since the tool was written.
+    tmp = tempfile.mkdtemp(prefix=".wcpanel-",
+                           dir=os.path.dirname(os.path.abspath(a.base)))
     null = os.path.join(tmp, "null_bin")
     shutil.copy2(a.base, null)
 
+    # PERF STUDY 63 -- PIN, exactly as every counter panel in the 45-62 chain
+    # does (`panel61.sh`'s `taskset -c "$CPU"`). Unpinned, a run migrates across
+    # a box carrying a GPU trainer at 1.44 CPUs and a browser, and the 400-round
+    # panel above measured a per-round sd of **3.58%** -- against 0.98-1.13% for
+    # study 62's panels -- which is 3.6x more noise than the arms this tool
+    # exists to resolve. The counter panels have pinned since study 45; the
+    # wall-clock arbiter never did.
+    pin = ["taskset", "-c", str(a.cpu)] if a.cpu is not None else []
+
     def t(b):
         s = time.perf_counter()
-        subprocess.run([b] + cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(pin + [b] + cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return time.perf_counter() - s
 
     order = [(a.base, null, a.arm), (null, a.arm, a.base), (a.arm, a.base, null)]
