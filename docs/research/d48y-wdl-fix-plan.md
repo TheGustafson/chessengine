@@ -13602,3 +13602,76 @@ in the available-memory number until it is nearly too late. Check
 `free -m | grep Swap` as well.
 
 **D49:** sb1271, four services active + `xmatch` screening. 137 GB disk.
+
+## Tick — 2026-08-01 01:0x, study 64 merged: the 61.41% finding, and its SF correction REJECTED
+
+**Merged `f50b0f53`.** Gates green twice, and `base3` rebuilt from the final tree
+reproduces the shipped `.text` md5 `75c9955e` and size 760,085 **exactly** — the
+instrument is provably invisible to the engine we ship.
+
+### The finding
+
+**61.41% of all 2,163,490 fresh NNUE evaluations are consumed by ONE one-sided
+threshold comparison and nothing else** — 977,093 RFP cuts + 351,508 qsearch
+stand-pat cuts. Those nodes are leaves, so removing an evaluation there removes
+**its whole fold**: **≈45% of engine latency at the free-predictor ceiling.**
+Twenty times anything else left.
+
+**It is FUNCTIONAL, and the study says so unprompted:** both consumers return a
+blend that reads the eval, so it cannot be taken bit-exactly, and the predictor
+must answer *before* the fold — i.e. with its own accumulator.
+
+**And the latency is where the bytes are not:** 55.25% of L1-miss latency is
+**weight-row loads** (`i8_into_shaped` alone 43.10%), while the accumulator
+stream — **50.6% of the fold's bytes** — is **11.96%**, with 96.9% hitting L2.
+The DRAM tail lives entirely in the rows.
+
+### Three of MY brief's directions closed with numbers
+
+- **`main_fresh_then_ttcut = 0`** — not one of 302,799 TT cutoffs was preceded by
+  a fresh eval. Reordering to Stockfish's step order converts **zero**.
+- **Deferral is already at 1.135 fold-plies per evaluation**; the avoidable
+  population is **5.8%** and memoised for siblings. My "many avoidable folds"
+  hypothesis is **refuted at 6%**.
+- **`at_full` is NOT a full replay.** `build_deltas` is a two-endpoint incremental
+  touch generator, and the site is **1.70% of latency**, not "the largest
+  structural difference we have" as I wrote in the brief.
+
+### Its correction of `dbd43bb3` is REJECTED — with the mechanism
+
+It claims SF's `fc_0` width is `FC_0_OUTPUTS + 1 = 16`, "the 32 is `L3Big`",
+making every SF layer a uniform 0.800× of ours. **Verified against the pinned
+reference and it is not so:**
+
+| | `eca43a97` (pinned) | checkout `cb3d4ee9` |
+|---|---|---|
+| `L3Big` occurrences | **0** | present (`L2Big = 15`, `L3Big = 32`) |
+| `FC_0_OUTPUTS` | `= L2 = 32` | `= L2` (=15) |
+| `fc_0` | `<L1, FC_0_OUTPUTS>` | `<…, FC_0_OUTPUTS + 1>` |
+
+**The checkout sits at Stockfish 18.** It read the working tree instead of
+`eca43a97` — the exact trap CLAUDE.md warns about in capitals. **Its numbers are
+right for SF18**, a different engine (the dual-net release, which we measured
+separately at 1.266×); the speed comparison in `dbd43bb3` was made against
+`stockfish-eca43a97-pgo`, so eca43a97's constants govern and **SF `fc_0` =
+1024 × 32 × 8 = 262,144 stands.**
+
+**Its own retraction was correct and I accept it:** it had written "SF's fold is
+one channel, ours is two" — **SF runs `FullThreats` too.**
+
+**And one caveat of its I accept against my own text:** "L2 16→32 costs almost
+nothing" is too strong. Doubling L2 doubles `l1_weights` to 40,960 B/bucket, and
+it measures that gather at **6.16% of engine latency** on a 91.44%-L1-miss stream.
+**Cheap, not free.**
+
+### Where this leaves the code-side work
+
+With the owner ruling that L1 stays, **narrowing the stored row is the only
+byte-cut left inside the 55.25%** — it cuts bytes per lane rather than lanes per
+row. Priced at **7.25% of row bytes** (86.4% of threat *rows* fit 6 bits but only
+**53.06% of folds** do), and it is bit-exact. The 61.41% eval-elision prize is
+larger by 20× but **functional, and needs a strength test, not a speed test.**
+
+**Memory:** avail recovered to **6280 MB**, swap down to 3132/4095 from full. The
+study stopped building on its own when `MemAvailable` fell below the 3500 floor —
+**the discipline held without intervention.**
