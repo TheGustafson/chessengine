@@ -15670,3 +15670,45 @@ cannot test a binary change.
 Handed the full closed list so it cannot re-open any of it, plus the four
 counter-null failures, the PGO inline re-decision rule, and "counting a code
 sequence is not measuring it".
+
+---
+
+## 2026-08-01 07:15 — the sb1700 VERDICT PROCEDURE, written down while it is cheap
+
+**D49:** sb1495. `d49xml` screening sb1480 (stdev 603.0). Study 70 running.
+My `gate69` still at the bench fingerprint.
+
+**Checked that `archon-s69` is still a valid verdict binary.** Study 69 added
+source after it was built (`attacks.rs` +39, `board.rs` +24) — but the additions
+are **`#[cfg(feature = "pgonull69")]`**, off by default, so the shipped build is
+unchanged. `archon-s69` (clean PGO off `18d4dcaf`, bench 587683) still represents
+main.
+
+### THE VERDICT PROCEDURE — sb1700, ~8 h out
+
+1. **Wait for the sb1700 export** (`d49-1280-sb1700-ema-raw.bin`). The recurring
+   matcher will screen it automatically at 1500 games; **that is NOT the
+   verdict** — it is the trajectory series and it runs the OLD binary
+   (`target-sota`, bench 587683) deliberately, for series consistency.
+2. **Pack at the frame-fair scale 1068**, the same as every point in the series:
+   `D40_ACC=1280 D40_L2=16 D40_L3=32 D40_POLICY=1 D40_POL_DIM=16
+   D40_THREAT_QUANT=256 D40_NETWORK_SCALE=1068` via `tools/nnue/netpack.py`
+   (after `requant_threats.py --scale 256 --run-spec tools/nnue/runs/d49_1280.json`).
+   **Sanity: its `nnue-eval` stdev on `wl50.fens` should land ~595–610**, matching
+   canonical's 610. A value near 431 means the scale reverted to 756.
+3. **Run the 5880-game screen with the PGO BINARY, not `target-sota`:**
+   `ENGINE=/home/nick/projects/chessengine-mainwt/engines/bin/archon-s69 CONC=3 \
+    bash tools/screen.sh <sb1700-1068.cenn> engines/canonical/net.cenn 5880 25000`
+   5880 games = **+/-5 Elo**, ~56 min at full concurrency (longer at CONC=3).
+   **Stop `d49xml` first** or the two matches will contend — and re-arm it after.
+4. **Do NOT quote a single screen as the verdict.** The measured point-to-point
+   swing across consecutive checkpoints is **13 Elo** (+1.85 at sb1430 to +15.06
+   at sb1410) — larger than any plausible 100-superbatch gain. The pooled figure
+   over sb1350–1450 is **+9.70 +/- 4.47 (9000 games)**; the sb1700 screen at
+   +/-5 is the first single run powerful enough to stand alone, and even then it
+   should be read against that pool.
+5. **Promotion, if it wins:** update `engines/canonical/net.cenn` (a symlink — see
+   `engines/canonical/MANIFEST.md` for the provenance requirements) and re-pin the
+   NNUE gate's eval hash + d13 in **both** `tools/check.sh` and CLAUDE.md's
+   **CURRENT** slot, pushing the superseded pair into the history list. `859a442`
+   got that wrong and the doc named a superseded gate for a day.
