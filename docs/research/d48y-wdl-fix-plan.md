@@ -14367,3 +14367,48 @@ confirming a clean pass.
 **Still owed before this can ship:** a PGO build and the full frame re-run under
 these margins (`frame_rerun.sh`), plus strength testing — a -17.2% depth-6 change
 is functional by definition.
+
+---
+
+## 2026-08-01 01:50 — TUNABLE REFRESH MERGED (`9c1cef86`), and a false alarm I raised myself
+
+**Gate PASSED on the correct base** (`gatetune3`): eval hash
+`2e1ede95…79c4`, d13 **1743308**, **Bench: 486897**, "All checks passed."
+Merged to main as **`9c1cef86`**.
+
+**CORRECTION — I reported `d49f535` as having failed. It had not.** I read a
+positional list of EIGHT unit states
+(`d49y d49wd ckptreap oomguard oomshield d49f535 gatetune3 d49xml` ->
+`active active active active active active inactive active`) and mapped the
+single `inactive` to the wrong unit. **`d49f535` was ACTIVE and correctly
+waiting on `d49xml`; the inactive one was `gatetune3`, which had finished
+successfully.** I then "diagnosed" a wait-loop race and rewrote the script to fix
+a bug that did not exist. No harm done — v2 is genuinely better (polls all units
+together instead of sequentially, and logs every state to
+`frame535.debug.log`) — but **the reasoning was wrong and the original was
+working.** Positional `is-active` lists are a bad instrument; name each unit or
+query them one at a time.
+
+**Two real environment fixes, both from the same root cause** — worktrees do not
+carry gitignored content:
+1. `CHECK_NNUE_GATE=1` from `mainwt` failed with "the net is missing" because
+   `engines/canonical/net.cenn` is a TRACKED RELATIVE symlink into `data/`,
+   which is gitignored and absent there.
+2. My first fix — symlinking the whole `engines/canonical` directory — **broke
+   `git merge` outright** ("Unable to process path engines/canonical/MANIFEST.md"),
+   because `MANIFEST.md` and `arch.txt` are TRACKED files inside that directory.
+   Only `net.cenn` and `archon` are gitignored.
+
+**Correct fix, now in place:** symlink `mainwt/data ->
+/home/nick/projects/chessengine/data` (verified `git check-ignore` first). The
+tracked relative symlink then resolves, `git status` stays clean, and merges
+work. **Do not symlink `engines/canonical` itself.**
+
+**D49:** sb1347, 186.9k pos/s. `d49xml` is screening sb1340 automatically at the
+frame-fair scale 1068 (its stdev reads 595.0, against canonical's 610 — the
+frame-matched packing is doing what it was built to do). `d49f535` v2 is queued
+behind it.
+
+**NEXT:** PGO build off `9c1cef86`, then `frame_rerun.sh <pgo-binary>` for the
+frame curve under the NEW margins. Strength testing on the tunables is still
+owed.
