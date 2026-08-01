@@ -15080,3 +15080,40 @@ unmeasured; **branch mispredicts**, where the search side owns 64.7 % at a
 dead-work-that-ships** — cfg'd-out or no-op sinks with expensive argument
 expressions, `format!`/`to_string`/`Vec` on discarded paths. That last class is
 pure profit and was worth 2.33 % of search time in a single instance.
+
+---
+
+## 2026-08-01 05:20 — closing an OWED debt: the tunable refresh has NEVER been strength-tested
+
+**D49:** sb1443, 188.5k pos/s, heldout ema **0.010440** — another run low.
+`d49xml` screening sb1440 (stdev 598.1). Disk 118 GB, on track for ~88 GB at
+sb1700.
+
+**We merged 154 search-tunable values and a search fix with ZERO strength
+evidence.** The standing rule is GAMES ARBITRATE, and the project has a
+designated instrument for exactly this that was not used: **`tools/sprt.sh
+CANDIDATE BASELINE`** — "the merge gate for functional search/eval changes"
+(design/14 §3.8, D25). `screen.sh` cannot do it: it runs ONE binary and varies
+only the NET, so it is structurally incapable of testing a binary change. Every
+match tonight has been net-vs-net.
+
+**Setting up the arm properly, both sides PGO** (the standing rule; a
+PGO-vs-non-PGO pair measures the build, not the change):
+
+- **Baseline: `engines/bin/archon-s25`** (= `engines/canonical/archon`) —
+  verified `bench 587683`, i.e. genuinely pre-`ebcea3ef`, and it is the canonical
+  PGO engine.
+- **Candidate: `archon-s68`**, fresh PGO off main `fa530897` — carries the
+  154 tunables AND study 67's `qtrace` fix. Built with the canonical net as the
+  profile eval-file (mandatory, or PGO goes inert on the NNUE kernels).
+
+Note this arm tests the two changes TOGETHER. That is deliberate: both are
+already merged, so the question that matters is whether main is stronger than the
+last canonical build, not which half contributed. If it comes back negative, the
+halves get separated then — and the `qtrace` fix is a pure dead-work removal with
+all three gate pins unmoved, so the tunables are the likely mover either way.
+
+**What the -17.2 % `Bench:` does NOT tell us**, and why this test is needed
+regardless: that number is depth-6 PSQT, while the depth-13 NNUE total moved only
++0.21 %. A tree change measured in a regime we do not play in is not evidence of
+strength in the regime we do.
