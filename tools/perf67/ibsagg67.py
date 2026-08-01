@@ -10,6 +10,17 @@ import collections
 import re
 import sys
 
+
+def _hit(sym, want):
+    """EXACT symbol match unless `want` ends in '*'.
+
+    A substring test here is a bug with teeth: 'search::<...::NonPv>' is a
+    substring of 'qsearch::<...::NonPv>', so a substring match folded 18,451
+    qsearch samples into the search symbol's histogram and inflated every
+    within-symbol share this study quotes. Caught and corrected mid-study.
+    """
+    return sym.startswith(want[:-1]) if want.endswith("*") else sym == want
+
 dump = sys.argv[1]
 want = sys.argv[2] if len(sys.argv) > 2 else None
 top = int(sys.argv[3]) if len(sys.argv) > 3 else 40

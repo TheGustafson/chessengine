@@ -451,8 +451,8 @@ histpf44 = []
 #
 # `icold67` marks the callees PGO folds into the search body that carry the
 # worst BYTES-PER-OP ratio (perf study 67 §3's inline-callee byte census):
-# `tt_verify_child` (3,520 B / 0.2 % of the symbol's ops), `evaluate`
-# (2,605 B / 1.8 %), `update_all_stats` (2,894 B / 3.5 %), `check_time_slow`
+# `tt_verify_child` (3,520 B / 0.1 % of the symbol's ops), `evaluate`
+# (2,605 B / 1.9 %), `update_all_stats` (2,894 B / 4.0 %), `check_time_slow`
 # (495 B / 0.2 %), `new_probcut`, `make_null_move`/`unmake_null_move`,
 # `is_shuffling` (237 B / 0.0 %).
 #
@@ -460,6 +460,16 @@ histpf44 = []
 # That ruling was made on `instructions:u`, which is blind to code size
 # (study 57's dispatch table: −113 i/n while L1i misses rose 6.2 %).
 # Node-identical by construction — inlining decisions cannot move the tree.
+#
+# **MEASURED, AND IT LOSES. Default OFF; do not turn it on.** It shrinks
+# `search::<NonPv>` 45,565 → 36,033 B (−20.9 %) and `.text` −1.9 %, and over
+# 14 shuffled rounds against `s67-qt` it reads **instructions +0.385 % (0/14),
+# `ic_cache_fill_l2` +3.203 % (3/14), `de_op_queue_empty` +1.298 %, task-clock
+# +1.078 %** — against a byte-identical-binary null of +0.467 % (6/14) on the
+# fill counter. The bytes it removes were never FETCHED (a line with zero
+# sampled ops never enters L1i), and two of the eight are warm enough that
+# outlining them adds a fetch stream. **Function size is not the L1i cost; the
+# number of distinct lines the frame EXECUTES is.**
 icold67 = []
 # `icold67b` — the DEDUPLICATION arm, a different mechanism from `icold67`'s.
 # `icold67` moved code that the frame barely executes; this one moves code the

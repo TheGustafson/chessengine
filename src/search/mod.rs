@@ -5087,14 +5087,7 @@ impl Worker {
                     // Late-move cutoff: after two such moves, skip them
                     // all (§3.8 step 7).
                     if move_count > params::QS_LATE_MOVE_LIMIT() {
-                        qtrace(
-                            ply,
-                            alpha,
-                            beta,
-                            best_value,
-                            m,
-                            "prune:latemove",
-                        );
+                        qtrace(ply, alpha, beta, best_value, m, "prune:latemove");
                         continue;
                     }
 
@@ -5114,14 +5107,7 @@ impl Worker {
                             params::QS_PIECE_MULT(),
                         );
                     if futility_value <= alpha {
-                        qtrace(
-                            ply,
-                            alpha,
-                            beta,
-                            best_value,
-                            m,
-                            "prune:futility",
-                        );
+                        qtrace(ply, alpha, beta, best_value, m, "prune:futility");
                         best_value = best_value.max(futility_value);
                         continue;
                     }
@@ -5148,14 +5134,7 @@ impl Worker {
 
                 // The hard SEE floor for everything left (§3.8 step 7).
                 if !self.board.see_ge(m, params::QS_SEE_FLOOR()) {
-                    qtrace(
-                        ply,
-                        alpha,
-                        beta,
-                        best_value,
-                        m,
-                        "prune:seefloor",
-                    );
+                    qtrace(ply, alpha, beta, best_value, m, "prune:seefloor");
                     continue;
                 }
             }
@@ -5266,7 +5245,7 @@ impl Worker {
     /// **Perf study 67 — why this is a function and not a block.** Inlined, it
     /// contributed 3,520 bytes to `search::<NonPv>` (a second whole copy of
     /// `make_move_with`, plus `gives_check` and `unmake_move`) and collected
-    /// **0.2 % of that symbol's dispatched ops** — 39× the symbol's average
+    /// **0.1 % of that symbol's dispatched ops** — 77× the symbol's average
     /// bytes per op, the worst ratio in the function. `search::<NonPv>` is
     /// 45,565 B against a 32 KB L1i and is 34.06 % of the engine's L1i line
     /// fills; code that never runs still occupies fetch lines and address span.

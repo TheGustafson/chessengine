@@ -15,6 +15,17 @@ import re
 import subprocess
 import sys
 
+
+def _hit(sym, want):
+    """EXACT symbol match unless `want` ends in '*'.
+
+    A substring test here is a bug with teeth: 'search::<...::NonPv>' is a
+    substring of 'qsearch::<...::NonPv>', so a substring match folded 18,451
+    qsearch samples into the search symbol's histogram and inflated every
+    within-symbol share this study quotes. Caught and corrected mid-study.
+    """
+    return sym.startswith(want[:-1]) if want.endswith("*") else sym == want
+
 dump, want, dbg = sys.argv[1], sys.argv[2], sys.argv[3]
 vaddr, size = int(sys.argv[4], 0), int(sys.argv[5], 0)
 top = int(sys.argv[6]) if len(sys.argv) > 6 else 45
@@ -27,7 +38,7 @@ for ln in open(dump):
     if not m:
         continue
     total += 1
-    if want in m.group(2):
+    if _hit(m.group(2), want):
         line_ct[int(m.group(3), 16) // 64] += 1
 n = sum(line_ct.values())
 nlines = (size + 63) // 64
