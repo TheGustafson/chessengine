@@ -15306,3 +15306,48 @@ is an `&'static AttackTables` field on `Board`. **Branch mispredicts — the sea
 side owns 64.7 % — remain entirely unattacked.**
 
 Merged itself at `18d4dcaf`; `gate68b` re-verifying on merged main.
+
+---
+
+## 2026-08-01 06:05 — study 69 commissioned: branch mispredicts (untouched) + the LazyLock
+
+**D49:** sb1464, 188.4k pos/s, heldout ema 0.010447. All units green.
+`gate68b` (my independent gate on merged main `18d4dcaf`) still building.
+
+**PERF STUDY 69 COMMISSIONED**, on the two targets study 68 priced but did not
+attack:
+
+- **A — branch mispredicts, which NOTHING has ever attacked.** The search side
+  owns **64.7 %** at a ~15-cycle penalty; **`init_quiets` carries 15.89 % of all
+  branch-misses against 9.84 % of instructions**, i.e. it mispredicts far above
+  its size, and `search::<NonPv>` carries 37.05 %. Told to find WHICH BRANCHES
+  first — a mispredict profile down to the branch site — before choosing between
+  branchless arithmetic, a sort/partition change in move ordering, or the
+  movepick stage machine.
+- **B — `attacks::TABLES` is a `LazyLock`**: 60 references inside
+  `search::<NonPv>` alone, **22 of them the `Once` state word**, each a load +
+  test + branch on a post-startup constant. Study 68 named the safe fix
+  (`&'static AttackTables` on `Board`, set in the constructors). Ordered FIRST as
+  a warm-up panel.
+- **C — sweep the dead-work class a THIRD time.** It has now paid twice
+  (`qtrace` −2.33 % of search time; `SearchStats` −0.545 %), in two different
+  forms: **arguments** that ship and are discarded, and **state** that ships and
+  is discarded. Explicitly told: **do not trust a comment claiming a construct is
+  free — study 68's said "plain adds… bench-neutral" and was wrong by 29.9
+  instructions/node.**
+
+**The measurement rules are the bulk of the brief, because tonight bought them:**
+`instructions:u` is the only decider (0.000 % across five panels); **`ic_cache_fill_l2`,
+`de_op_queue_empty` and `task-clock` fail a byte-identical null** and may only be
+quoted with that null IN THE SAME PANEL; **any branch-mispredict counter must be
+NULLED BEFORE the arm** and abandoned if its null is as large as the effect;
+`cycles:u` barred; no verdicts off small panels (n=7 read +2.772 % where n=16 read
++0.073 %); `cmp` the panelled binary against the merged one.
+
+Handed the CLOSED list so it cannot re-open layout (three arms including the
+machine function splitter at 30.7 % span compaction for +0.001 %) or the eval-side
+memory routes. Gate pins given as the **post-revert** values (587683 / 1739588),
+since stale text now carries 486897/1743308.
+
+Also told to delete its worktree `target/` on finish — that class of leftover had
+reached 37 GB tonight.
