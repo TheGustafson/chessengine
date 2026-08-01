@@ -17547,3 +17547,45 @@ before that would be churn.
 either a pool of checkpoints or a direct A/B against sb1630 at ~300 sb (~sb1930).
 The pre-registered heldout abort check stands: **below 0.010432 by ~sb1900** or
 the 5× restart cost more than it bought. Currently **0.010462**.
+
+---
+
+## 2026-08-01 14:52 — GPU FREED FOR THE TEACHER EXPERIMENT. Converter is done: 2050/2050 exact.
+
+**The blocker is gone.** The teacher build committed
+`859133f1 sf-teacher: convert Stockfish's net into an ARCHON warm checkpoint,
+2050/2050 exact` — SF's net reproduces the `sf-eval` oracle **exactly** in our
+format. That was the one genuinely hard piece (SF is 1024/32/32 vs our 1280/16/32;
+only the identical 83,248-input feature space made it tractable). It is now
+wiring the per-corpus frame conversion through `data.py`/`spec.py`/`train.py`/
+`pump_train.py`.
+
+**Stopped `d49x500` and `x500watch`.** The plain continuation was occupying the
+GPU running an experiment **the owner did not ask for** — my error from 12:26,
+which they correctly called out. GPU now **0 % / 1480 MiB**, MemAvailable
+**8353 MB**. Nothing lost: `d49-1280-sb1690-ema-raw.bin` is on disk and the run
+reached sb1693.
+
+**Told the agent to launch itself rather than report first.** The original brief
+said report-before-launch so I could free the GPU deliberately; the GPU is free,
+so that handshake is now pure delay. Launch spec restated to it:
+
+- warm from **sb1630** (`d49lrc3-sb1630-ema-raw.bin`) — **NOT** sb1690, which is
+  the plain continuation's different lineage;
+- **`distill_alpha = 0.4`** — the owner's 60/40;
+- LR 1.2492e-5 decaying 0.996/sb, **same shape as the plain run so the two are
+  comparable**;
+- systemd transient SERVICE, `--working-directory=…/jax`, and
+  `PYTHONUNBUFFERED=1 ARCHON_JAX_ALLOW_GPU=1 ARCHON_JAX_FT_IMPL=pallas` —
+  omitting the GPU flag is what killed my first orchestrator in 1.5 s;
+- append to `cyc.log` so the existing tb shim charts it.
+
+**Gates NOT waived**: converter fidelity (done), per-corpus frame regression to
+~1.0, and the **alpha=0 bit-identity null**. Also re-flagged that
+`teacher_frame_scale` is a scalar while the measured conversion is per-corpus and
+material-dependent — a scalar is wrong by up to **+45 %**, with `uho` (25 % of
+the mix) mispriced in **opposite directions** at low vs high material.
+
+**The plain continuation's own result is NOT lost** — sb1660 screened +9.50 ±
+10.88, and its checkpoints remain for a later comparison against the teacher arm
+from the same sb1630 start.
