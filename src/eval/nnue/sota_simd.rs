@@ -2303,7 +2303,27 @@ mod avx512 {
         // 0.60 and 0.75 i/node per KB against 2.02–4.05 for everything landed.
         //
         // `noshape62` restores study 61's dispatch (and `noshape61` implies it).
+        //
+        // ## Perf study 63 — `hot63`: the MODAL shape, tested before the table
+        //
+        // This kernel serves TWO callers and studies 61/62 grew its table 16×
+        // for one of them. `apply_halfka_deltas_into` can only ever present a
+        // shape in `(0..=2, 0..=2)` — `apply_dirty_directed` builds both lists
+        // in `[RowOffset; 2]` — and the census says it presents just three:
+        // `(1,1)` 3,529,017, `(1,2)` 1,316,030, `(2,1)` 48,267, summing to
+        // `hka_into.calls` exactly. So 4,893,314 calls per 5 M nodes walk a
+        // 48-arm decision tree that three arms would decide, and nobody
+        // measured what the shared table costs the caller it was not grown for.
+        // `(1,1)` is also the modal THREAT shape (449,864), making it 43.4 % of
+        // all 9,163,648 into-folds.
+        //
+        // `hot63` hoists it to a leading direct branch. MEASURED AND REJECTED:
+        // see the banner on the feature in `Cargo.toml` for the number.
         unsafe {
+            #[cfg(feature = "hot63")]
+            if adds.len() == 1 && subs.len() == 1 {
+                return i8_into_shaped::<1, 1>(dst, src, weights, adds, subs);
+            }
             match (adds.len(), subs.len()) {
                 (1, 1) => return i8_into_shaped::<1, 1>(dst, src, weights, adds, subs),
                 (1, 2) => return i8_into_shaped::<1, 2>(dst, src, weights, adds, subs),

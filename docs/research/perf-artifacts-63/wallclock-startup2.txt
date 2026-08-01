@@ -1,0 +1,31 @@
+STARTUP FRAME (1 node): this measures fixed per-process cost only.
+Subtract it from the full-frame result; games never see it.
+
+  ...10/210
+  ...20/210
+  ...30/210
+  ...40/210
+  ...50/210
+  ...60/210
+  ...70/210
+  ...80/210
+  ...90/210
+  ...100/210
+  ...110/210
+  ...120/210
+  ...130/210
+  ...140/210
+  ...150/210
+  ...160/210
+  ...170/210
+  ...180/210
+  ...190/210
+  ...200/210
+  ...210/210
+raw rounds -> docs/research/perf-artifacts-63/wc-startup2-rounds.tsv
+
+NULL (byte-identical): median -0.059%  sd 2.082  sign 111/210 neg  p=0.4479
+ARM                  : median +0.127%  sd 2.754  sign 92/210 neg  p=0.0843
+
+LICENSED (pre-registered median-only: |-0.059| < |0.127|/2)
+  wall-clock : +0.127%

@@ -1,0 +1,400 @@
+### round=0 pos=0 label=db nodes=5001562
+27278270112,,instructions:u,3458020532,100.00,,
+790006577,,ic_tag_hit_miss.instruction_cache_miss:u,3458020532,100.00,,
+17476376142,,cycles:u,3458020532,100.00,,
+### round=0 pos=1 label=base nodes=5001562
+27346835102,,instructions:u,3460738924,100.00,,
+793673096,,ic_tag_hit_miss.instruction_cache_miss:u,3460738924,100.00,,
+17491893716,,cycles:u,3460738924,100.00,,
+### round=0 pos=2 label=null nodes=5001562
+27346834684,,instructions:u,3465300457,100.00,,
+791728996,,ic_tag_hit_miss.instruction_cache_miss:u,3465300457,100.00,,
+17528859559,,cycles:u,3465300457,100.00,,
+### round=0 pos=3 label=all nodes=5001562
+27203484889,,instructions:u,3496730322,100.00,,
+801641272,,ic_tag_hit_miss.instruction_cache_miss:u,3496730322,100.00,,
+17675290216,,cycles:u,3496730322,100.00,,
+### round=0 pos=4 label=de nodes=5001562
+27272049366,,instructions:u,3472162063,100.00,,
+799187389,,ic_tag_hit_miss.instruction_cache_miss:u,3472162063,100.00,,
+17541965130,,cycles:u,3472162063,100.00,,
+### round=1 pos=0 label=base nodes=5001562
+27346835241,,instructions:u,3515439462,100.00,,
+792207641,,ic_tag_hit_miss.instruction_cache_miss:u,3515439462,100.00,,
+17724540089,,cycles:u,3515439462,100.00,,
+### round=1 pos=1 label=null nodes=5001562
+27346835418,,instructions:u,3536743375,100.00,,
+785989504,,ic_tag_hit_miss.instruction_cache_miss:u,3536743375,100.00,,
+17800140385,,cycles:u,3536743375,100.00,,
+### round=1 pos=2 label=all nodes=5001562
+27203486476,,instructions:u,3584437858,100.00,,
+793140836,,ic_tag_hit_miss.instruction_cache_miss:u,3584437858,100.00,,
+18063393285,,cycles:u,3584437858,100.00,,
+### round=1 pos=3 label=de nodes=5001562
+27272049991,,instructions:u,3460119649,100.00,,
+800837868,,ic_tag_hit_miss.instruction_cache_miss:u,3460119649,100.00,,
+17430310941,,cycles:u,3460119649,100.00,,
+### round=1 pos=4 label=db nodes=5001562
+27278269778,,instructions:u,3450250269,100.00,,
+792393770,,ic_tag_hit_miss.instruction_cache_miss:u,3450250269,100.00,,
+17434396549,,cycles:u,3450250269,100.00,,
+### round=2 pos=0 label=null nodes=5001562
+27346835414,,instructions:u,3461464356,100.00,,
+790208077,,ic_tag_hit_miss.instruction_cache_miss:u,3461464356,100.00,,
+17502917101,,cycles:u,3461464356,100.00,,
+### round=2 pos=1 label=all nodes=5001562
+27203484705,,instructions:u,3461884408,100.00,,
+802640299,,ic_tag_hit_miss.instruction_cache_miss:u,3461884408,100.00,,
+17492827428,,cycles:u,3461884408,100.00,,
+### round=2 pos=2 label=de nodes=5001562
+27272049591,,instructions:u,3513208213,100.00,,
+806280742,,ic_tag_hit_miss.instruction_cache_miss:u,3513208213,100.00,,
+17756488376,,cycles:u,3513208213,100.00,,
+### round=2 pos=3 label=db nodes=5001562
+27278270118,,instructions:u,3438823649,100.00,,
+792589719,,ic_tag_hit_miss.instruction_cache_miss:u,3438823649,100.00,,
+17306198873,,cycles:u,3438823649,100.00,,
+### round=2 pos=4 label=base nodes=5001562
+27346834711,,instructions:u,3481841945,100.00,,
+798268052,,ic_tag_hit_miss.instruction_cache_miss:u,3481841945,100.00,,
+17581015533,,cycles:u,3481841945,100.00,,
+### round=3 pos=0 label=all nodes=5001562
+27203485374,,instructions:u,3491971334,100.00,,
+803485211,,ic_tag_hit_miss.instruction_cache_miss:u,3491971334,100.00,,
+17673718512,,cycles:u,3491971334,100.00,,
+### round=3 pos=1 label=de nodes=5001562
+27272050046,,instructions:u,3499574489,100.00,,
+803821768,,ic_tag_hit_miss.instruction_cache_miss:u,3499574489,100.00,,
+17700670342,,cycles:u,3499574489,100.00,,
+### round=3 pos=2 label=db nodes=5001562
+27278270747,,instructions:u,3455678032,100.00,,
+791423616,,ic_tag_hit_miss.instruction_cache_miss:u,3455678032,100.00,,
+17420907124,,cycles:u,3455678032,100.00,,
+### round=3 pos=3 label=base nodes=5001562
+27346835474,,instructions:u,3499638613,100.00,,
+794073778,,ic_tag_hit_miss.instruction_cache_miss:u,3499638613,100.00,,
+17710730553,,cycles:u,3499638613,100.00,,
+### round=3 pos=4 label=null nodes=5001562
+27346835112,,instructions:u,3470318342,100.00,,
+793141991,,ic_tag_hit_miss.instruction_cache_miss:u,3470318342,100.00,,
+17503360959,,cycles:u,3470318342,100.00,,
+### round=4 pos=0 label=de nodes=5001562
+27272049024,,instructions:u,3467256168,100.00,,
+802890892,,ic_tag_hit_miss.instruction_cache_miss:u,3467256168,100.00,,
+17462160795,,cycles:u,3467256168,100.00,,
+### round=4 pos=1 label=db nodes=5001562
+27278270510,,instructions:u,3456716570,100.00,,
+792622858,,ic_tag_hit_miss.instruction_cache_miss:u,3456716570,100.00,,
+17349820721,,cycles:u,3456716570,100.00,,
+### round=4 pos=2 label=base nodes=5001562
+27346835066,,instructions:u,3543639524,100.00,,
+793942099,,ic_tag_hit_miss.instruction_cache_miss:u,3543639524,100.00,,
+17850581561,,cycles:u,3543639524,100.00,,
+### round=4 pos=3 label=null nodes=5001562
+27346835116,,instructions:u,3450363505,100.00,,
+794786943,,ic_tag_hit_miss.instruction_cache_miss:u,3450363505,100.00,,
+17391828563,,cycles:u,3450363505,100.00,,
+### round=4 pos=4 label=all nodes=5001562
+27203485009,,instructions:u,3488544547,100.00,,
+803254586,,ic_tag_hit_miss.instruction_cache_miss:u,3488544547,100.00,,
+17539003992,,cycles:u,3488544547,100.00,,
+### round=5 pos=0 label=all nodes=5001562
+27203484674,,instructions:u,3490115830,100.00,,
+806671437,,ic_tag_hit_miss.instruction_cache_miss:u,3490115830,100.00,,
+17608226772,,cycles:u,3490115830,100.00,,
+### round=5 pos=1 label=null nodes=5001562
+27346835377,,instructions:u,3554440981,100.00,,
+795618575,,ic_tag_hit_miss.instruction_cache_miss:u,3554440981,100.00,,
+17878159333,,cycles:u,3554440981,100.00,,
+### round=5 pos=2 label=base nodes=5001562
+27346835104,,instructions:u,3497080246,100.00,,
+796196677,,ic_tag_hit_miss.instruction_cache_miss:u,3497080246,100.00,,
+17562201736,,cycles:u,3497080246,100.00,,
+### round=5 pos=3 label=de nodes=5001562
+27272049023,,instructions:u,3516768129,100.00,,
+804527262,,ic_tag_hit_miss.instruction_cache_miss:u,3516768129,100.00,,
+17711081396,,cycles:u,3516768129,100.00,,
+### round=5 pos=4 label=db nodes=5001562
+27278270628,,instructions:u,3482240061,100.00,,
+797946521,,ic_tag_hit_miss.instruction_cache_miss:u,3482240061,100.00,,
+17548004013,,cycles:u,3482240061,100.00,,
+### round=6 pos=0 label=null nodes=5001562
+27346835042,,instructions:u,3519909619,100.00,,
+791134602,,ic_tag_hit_miss.instruction_cache_miss:u,3519909619,100.00,,
+17664648488,,cycles:u,3519909619,100.00,,
+### round=6 pos=1 label=base nodes=5001562
+27346835764,,instructions:u,3484435648,100.00,,
+795271711,,ic_tag_hit_miss.instruction_cache_miss:u,3484435648,100.00,,
+17547504952,,cycles:u,3484435648,100.00,,
+### round=6 pos=2 label=de nodes=5001562
+27272049304,,instructions:u,3487669279,100.00,,
+802274191,,ic_tag_hit_miss.instruction_cache_miss:u,3487669279,100.00,,
+17573265698,,cycles:u,3487669279,100.00,,
+### round=6 pos=3 label=db nodes=5001562
+27278270193,,instructions:u,3480952442,100.00,,
+790447225,,ic_tag_hit_miss.instruction_cache_miss:u,3480952442,100.00,,
+17472971539,,cycles:u,3480952442,100.00,,
+### round=6 pos=4 label=all nodes=5001562
+27203484732,,instructions:u,3502601846,100.00,,
+803545909,,ic_tag_hit_miss.instruction_cache_miss:u,3502601846,100.00,,
+17652383156,,cycles:u,3502601846,100.00,,
+### round=7 pos=0 label=base nodes=5001562
+27346835208,,instructions:u,3496315962,100.00,,
+790696715,,ic_tag_hit_miss.instruction_cache_miss:u,3496315962,100.00,,
+17605878050,,cycles:u,3496315962,100.00,,
+### round=7 pos=1 label=de nodes=5001562
+27272049823,,instructions:u,3476667879,100.00,,
+800015470,,ic_tag_hit_miss.instruction_cache_miss:u,3476667879,100.00,,
+17511864828,,cycles:u,3476667879,100.00,,
+### round=7 pos=2 label=db nodes=5001562
+27278270308,,instructions:u,3491715731,100.00,,
+792361245,,ic_tag_hit_miss.instruction_cache_miss:u,3491715731,100.00,,
+17567059729,,cycles:u,3491715731,100.00,,
+### round=7 pos=3 label=all nodes=5001562
+27203484312,,instructions:u,3485692355,100.00,,
+800453269,,ic_tag_hit_miss.instruction_cache_miss:u,3485692355,100.00,,
+17575342559,,cycles:u,3485692355,100.00,,
+### round=7 pos=4 label=null nodes=5001562
+27346834927,,instructions:u,3473254869,100.00,,
+789469018,,ic_tag_hit_miss.instruction_cache_miss:u,3473254869,100.00,,
+17480504244,,cycles:u,3473254869,100.00,,
+### round=8 pos=0 label=de nodes=5001562
+27272049432,,instructions:u,3500250702,100.00,,
+796937365,,ic_tag_hit_miss.instruction_cache_miss:u,3500250702,100.00,,
+17628055984,,cycles:u,3500250702,100.00,,
+### round=8 pos=1 label=db nodes=5001562
+27278270614,,instructions:u,3482492360,100.00,,
+789161039,,ic_tag_hit_miss.instruction_cache_miss:u,3482492360,100.00,,
+17568534256,,cycles:u,3482492360,100.00,,
+### round=8 pos=2 label=all nodes=5001562
+27203485266,,instructions:u,3475663087,100.00,,
+801064194,,ic_tag_hit_miss.instruction_cache_miss:u,3475663087,100.00,,
+17518513686,,cycles:u,3475663087,100.00,,
+### round=8 pos=3 label=null nodes=5001562
+27346835237,,instructions:u,3494058539,100.00,,
+790926820,,ic_tag_hit_miss.instruction_cache_miss:u,3494058539,100.00,,
+17569791890,,cycles:u,3494058539,100.00,,
+### round=8 pos=4 label=base nodes=5001562
+27346836615,,instructions:u,3483648794,100.00,,
+793141607,,ic_tag_hit_miss.instruction_cache_miss:u,3483648794,100.00,,
+17548265334,,cycles:u,3483648794,100.00,,
+### round=9 pos=0 label=db nodes=5001562
+27278270360,,instructions:u,3455465323,100.00,,
+792799932,,ic_tag_hit_miss.instruction_cache_miss:u,3455465323,100.00,,
+17387130077,,cycles:u,3455465323,100.00,,
+### round=9 pos=1 label=all nodes=5001562
+27203484616,,instructions:u,3516461705,100.00,,
+805870689,,ic_tag_hit_miss.instruction_cache_miss:u,3516461705,100.00,,
+17733877785,,cycles:u,3516461705,100.00,,
+### round=9 pos=2 label=null nodes=5001562
+27346835112,,instructions:u,3520437858,100.00,,
+788879910,,ic_tag_hit_miss.instruction_cache_miss:u,3520437858,100.00,,
+17761853954,,cycles:u,3520437858,100.00,,
+### round=9 pos=3 label=base nodes=5001562
+27346835058,,instructions:u,3479866026,100.00,,
+793718913,,ic_tag_hit_miss.instruction_cache_miss:u,3479866026,100.00,,
+17525156395,,cycles:u,3479866026,100.00,,
+### round=9 pos=4 label=de nodes=5001562
+27272049427,,instructions:u,3506440941,100.00,,
+803438805,,ic_tag_hit_miss.instruction_cache_miss:u,3506440941,100.00,,
+17627586771,,cycles:u,3506440941,100.00,,
+### round=10 pos=0 label=base nodes=5001562
+27346835492,,instructions:u,3502324916,100.00,,
+794032588,,ic_tag_hit_miss.instruction_cache_miss:u,3502324916,100.00,,
+17651754925,,cycles:u,3502324916,100.00,,
+### round=10 pos=1 label=db nodes=5001562
+27278269952,,instructions:u,3511652607,100.00,,
+791045057,,ic_tag_hit_miss.instruction_cache_miss:u,3511652607,100.00,,
+17654848660,,cycles:u,3511652607,100.00,,
+### round=10 pos=2 label=null nodes=5001562
+27346835055,,instructions:u,3474011097,100.00,,
+792908084,,ic_tag_hit_miss.instruction_cache_miss:u,3474011097,100.00,,
+17506450379,,cycles:u,3474011097,100.00,,
+### round=10 pos=3 label=all nodes=5001562
+27203485591,,instructions:u,3516826014,100.00,,
+805723224,,ic_tag_hit_miss.instruction_cache_miss:u,3516826014,100.00,,
+17693640631,,cycles:u,3516826014,100.00,,
+### round=10 pos=4 label=de nodes=5001562
+27272049425,,instructions:u,3483096344,100.00,,
+803557335,,ic_tag_hit_miss.instruction_cache_miss:u,3483096344,100.00,,
+17578801323,,cycles:u,3483096344,100.00,,
+### round=11 pos=0 label=db nodes=5001562
+27278270917,,instructions:u,3509513217,100.00,,
+790982885,,ic_tag_hit_miss.instruction_cache_miss:u,3509513217,100.00,,
+17679015636,,cycles:u,3509513217,100.00,,
+### round=11 pos=1 label=null nodes=5001562
+27346834915,,instructions:u,3474401840,100.00,,
+796475247,,ic_tag_hit_miss.instruction_cache_miss:u,3474401840,100.00,,
+17504924364,,cycles:u,3474401840,100.00,,
+### round=11 pos=2 label=all nodes=5001562
+27203485102,,instructions:u,3493002364,100.00,,
+804445947,,ic_tag_hit_miss.instruction_cache_miss:u,3493002364,100.00,,
+17565727250,,cycles:u,3493002364,100.00,,
+### round=11 pos=3 label=de nodes=5001562
+27272049753,,instructions:u,3517590226,100.00,,
+802021203,,ic_tag_hit_miss.instruction_cache_miss:u,3517590226,100.00,,
+17724110176,,cycles:u,3517590226,100.00,,
+### round=11 pos=4 label=base nodes=5001562
+27346835130,,instructions:u,3521891268,100.00,,
+793569612,,ic_tag_hit_miss.instruction_cache_miss:u,3521891268,100.00,,
+17685725542,,cycles:u,3521891268,100.00,,
+### round=12 pos=0 label=null nodes=5001562
+27346835326,,instructions:u,3456429993,100.00,,
+791349639,,ic_tag_hit_miss.instruction_cache_miss:u,3456429993,100.00,,
+17375380609,,cycles:u,3456429993,100.00,,
+### round=12 pos=1 label=all nodes=5001562
+27203484770,,instructions:u,3511250234,100.00,,
+805873425,,ic_tag_hit_miss.instruction_cache_miss:u,3511250234,100.00,,
+17642656847,,cycles:u,3511250234,100.00,,
+### round=12 pos=2 label=de nodes=5001562
+27272049409,,instructions:u,3519410482,100.00,,
+804982008,,ic_tag_hit_miss.instruction_cache_miss:u,3519410482,100.00,,
+17687069749,,cycles:u,3519410482,100.00,,
+### round=12 pos=3 label=base nodes=5001562
+27346836002,,instructions:u,3542175273,100.00,,
+798294827,,ic_tag_hit_miss.instruction_cache_miss:u,3542175273,100.00,,
+17796824676,,cycles:u,3542175273,100.00,,
+### round=12 pos=4 label=db nodes=5001562
+27278270541,,instructions:u,3498262270,100.00,,
+795521760,,ic_tag_hit_miss.instruction_cache_miss:u,3498262270,100.00,,
+17530245184,,cycles:u,3498262270,100.00,,
+### round=13 pos=0 label=all nodes=5001562
+27203485418,,instructions:u,3525689959,100.00,,
+804589520,,ic_tag_hit_miss.instruction_cache_miss:u,3525689959,100.00,,
+17745993248,,cycles:u,3525689959,100.00,,
+### round=13 pos=1 label=de nodes=5001562
+27272049386,,instructions:u,3538216761,100.00,,
+796410799,,ic_tag_hit_miss.instruction_cache_miss:u,3538216761,100.00,,
+17801940246,,cycles:u,3538216761,100.00,,
+### round=13 pos=2 label=base nodes=5001562
+27346835584,,instructions:u,3511695180,100.00,,
+792386981,,ic_tag_hit_miss.instruction_cache_miss:u,3511695180,100.00,,
+17589011186,,cycles:u,3511695180,100.00,,
+### round=13 pos=3 label=db nodes=5001562
+27278270484,,instructions:u,3486109158,100.00,,
+791836040,,ic_tag_hit_miss.instruction_cache_miss:u,3486109158,100.00,,
+17539699063,,cycles:u,3486109158,100.00,,
+### round=13 pos=4 label=null nodes=5001562
+27346835139,,instructions:u,3487758265,100.00,,
+790750193,,ic_tag_hit_miss.instruction_cache_miss:u,3487758265,100.00,,
+17560982855,,cycles:u,3487758265,100.00,,
+### round=14 pos=0 label=de nodes=5001562
+27272049766,,instructions:u,3477861076,100.00,,
+804330185,,ic_tag_hit_miss.instruction_cache_miss:u,3477861076,100.00,,
+17505626899,,cycles:u,3477861076,100.00,,
+### round=14 pos=1 label=base nodes=5001562
+27346834614,,instructions:u,3497520279,100.00,,
+797303475,,ic_tag_hit_miss.instruction_cache_miss:u,3497520279,100.00,,
+17592623259,,cycles:u,3497520279,100.00,,
+### round=14 pos=2 label=db nodes=5001562
+27278270780,,instructions:u,3499838869,100.00,,
+792084563,,ic_tag_hit_miss.instruction_cache_miss:u,3499838869,100.00,,
+17630895582,,cycles:u,3499838869,100.00,,
+### round=14 pos=3 label=null nodes=5001562
+27346834894,,instructions:u,3460639331,100.00,,
+790681780,,ic_tag_hit_miss.instruction_cache_miss:u,3460639331,100.00,,
+17400579318,,cycles:u,3460639331,100.00,,
+### round=14 pos=4 label=all nodes=5001562
+27203484577,,instructions:u,3497687855,100.00,,
+802469902,,ic_tag_hit_miss.instruction_cache_miss:u,3497687855,100.00,,
+17628801800,,cycles:u,3497687855,100.00,,
+### round=15 pos=0 label=base nodes=5001562
+27346835504,,instructions:u,3520838619,100.00,,
+797814515,,ic_tag_hit_miss.instruction_cache_miss:u,3520838619,100.00,,
+17758438777,,cycles:u,3520838619,100.00,,
+### round=15 pos=1 label=db nodes=5001562
+27278270434,,instructions:u,3458562982,100.00,,
+791560268,,ic_tag_hit_miss.instruction_cache_miss:u,3458562982,100.00,,
+17416688417,,cycles:u,3458562982,100.00,,
+### round=15 pos=2 label=null nodes=5001562
+27346835559,,instructions:u,3517849252,100.00,,
+791097765,,ic_tag_hit_miss.instruction_cache_miss:u,3517849252,100.00,,
+17691924007,,cycles:u,3517849252,100.00,,
+### round=15 pos=3 label=de nodes=5001562
+27272049529,,instructions:u,3516927101,100.00,,
+802717590,,ic_tag_hit_miss.instruction_cache_miss:u,3516927101,100.00,,
+17747892314,,cycles:u,3516927101,100.00,,
+### round=15 pos=4 label=all nodes=5001562
+27203485366,,instructions:u,3476476900,100.00,,
+803999453,,ic_tag_hit_miss.instruction_cache_miss:u,3476476900,100.00,,
+17519987989,,cycles:u,3476476900,100.00,,
+### round=16 pos=0 label=db nodes=5001562
+27278270483,,instructions:u,3490996516,100.00,,
+795205761,,ic_tag_hit_miss.instruction_cache_miss:u,3490996516,100.00,,
+17554424921,,cycles:u,3490996516,100.00,,
+### round=16 pos=1 label=null nodes=5001562
+27346834714,,instructions:u,3483417986,100.00,,
+794613010,,ic_tag_hit_miss.instruction_cache_miss:u,3483417986,100.00,,
+17561146422,,cycles:u,3483417986,100.00,,
+### round=16 pos=2 label=de nodes=5001562
+27272048970,,instructions:u,3455023635,100.00,,
+800250822,,ic_tag_hit_miss.instruction_cache_miss:u,3455023635,100.00,,
+17397438610,,cycles:u,3455023635,100.00,,
+### round=16 pos=3 label=all nodes=5001562
+27203485399,,instructions:u,3515868480,100.00,,
+806775713,,ic_tag_hit_miss.instruction_cache_miss:u,3515868480,100.00,,
+17661503130,,cycles:u,3515868480,100.00,,
+### round=16 pos=4 label=base nodes=5001562
+27346835035,,instructions:u,3501105254,100.00,,
+796060984,,ic_tag_hit_miss.instruction_cache_miss:u,3501105254,100.00,,
+17639806481,,cycles:u,3501105254,100.00,,
+### round=17 pos=0 label=null nodes=5001562
+27346834757,,instructions:u,3523844600,100.00,,
+790205099,,ic_tag_hit_miss.instruction_cache_miss:u,3523844600,100.00,,
+17729070514,,cycles:u,3523844600,100.00,,
+### round=17 pos=1 label=de nodes=5001562
+27272049719,,instructions:u,3502439111,100.00,,
+802894544,,ic_tag_hit_miss.instruction_cache_miss:u,3502439111,100.00,,
+17642097782,,cycles:u,3502439111,100.00,,
+### round=17 pos=2 label=all nodes=5001562
+27203485048,,instructions:u,3495110283,100.00,,
+804653048,,ic_tag_hit_miss.instruction_cache_miss:u,3495110283,100.00,,
+17630581225,,cycles:u,3495110283,100.00,,
+### round=17 pos=3 label=base nodes=5001562
+27346835222,,instructions:u,3473828793,100.00,,
+803839097,,ic_tag_hit_miss.instruction_cache_miss:u,3473828793,100.00,,
+17500193402,,cycles:u,3473828793,100.00,,
+### round=17 pos=4 label=db nodes=5001562
+27278271443,,instructions:u,3496643963,100.00,,
+789573461,,ic_tag_hit_miss.instruction_cache_miss:u,3496643963,100.00,,
+17604093015,,cycles:u,3496643963,100.00,,
+### round=18 pos=0 label=de nodes=5001562
+27272049806,,instructions:u,3507836356,100.00,,
+801046219,,ic_tag_hit_miss.instruction_cache_miss:u,3507836356,100.00,,
+17652316954,,cycles:u,3507836356,100.00,,
+### round=18 pos=1 label=all nodes=5001562
+27203484786,,instructions:u,3490886089,100.00,,
+802146274,,ic_tag_hit_miss.instruction_cache_miss:u,3490886089,100.00,,
+17616054825,,cycles:u,3490886089,100.00,,
+### round=18 pos=2 label=base nodes=5001562
+27346835326,,instructions:u,3521791231,100.00,,
+792548228,,ic_tag_hit_miss.instruction_cache_miss:u,3521791231,100.00,,
+17751203407,,cycles:u,3521791231,100.00,,
+### round=18 pos=3 label=db nodes=5001562
+27278270267,,instructions:u,3515918605,100.00,,
+790751102,,ic_tag_hit_miss.instruction_cache_miss:u,3515918605,100.00,,
+17730177243,,cycles:u,3515918605,100.00,,
+### round=18 pos=4 label=null nodes=5001562
+27346834753,,instructions:u,3464182575,100.00,,
+788921172,,ic_tag_hit_miss.instruction_cache_miss:u,3464182575,100.00,,
+17449347749,,cycles:u,3464182575,100.00,,
+### round=19 pos=0 label=all nodes=5001562
+27203484638,,instructions:u,3557589886,100.00,,
+797774823,,ic_tag_hit_miss.instruction_cache_miss:u,3557589886,100.00,,
+17952162224,,cycles:u,3557589886,100.00,,
+### round=19 pos=1 label=base nodes=5001562
+27346836075,,instructions:u,3508306132,100.00,,
+792171524,,ic_tag_hit_miss.instruction_cache_miss:u,3508306132,100.00,,
+17643816716,,cycles:u,3508306132,100.00,,
+### round=19 pos=2 label=db nodes=5001562
+27278271217,,instructions:u,3450225955,100.00,,
+794702379,,ic_tag_hit_miss.instruction_cache_miss:u,3450225955,100.00,,
+17362485228,,cycles:u,3450225955,100.00,,
+### round=19 pos=3 label=null nodes=5001562
+27346834809,,instructions:u,3451696027,100.00,,
+789326783,,ic_tag_hit_miss.instruction_cache_miss:u,3451696027,100.00,,
+17390673261,,cycles:u,3451696027,100.00,,
+### round=19 pos=4 label=de nodes=5001562
+27272048874,,instructions:u,3463633459,100.00,,
+802466017,,ic_tag_hit_miss.instruction_cache_miss:u,3463633459,100.00,,
+17475382926,,cycles:u,3463633459,100.00,,
