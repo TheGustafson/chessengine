@@ -15958,3 +15958,26 @@ the contaminated depth regex, and now an entire strength harness measuring the
 wrong engine. **Every one was caught by checking the instrument rather than the
 result** — and this one was caught by a subagent I had pointed at something else
 entirely.
+
+**`d49retest` LAUNCHED — the tunables get the test they never actually had.**
+
+Status to be unambiguous: **the 154 SF `ebcea3ef` values are OUT of main right
+now** (razoring reads 465/300, the `eca43a97` pair), removed by `d5f89245` on a
+result that measured **PSQT on both sides**. So they were never tested; they were
+discarded on an experiment about a different engine.
+
+**Both failures of the first arm are fixed in this one:**
+1. **PSQT instead of NNUE** — `sprt.sh` now defaults `NET=engines/canonical/net.cenn`
+   (fix `991fbf43`).
+2. **The pair differed by more than the tunables** — `archon-s68` vs `archon-s25`
+   also differed by study 68's `SearchStats` fix and by whatever `s25` predates
+   (study 70 additionally found `s25` is STALE: 1,799,710 vs this tree's
+   1,739,588). **Both binaries here are built from TODAY'S main, differing ONLY in
+   the 154 values**, via `git revert` of the revert.
+
+Deliberately **not** churning main by restoring-then-maybe-re-reverting: the
+branch `tunables-retest` exists only to build the candidate, and main is left
+alone until games say something.
+
+Sequenced behind `d49len` and gated on ≥3000 MB before each build — the box hit
+1568 MB at 08:02 and the trainer must not be the thing that pays.
