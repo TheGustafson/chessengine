@@ -17155,3 +17155,19 @@ to be free" against a loop service is wrong however it is phrased.
 **Live:** D49 continuation sb1645+ (self-restarting), teacher calibration running
 CPU-only, memory 6745 MB, matcher deliberately down until the A/B completes —
 `d49abpri` restores it automatically.
+
+**A/B RUNNING AND VERIFIED** (13:03:31). Read off the live fastchess argv, not
+inferred from the script:
+
+```
+option.EvalFile=…/d49-cyc3-sb1630.cenn      (CAND — 3 jump→anneal cycles)
+option.EvalFile=…/d49-sb1540-1068.cenn      (REF  — the anchor)
+```
+
+Correct pairing, both packed at scale 1068, one match, **one bar (±10)**.
+Result in ~25 min. `d49abpri` restores the matcher automatically afterwards.
+
+**What the A/B decides, given cycle 3 collapsed to +0.69:** whether three cycles
+beat the point they started from at all. The four separate-screen readings give
++3.02 ± 12.58 — a bar wide enough to contain both "worth +6" and "worth nothing".
+This single match halves that bar by removing the anchor's independent error.
