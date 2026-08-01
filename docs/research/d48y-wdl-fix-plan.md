@@ -14584,3 +14584,44 @@ real-clock). **No frame decision ships without a real-TC confirmation.**
 **Study 66** is alive and committing as it goes (`fc992b02`, an intra-fold
 census of redundancy and address spread; zero uncommitted files) — the discipline
 study 20 failed at.
+
+---
+
+## 2026-08-01 03:02 — CORRECTION: "point-for-point" was an over-read of an n=529 interim
+
+**D49:** sb1380+, heldout ema **0.010456** — another run low.
+
+**The 1068 arm FINISHED at -3.01 +/- 11.09, not the -8.54 I quoted.** Last tick I
+read it at **n=529** (bar +/-16.7), saw -8.54 against the old -8.57, and wrote
+that the curve "reproduces POINT-FOR-POINT... within 0.03 Elo." **At full n=1500
+it is -3.01.** The 0.03 coincidence was noise in a half-finished match, and I
+built a headline on it.
+
+That is precisely the standing rule I keep re-learning: *quote levels, not
+trends*, and do not read a verdict off an underpowered n. The bar at n=529 was
++/-16.7 — wide enough to swallow the entire effect I was claiming precision
+about.
+
+**Corrected table:**
+
+| pack scale | slope vs SF | BEFORE (eca43a97) | AFTER (ebcea3ef, PGO) |
+|---:|---:|---:|---:|
+| 1585 (parity) | 0.995 | -18.08 +/- 10.79 | **-19.71 +/- 11.48** |
+| 1068 | 0.672 | -8.57 +/- 10.57 | **-3.01 +/- 11.09** |
+| 756 | 0.477 | +3.24 +/- 10.65 | running |
+| 535 | 0.339 | not run | pending |
+
+**What SURVIVES the correction:** parity is still ~17-20 Elo below the shipped
+frame in BOTH margin sets, and both 1068 readings sit between parity and 756.
+The qualitative finding — matching Stockfish's internal frame costs real Elo, and
+the refresh does not rescue it — is intact. **What does NOT survive is the claim
+of numerical identity.** The honest statement is "consistent within bars", not
+"reproduces to 0.03".
+
+**Memory scare, resolved without intervention.** Available dipped 6487 -> 3450 MB
+while study 66's test binary peaked at 2.2 GB / 401% CPU. It IS correctly wrapped
+(`flock` + `systemd-run --scope -p MemoryMax=6G -p MemorySwapMax=0`), so it was
+capped and could not take the box down. Sampled the trend rather than reacting:
+recovered to ~6300 MB within a minute, and **zero kernel OOM kills since 02:00**.
+The failed scopes visible in `list-units` are stale ones from a retired worktree,
+not live failures.
