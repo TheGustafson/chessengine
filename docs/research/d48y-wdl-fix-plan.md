@@ -17261,3 +17261,33 @@ claim it had made about the same thing.
 **Live:** A/B at **747/1500**; D49 continuation sb1650 → sb2130 (self-restarting);
 matcher deliberately down, `d49abpri` restores it; memory ~5.4 GB; no OOM since
 the owner's 08:15 npm build.
+
+---
+
+## 2026-08-01 13:18 — closed the last "healthy while dead" hole
+
+**A/B at 885/1500**; D49 continuation **sb1651**, 179.0k pos/s; memory 5349 MB.
+
+**Verified `d49x500`'s self-restart logic rather than assuming it** — `RESUME`
+resolves to **1650** (the newest checkpoint), it relaunches from there on any
+exit, and it stops itself at ≥2130. Correct.
+
+**But it has no instant-failure guard**, and that is the exact hole that has
+opened three times today: a trainer dying in 1.5 s (as mine did at 08:54 with
+`ARCHON_JAX_ALLOW_GPU` missing) would relaunch forever while `systemctl` still
+reported the unit **active**. Nothing would look wrong.
+
+**Did NOT edit the running script** — bash reads scripts incrementally and
+editing one mid-execution can corrupt it. Added an **external watchdog**
+(`x500watch`) instead, which is additive and cannot disturb the trainer.
+
+**It watches the WORK, not the status** — the `components sb` counter, sampled
+every 10 min against a ~2.4 min superbatch. Three consecutive no-progress windows
+logs a loud STALLED line plus the last five journal lines. That is the same
+predicate correction that fixed the A/B starvation an hour ago: **a unit's
+`is-active` describes the supervisor, never the work.**
+
+**Standing state:** D49 continuation self-restarting toward sb2130 with a
+progress watchdog; matcher down until the A/B completes, then auto-restored;
+teacher calibration delivered with reproducible tooling; per-node microarch
+surface closed by studies 65–69.
