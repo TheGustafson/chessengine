@@ -15395,3 +15395,39 @@ it.**
 
 Study 69's worktree verified intact afterwards; all 27 worktree registrations
 survive.
+
+---
+
+## 2026-08-01 06:18 — POOLED: D49 is +9.70 +/- 4.47 Elo over canonical across 9000 games
+
+**D49:** sb1470, heldout ema 0.010451. **sb1700 ~9.2 h out.** All units green.
+
+**Six consecutive frame-fair screens** (scale 1068; logged stdev 595–607 against
+canonical's 610), 1500 games each at 25k fixed nodes:
+
+| checkpoint | Elo vs canonical |
+|---|---:|
+| sb1350 | +12.75 +/- 11.05 |
+| sb1410 | +15.06 +/- 10.84 |
+| sb1420 | +14.14 +/- 10.92 |
+| sb1430 | **+1.85 +/- 11.05** |
+| sb1440 | +3.71 +/- 10.51 |
+| sb1450 | +10.66 +/- 11.11 |
+
+**POOLED: +9.70 +/- 4.47 Elo over 9000 games** (sd across checkpoints 5.59,
+SE 2.28).
+
+**The reason to pool rather than quote the newest: the point-to-point swing
+(+1.85 to +15.06, 13 Elo) EXCEEDS any plausible training gain over 100
+superbatches.** A single 1500-game screen at +/-11 cannot resolve progress at this
+resolution — it is mostly sampling noise around a positive level. Quoting
+"sb1410 = +15.06" as D49's strength, as I did at 04:32, over-reads one draw;
+quoting sb1430's +1.85 would under-read it identically.
+
+**What the pool does and does not claim.** It is an average over the sb1350-1450
+RANGE, not one net's strength — six different nets. That is the right object
+here: it says **D49 in this range is solidly ahead of canonical**, which is a
+claim the individual screens cannot support and the pool can.
+
+**Caveat retained:** all six ran on the OLD binary (`target-sota`, bench 587683),
+deliberately, for series consistency. The sb1700 verdict must use the PGO build.
