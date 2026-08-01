@@ -15893,3 +15893,31 @@ matcher.
 
 **This measures directly what the D48X-vs-D49 comparison can only infer**, and it
 is the number that should govern how long the NEXT run trains.
+
+---
+
+## 2026-08-01 08:02 — MEMORY FLOOR BREACHED (1568 MB). Shed load, no OOM.
+
+**D49:** sb1518, 188.4k pos/s — trainer unaffected throughout.
+
+**`MemAvailable` fell to 1568 MB, below the standing 2500 MB floor.** Cause was
+cumulative, not any single job: **13 match engine processes** (`d49xml` at CONC=3
+plus `d49len` at CONC=2, ~138 MB of net each), study 70's `cargo test`, the
+trainer at 2.6 GB, and ~1.4 GB of the owner's browser.
+
+**Shed the least valuable load rather than the newest.** Stopped **`d49xml`**,
+the per-export trajectory matcher — it is the redundant one now: the trajectory
+already has **15000 pooled games (+8.41 ± 3.89)** and a flat trend, whereas
+`d49len` is answering the live undertraining question. Kept `d49len`.
+
+**Result: 1568 → 3713 MB available, 13 → 7 engine processes, zero kernel OOM
+kills.** The trainer never faltered (188.4k pos/s throughout).
+
+**Armed `d49rearm`** so the matcher restores itself: it waits for `d49len` to
+finish AND for ≥3500 MB to be free, then relaunches `export_match_loop.sh`. No
+manual step, and it cannot re-create the squeeze it was stopped for.
+
+**The judgement worth recording: when the box is over-committed, stop the job
+whose information is already collected, not the job that is running.** Three
+concurrent matches was one too many, and the failure would have been an OOM-killed
+trainer — the exact thing that cost 3 superbatches at 22:53 last night.
