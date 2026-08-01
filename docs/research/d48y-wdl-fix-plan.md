@@ -17114,3 +17114,44 @@ commissioned.
 **Standing correction for anyone using the teacher:** `sf-eval` is raw SF
 internal. To reach a label frame you need that corpus's measured slope — not
 0.538, not 1.023, and not a single global constant.
+
+---
+
+## 2026-08-01 13:05 — ★ CYCLE 3 COLLAPSES TO THE ANCHOR: +0.69. The cycles do NOT hold.
+
+**All four points now measured, 1500 games each vs canonical:**
+
+| checkpoint | phase | Elo vs canonical |
+|---|---|---:|
+| sb1540 | **anchor** | +3.47 ± 11.22 |
+| sb1570 | cycle 1 end | +9.27 ± 11.04 |
+| sb1600 | cycle 2 end | +9.50 ± 10.86 |
+| **sb1630** | **cycle 3 end** | **+0.69 ± 10.76** |
+
+**Cycle 3 gave back everything cycles 1–2 gained.** Pooled over the three
+anneal-ends: **+6.49 ± 5.69**; against the anchor that is **+3.02 ± 12.58 — not
+significant**, and weaker than the +5.91 ± 13.65 the first two suggested.
+
+**This substantially undercuts the "cycles help" reading**, and it is the outcome
+the spread always allowed: the series' measured point-to-point swing is **13
+Elo**, and 0.69→9.50 is exactly 8.8. Two consecutive favourable draws looked like
+a plateau at +9.4; the third says they were draws. **I flagged that risk when I
+reported cycle 1** — "+9.27 sits comfortably inside the ordinary spread of this
+series" — and cycle 3 is what that caution was for.
+
+**The A/B is now the only thing that can settle it**, which is why it was armed
+before any of these landed.
+
+**MY WAIT PREDICATE FAILED A SECOND TIME, in a new form.** I fixed
+`is-active`-on-a-loop-service by gating on `pgrep -c fastchess == 0`. But the
+matcher **starts the next screen immediately**, so fastchess is never 0 for more
+than a few seconds — the A/B starved again. **Stopped the matcher outright**;
+fastchess reached 0 and the A/B can proceed.
+
+The real lesson is not about the predicate: **a background loop that
+self-perpetuates cannot be waited out, only stood down.** Any "wait for the box
+to be free" against a loop service is wrong however it is phrased.
+
+**Live:** D49 continuation sb1645+ (self-restarting), teacher calibration running
+CPU-only, memory 6745 MB, matcher deliberately down until the A/B completes —
+`d49abpri` restores it automatically.
