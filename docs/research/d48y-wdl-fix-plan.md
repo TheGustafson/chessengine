@@ -17912,3 +17912,53 @@ problem, not a failure on its part.
 
 **Standing consequence for this box: trainer OR builds, never both.** Three OOMs
 today all have the same shape.
+
+---
+
+## 2026-08-01 16:25 — ★ MY HELDOUT ABORT CHECK IS VOID FOR THE TEACHER ARM
+
+**I pre-registered at 14:17: "heldout ema must drop below 0.010432 by ~sb1900 or
+the 5× restart cost more than it bought." That was written for the PLAIN
+continuation and it is INVALID for the teacher probe.** The agent caught it and
+it would have killed the owner's experiment for the wrong reason.
+
+**Why it is invalid: heldout is scored against LABELS, and the probe trains on a
+target that is only 60 % labels.** A student pulled 40 % toward a teacher that
+disagrees with those labels **must** score worse against them. Gate 2 measured
+that disagreement directly — **the teacher explains only 0.505–0.894 of label
+variance** depending on corpus. **A rising label-heldout is the EXPECTED
+signature of the blend working as specified.**
+
+This is [[loss-is-not-elo]] in its sharpest form: the knob under test *deliberately
+pulls the two apart*, so the usual "loss is a weak proxy" caveat becomes "loss
+moves the wrong way BY DESIGN".
+
+**The data says no abort regardless:**
+
+| sb | value | Δ | ema |
+|---|---|---|---|
+| 1632 | 0.010545 | — | 0.010473 |
+| 1634 | 0.010568 | +23e−6 | 0.010503 |
+| 1636 | 0.010570 | **+2e−6** | 0.010522 |
+
+`value` is **decelerating hard** — the student re-equilibrates to the blended
+target within ~2 sb. The `ema` still climbs only because its shadow was reset at
+the warm point and `ema_decay=0.99984` lags ~2 sb. Total excursion **+0.7 %**
+against a plain-run band that wobbles ~0.2 %. **A gross frame error would diverge
+large and ACCELERATING**; gate 2 independently bounds frame error at **≤2.8 %**
+per corpus.
+
+**What heldout IS still good for here: an abort tripwire for a catastrophic frame
+bug, and nothing else.** It cannot settle the blend's value in either direction.
+
+**STILL OWED, and both are now MINE since training is the coordinator's:**
+1. **Gate 3** — the α=0 bit-identity null (use `--student-hl 128`, ~1/10th the
+   memory).
+2. **The matched α=0 control**, warmed from the identical **sb1630-EMA**
+   checkpoint. The plain run resumed from the **raw** checkpoint (since deleted,
+   and they differ), so **`cyc.log` sb1631–1642 is indicative, NOT a matched
+   control**. Without it, probe-vs-plain compares two different warm starts.
+
+**Sequencing under the new serialization rule (trainer OR builds, never both):**
+probe runs to sb1642, then I run the matched α=0 control from the same EMA warm,
+then the comparison means something.
