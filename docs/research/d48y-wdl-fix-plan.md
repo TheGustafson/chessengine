@@ -14924,3 +14924,37 @@ actually ship. Run the 5880-game screen (+/-5 Elo) with it, not with
 the moment it matters.
 
 Study 67 running. Box 6066 MB, no OOM.
+
+---
+
+## 2026-08-01 04:47 — tick: LR decay VERIFIED end-to-end (and my own file path was wrong)
+
+**D49:** sb1430, 188.7k pos/s, heldout ema 0.010449. All six units active.
+`d49xml` screening sb1420 (stdev 599.9). Disk 121 GB, memory 5691 MB avail, no
+OOM. **sb1700 is ~10.8 h out** (270 sb at ~2.4 min/sb).
+
+**Verified the gentle LR decay is actually being applied** — it had been set up
+hours ago and never checked end-to-end, and "configured" is not "running".
+
+- The live process runs `pump_train.py ../tools/nnue/runs/d49z_decay_1280.json
+  1270`, so the decay spec IS the loaded one.
+- `jax/tools/pump_train.py:116` parses `lr_ramp` into the config.
+- `jax/archon_jax/train.py:65-80` computes
+  `sb_abs = (start_superbatch - 1.0) + count/bps` and `jnp.interp`s the 134
+  breakpoints, **explicitly taking priority over the cosine** ("Priority over
+  the cosine below") and clamping flat outside the range. Resumed legs land on
+  the same global curve, which matters because this run restarted at 1270 after
+  the OOM.
+- Ramp: 1.579e-5 at sb1170 -> 1.887e-6 at sb1700, 0.996/sb. **At sb1430 that is
+  5.57e-6.**
+
+So the cyclical schedule is genuinely replaced by the gentle decay that was
+asked for, on the absolute superbatch, surviving restarts.
+
+**My own note had the wrong path.** I had recorded the consumer as
+`tools/nnue/train.py:67`; that file **does not exist** — it is
+`jax/archon_jax/train.py:67`. The first grep therefore returned nothing, which
+reads exactly like "the decay is not wired" and would have been an alarming and
+false finding. Same class as the `i16_deltas_into` ghost earlier tonight:
+**a remembered file:line is not evidence; re-locate it before concluding from
+its absence.**
