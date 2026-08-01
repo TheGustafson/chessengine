@@ -17962,3 +17962,40 @@ bug, and nothing else.** It cannot settle the blend's value in either direction.
 **Sequencing under the new serialization rule (trainer OR builds, never both):**
 probe runs to sb1642, then I run the matched α=0 control from the same EMA warm,
 then the comparison means something.
+
+## 2026-08-01 16:40 tick — simplification claims VERIFIED-WITH-CORRECTIONS; study 72 briefed, held
+
+**Three quantities were merged into one headline. Re-derived myself:**
+
+| quantity | main | branch | change |
+|---|---|---|---|
+| SPSA-exposed knobs (`tunables!`) | 315 | **231** | **-84** (agent: 88) |
+| constified (`constants!`, in code, not tunable) | 0 | 67 | +67 |
+| total declarations | 315 | 298 | **-17 actually deleted** |
+| lines, tier 0/0b commits only | — | — | **-2,937/+502 = net -2,435** |
+
+- **"~3,300 lines removed" was the wrong range.** Whole-branch diff is
+  **+5,981/-2,965 — a net ADD of 3,016** (it carries the study 70/71 merges).
+- **"313->225" conflates deletion with constification.** 67 knobs became
+  compile-time constants: same `NAME()` call sites, invisible to SPSA. Real win
+  (folded constants let the compiler kill dead branches, which serves the
+  stay-as-fast goal) but the code still declares **298**, not 225.
+- Gate net `d48x-1280-sb520-ema-s600.cenn` **is** `engines/canonical/net.cenn`
+  (readlink-identical) — its pins test the right reference.
+
+**Collision caught and serialized.** `simplify-verify` and `d49tv` both woke on
+the trainer exiting; 6G of rustc + 4G of match does not fit the ~9G that frees.
+Builds (~30 min) go first, match (hours) second. `d49tv`'s new gate polls
+`simplify-verify` — safe predicate only because that script is a ONESHOT, not a
+loop service (`is-active` on a loop service has starved three arms today).
+
+**Teacher heldout excursion FULLY REVERTED:** 1632 `0.010545` -> 1636 `0.010570`
+-> **1640 `0.010546`**. The student absorbed a 40 % teacher pull and returned to
+its label baseline in 8 sb. Not strength evidence (see the 16:25 entry) but it
+rules out the blend dragging the student off labels.
+
+**Study 72 briefed to `~/.local/share/archon-d49/briefs/study72.md`, NOT launched.**
+Box has 3.8 GB available and three queued jobs; a perf study on top is the third
+OOM of the day. Target chosen from OUR OWN profile: the fold is **MSHR-limited**,
+so the only live routes SHRINK BYTES TOUCHED — width, active-feature count, or
+one-pass row merge. Locality/prefetch/layout stay closed.
