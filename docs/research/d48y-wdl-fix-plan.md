@@ -18158,3 +18158,37 @@ TRACEABLE. That converts "our data is noisy" from a belief into a query.
 ### Immediate open measurement
 Where do teacher and labels disagree — by phase, piece count, eval magnitude?
 CPU-only, uses data we already have, and it is the first curation instrument.
+
+## 2026-08-01 17:45 tick — OOM #4 was `npm run build`, NOT us. Distilled-vs-canonical screen launched.
+
+**Root cause, from the kernel's own report — no inference:**
+```
+task=npm run build, pid=3552802, oom_score_adj:1000   (GNOME Console vte-spawn scope)
+global_oom, constraint=CONSTRAINT_NONE
+-> then: task=python (d49train), anon-rss 3,824,184 kB, oom_score_adj:200
+```
+**`CONSTRAINT_NONE` = GLOBAL exhaustion, not a cgroup breach — so NO MemoryMax on
+our side could have prevented it.** The kernel killed npm first (adj 1000, most
+killable), still needed memory, and took the trainer as next-biggest.
+
+**Standing hazard:** the trainer inherits **`oom_score_adj:200`** from the
+harness (cannot be lowered without CAP_SYS_RESOURCE), so under global pressure it
+is a PREFERRED VICTIM by configuration. That is why it is always the thing that
+dies. Mitigation is the launcher's restart loop, not a cap: cost stays ~1 sb.
+
+**MY MISDIAGNOSIS, corrected in place:** I said `simp-basket-a` was "almost
+certainly" the cause and stopped it BEFORE reading its log. It was parked in
+"phase 1: waiting for d49train inactive" the whole time; its `rustc` started
+AFTER the trainer died and its gate released. **The build was a CONSEQUENCE of the
+OOM, not its cause.** I saw `rustc` running next to a dead trainer and skipped
+straight to a culprit — [[when-the-null-fails-suspect-the-instrument]] in its
+social form. Harmless (it had not started matches) but the reasoning was wrong.
+
+**Recovered:** d49train restarted from sb1648, alpha 0.4 confirmed in the startup
+banner, GPU 7680 MiB. Loss = 1 superbatch.
+
+**Launched `d49cs`:** distilled sb1648 packed at scale 756 vs **CANONICAL D48X**,
+1500 games @25k, CONC=3, MemoryMax=3G. **This is the promotion question, early.**
+Like-for-like reference: PLAIN D49 at the same 756 scale measured
+**-1.39 +/- 10.43** vs canonical, so any margin above that is what the teacher
+bought against the net we would actually replace.
