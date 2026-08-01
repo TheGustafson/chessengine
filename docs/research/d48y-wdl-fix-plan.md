@@ -15781,3 +15781,41 @@ LR simply may not move Elo enough to see against ±3.9. **It does say the sb1700
 verdict should not be expected to show a large jump**, and that any claim of
 "D49 improved from sb1400 to sb1700" needs the 5880-game screen at ±5, not a
 comparison of two 1500-game points.
+
+---
+
+## 2026-08-01 07:32 — sb1500 landed; the remaining 195 sb are at a 2.2x-decayed LR
+
+**D49:** sb1505, 188.6k pos/s, heldout ema 0.010437. **sb1500 permanent
+checkpoint written** (433,755,450 B, 07:20). Matcher screening sb1490
+(stdev 599.1). Disk 146 GB. Study 70 running. All units green.
+
+**A decision point worth putting in front of the owner rather than deciding
+silently.** Two measurements now sit together:
+
+- **Elo is FLAT across sb1340–1480**: pooled **+8.41 ± 3.89** over 15000 games,
+  trend slope +0.0116 Elo/sb, **t = +0.25**.
+- **The LR is nearly spent**: 4.12e-6 now, 2.82e-6 at sb1600, **1.89e-6 at
+  sb1700** — the remaining 195 superbatches run at a **2.2× decayed** rate
+  relative to now, and ~8.4× below the sb1170 value where this leg started.
+
+So the last 195 superbatches are the flattest part of a schedule whose Elo
+contribution is already unmeasurable at ±3.9.
+
+**Set against that: the GPU is the binding resource for the single largest
+remaining engine lever.** Study 65 measured that **61.41 % of evals feed one
+threshold comparison** and priced the elision ceiling at **~45 % of engine
+latency**; the only live route is a **trained HalfKA-only tier** (break-even
+28.2 % coverage), and the `smallnet_*` call sites already exist inert — verified
+2026-08-01 that no loader references them and no artifact exists. **That training
+cannot start until D49 releases the GPU.**
+
+**I am continuing to sb1700 as instructed** ("keep an eye on the training and keep
+it going", plus the standing prediction that it crushes canonical by 1700). The
+trade-off is recorded here, not acted on: **stopping early would buy ~8 h of GPU
+for the elision tier, at the cost of the sb1700 verdict the run was designed to
+produce.** Owner's call, and the run continues by default.
+
+**Note the heldout does NOT settle this either way** — it is still falling
+(t = −3.82) while Elo is flat, which is [[loss-is-not-elo]] in its purest form:
+the two instruments disagree and only games decide strength.
