@@ -223,7 +223,14 @@ pub static FOLD_SORTED: [AtomicU64; ROWCH] = [const { AtomicU64::new(0) }; ROWCH
 pub static FOLD_CALLS: [AtomicU64; ROWCH] = [const { AtomicU64::new(0) }; ROWCH];
 
 /// Hook: charge one fold's `(adds, subs)` to the study-66 intra-fold census.
-pub fn note_fold_redundancy(ch: usize, adds: &[RowOffset], subs: &[RowOffset]) {
+///
+/// `row_map` is the channel's physical row map (empty for HalfKA and for every
+/// flat build), and the span is measured on the **physical** offsets it
+/// produces — so the census reports the layout that is actually in memory
+/// rather than the virtual `feature · ACC` the producers hand over. That is
+/// what lets a relayout arm (`ARCHON_PERM=1`) be checked for doing what it
+/// claims instead of merely being asserted to.
+pub fn note_fold_redundancy(ch: usize, adds: &[RowOffset], subs: &[RowOffset], row_map: &[u32]) {
     FOLD_CALLS[ch].fetch_add(1, Relaxed);
     let n = adds.len() + subs.len();
     FOLD_ROWS[ch].fetch_add(n as u64, Relaxed);
@@ -256,7 +263,11 @@ pub fn note_fold_redundancy(ch: usize, adds: &[RowOffset], subs: &[RowOffset]) {
     let mut sorted = true;
     let mut near = 0u64;
     let mut pairs = 0u64;
-    let visit: Vec<usize> = adds.iter().chain(subs).map(|r| r.0).collect();
+    let visit: Vec<usize> = adds
+        .iter()
+        .chain(subs)
+        .map(|r| super::sota_simd::row_entry(row_map, r.0).0)
+        .collect();
     for (i, &b) in visit.iter().enumerate() {
         lo = lo.min(b);
         hi = hi.max(b);
