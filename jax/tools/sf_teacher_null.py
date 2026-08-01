@@ -55,7 +55,17 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("spec")
     ap.add_argument("--steps", type=int, default=8)
-    ap.add_argument("--resume-sb", type=int, default=1630)
+    ap.add_argument("--resume-sb", type=int, default=1630,
+                    help="which checkpoint to warm all three arms from")
+    # Cost knobs. Bit-identity is a property of the CODE PATH, not of the
+    # batch size or of which slice of the corpus the batches came from, so a
+    # cheap panel tests exactly the same claim and can share a box with a
+    # live GPU run. `--stream-from 0` also avoids materialising the ~5 M-entry
+    # skip schedule three times, which dominates the runtime otherwise.
+    ap.add_argument("--batch", type=int, default=0, help="override batch_size")
+    ap.add_argument("--stream-from", type=int, default=-1,
+                    help="superbatch offset for the BATCH STREAM (default: "
+                         "--resume-sb; 0 = start of the corpus, much cheaper)")
     a = ap.parse_args()
 
     import jax
@@ -68,6 +78,10 @@ def main() -> int:
     spec = json.loads(Path(a.spec).read_text())
     arch = ArchSpec.from_run_spec(spec)
     base = pt.build_cfg(spec, a.resume_sb + 1)
+    stream_from = a.resume_sb if a.stream_from < 0 else a.stream_from
+    if a.batch:
+        base = dataclasses.replace(base, batch_size=a.batch,
+                                   superbatches=stream_from + 1)
     print(f"cfg: distill_alpha={base.distill_alpha}  "
           f"teacher_kp={'set' if base.teacher_kp else 'None'}  "
           f"per_corpus_target={'set' if base.per_corpus_target else 'None'}  "
@@ -88,12 +102,16 @@ def main() -> int:
             # Arm A is TODAY'S run: no teacher object, and no teacher_kp — so
             # the data path does not even emit t_bucket / teacher_mult.
             cfg = dataclasses.replace(cfg, teacher_kp=None)
-        params = ck.load_warm(warm, arch)
+        host = ck.load_warm(warm, arch)
         opt, step = make_update_step(
             arch, cfg, teacher=(t_params, t_arch) if with_teacher else None)
-        opt_state = opt.init(params)
-        params = {k: jax.numpy.asarray(v) for k, v in params.items()}
-        ema = {k: jax.numpy.asarray(v) for k, v in params.items()}
+        opt_state = opt.init(host)
+        # SEPARATE device buffers for params and the EMA shadow. `step` donates
+        # both (donate_argnums=(0,1)) and JAX rejects donating one buffer twice
+        # — building the shadow from the already-device params (or from the
+        # same host array) is exactly the trap pump_train's own comment names.
+        params = {k: jax.numpy.asarray(v) for k, v in host.items()}
+        ema = {k: jax.numpy.asarray(v.copy()) for k, v in host.items()}
         stream = make_mixed_batches(
             mixbins, cfg, policy=True,
             legal_mask=(spec.get("pol_mask")
@@ -104,7 +122,7 @@ def main() -> int:
             prefetch=int(spec.get("prefetch", 4)),
             shuffle_chunk=int(spec.get("shuffle_chunk", 0)),
             total_batches=cfg.batches_per_superbatch * cfg.superbatches,
-            skip_batches=cfg.batches_per_superbatch * a.resume_sb)
+            skip_batches=cfg.batches_per_superbatch * stream_from)
         keys = None
         for i, batch in enumerate(stream):
             if i >= a.steps:

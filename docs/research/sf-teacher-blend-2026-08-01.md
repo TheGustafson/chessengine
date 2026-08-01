@@ -320,4 +320,38 @@ any Elo claim.
 
 ## 9. Log
 
-(filled in as the probe runs)
+**15:31:53** `archon-d49sfb.service` launched, resume_sb=1630, α=0.4.
+Teacher loaded and reported at the right shape:
+`hl=1024 l2=32 l3=32 dual_tail=True sf_act=True`.
+
+**sb1631** — `value 0.002589`, **155,268 pos/s**.
+
+Two things to read off that line, and one not to.
+
+* **Throughput −14 %**, not −50 %. The teacher costs one extra FT gather
+  (1024-wide against the student's 1280) with no backward pass, so a live
+  teacher is much cheaper here than the "total step ~2×" the D47V comment
+  budgeted for a same-width ARCHON teacher.
+* **The train loss is NOT comparable to the plain run's 0.006782** — it is
+  measured against a different target. What it does say is directional and
+  useful: blending in 40 % of a *deterministic* function of the position
+  removes irreducible noise from the target, so the blended loss SHOULD fall,
+  and it did (0.00259). Had the frame been mis-scaled the way the retracted
+  ≈1.023 prediction would have been — 2.45× too large — the blended target
+  would have been harder to fit and this number would have gone UP. It is a
+  weak check but it is the right sign, at zero cost, one superbatch in.
+* **Heldout is the comparable metric** (fixed set, run frame a=175.1 b=71.6,
+  no teacher involved), every 2 sb. Plain run reference: sb1640
+  `value 0.010495 | ema 0.010455`.
+
+### Two harness bugs this cost, both mine, both worth recording
+
+1. **`archon_mask.so` was missing from the worktree** — `pol_mask: "ids"` needs
+   the PyO3 masker and there is deliberately no python fallback. This would
+   have killed the launch identically; the null run found it first, which is
+   the entire argument for running a dry pass on the real config.
+2. **The null harness donated one device buffer twice.** `params` and the EMA
+   shadow must be SEPARATE buffers because `step` donates both — and
+   `jnp.asarray` on an already-device array is a no-op, so building the shadow
+   from `params` shares them. `pump_train` carries a comment warning about
+   exactly this and I reproduced it anyway.
