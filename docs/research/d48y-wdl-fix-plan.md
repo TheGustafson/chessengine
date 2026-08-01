@@ -17831,3 +17831,40 @@ context I lack.
 99.86 %, re-pooled per-arm by me), the simplification plan delivered and its
 execution commissioned, the teacher calibration delivered with reproducible
 tooling.
+
+---
+
+## 2026-08-01 16:00 — ★ OWNER RULING: TRAINING IS THE COORDINATOR'S, NOT A SUBAGENT'S
+
+**Owner: "From now on subagents can't own the training. That is for us. Take it
+from the subagent and start managing training here."** Standing rule from now on.
+
+**Taken over.** Stopped `archon-d49sfb` (the agent's unit), confirmed **0
+trainers** and a clean GPU (1389 MiB of 8188), then launched **`d49train`** under
+coordinator ownership: self-restarting, resumes from the newest `d49sfb-sb*`
+checkpoint (currently **sb1632**), **120 s settle** after any death so GPU memory
+drains, and holds if MemAvailable < 3000 MB.
+
+**It is up:** unit active, **GPU 7405 MiB allocated** — the signature that
+distinguishes a real trainer from the three failed attempts, which never got past
+~1400 MiB. First superbatch pending JAX compilation. **The sb1633/1634 lines in
+`cyc.log` are from the PRE-OOM run, not new output** — noted so nobody reads them
+as progress.
+
+**Told the agent to stand down from training PERMANENTLY** — no trainers, no
+restart loops, no watchdogs over training, ever.
+
+**The structural problem this exposes, and I asked the agent to help close it:
+THE TEACHER WIRING EXISTS ONLY IN AN AGENT WORKTREE.** The primary checkout's
+`jax/tools/pump_train.py` has **zero** occurrences of `teacher_kp`; the agent's
+has **six**. `d49train` therefore runs with `cd` into
+`.claude/worktrees/agent-ac79f75828e3be36d/jax` — **the owner's experiment is
+hostage to a subagent's worktree**, which is not acceptable for something the
+coordinator now owns. Requested from it: the file list and commit range, the
+provenance of the 344,805,073-byte teacher artifact (reproducible from which
+committed script?), the alpha=0 bit-identity null so I can re-run it on main, and
+an explicit list of anything probe-scoped rather than production-ready **so I do
+not merge a hack believing it is finished**.
+
+**Next action once that lands: merge the teacher path to main** so training runs
+from a checkout the coordinator controls.
