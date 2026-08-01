@@ -458,6 +458,103 @@ pub fn note_king_move(c: usize, from: u8, to: u8) {
     }
 }
 
+/// Perf study 64 — the **search-side work census**.
+///
+/// Every counter above is charged at fold or eval time and therefore cannot
+/// answer the question study 64 was commissioned on: *how many full NNUE
+/// evaluations does the search compute that it does not need?* These are
+/// charged from `search()` / `qsearch()` instead, so a fresh evaluation can be
+/// attributed to the node shape that asked for it and — crucially — to whether
+/// the value it produced was ever read.
+///
+/// One relaxed add per counted event, `#[cfg(feature = "foldcount")]` at every
+/// call site, so a shipped build carries none of it (verified: the shipped
+/// `.text` md5 is unchanged — study 64 §8).
+///
+/// The counters are named by the [`Sc`] enum rather than by a bare index. A
+/// `#[repr(usize)]` fieldless enum IS its own discriminant, so `Sc::MainTtCut
+/// as usize` is a compile-time constant and the call site costs exactly what a
+/// literal would — the idiomatic Rust way to keep a counter array's names and
+/// its indices from drifting apart, which is a real failure mode for a census
+/// that grows over several studies.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(usize)]
+pub enum Sc {
+    // node shape
+    /// `search()` entries past the draw / mate-distance gates.
+    MainNodes,
+    /// …of which in check (no static eval by construction).
+    MainInCheck,
+    /// …of which a singular verification, which REUSES the enclosing eval.
+    MainExcluded,
+    /// `qsearch()` entries past the draw gate.
+    QsNodes,
+    /// …of which in check (no stand pat).
+    QsInCheck,
+    // where the static eval came from
+    /// A real forward pass through the accumulators and the head.
+    MainEvalFresh,
+    /// Served from the TT eval field: no fold, no head, no traffic at all.
+    MainEvalTtServed,
+    /// As [`Sc::MainEvalFresh`], in qsearch.
+    QsEvalFresh,
+    /// As [`Sc::MainEvalTtServed`], in qsearch.
+    QsEvalTtServed,
+    // was a FRESH eval's value ever read?
+    /// A fresh eval, and then the node returned on the TT cutoff — i.e. a
+    /// forward pass computed for nothing. **Measured at zero** (study 64 §1.2).
+    MainFreshThenTtCut,
+    /// The same in qsearch, where the TT cutoff already precedes the stand pat,
+    /// so it is unreachable by construction and exists as its control.
+    QsFreshThenTtCut,
+    /// Every TT-cutoff return from `search()`.
+    MainTtCut,
+    /// Every TT-cutoff return from `qsearch()`.
+    QsTtCut,
+    // the eval's FIRST real consumer, over the fresh-eval population
+    /// Razoring dropped the node into qsearch (the one consumer that reads the
+    /// predicate and not the value).
+    MainFreshRazor,
+    /// Reverse futility pruned the node.
+    MainFreshRfp,
+    /// The node reached its move loop.
+    MainFreshMoveLoop,
+    /// The qsearch stand pat cut.
+    QsFreshStandPat,
+    /// The qsearch node reached its move loop.
+    QsFreshMoveLoop,
+}
+
+/// Row names for [`SEARCH`], in [`Sc`] order.
+pub const SEARCH_NAMES: [&str; SEARCH_N] = [
+    "main_nodes",
+    "main_incheck",
+    "main_excluded",
+    "qs_nodes",
+    "qs_incheck",
+    "main_eval_fresh",
+    "main_eval_ttserved",
+    "qs_eval_fresh",
+    "qs_eval_ttserved",
+    "main_fresh_then_ttcut",
+    "qs_fresh_then_ttcut",
+    "main_ttcut",
+    "qs_ttcut",
+    "main_fresh_razor",
+    "main_fresh_rfp",
+    "main_fresh_moveloop",
+    "qs_fresh_standpat",
+    "qs_fresh_moveloop",
+];
+pub const SEARCH_N: usize = 18;
+pub static SEARCH: [AtomicU64; SEARCH_N] = [const { AtomicU64::new(0) }; SEARCH_N];
+
+/// Charge one search-census event.
+#[inline]
+pub fn note_search(which: Sc) {
+    SEARCH[which as usize].fetch_add(1, Relaxed);
+}
+
 /// Learned-representation concept study, Tier-0: the MAKE-time locality
 /// census. Every counter above tallies at FOLD or EVAL time — i.e. after the
 /// deferral machinery has already discarded the plies that never needed an
@@ -691,6 +788,12 @@ pub fn dump(nodes: u64) {
             "FOLDCOUNT thr_cancel.{name}={}",
             THR_CANCEL[i].load(Relaxed)
         );
+    }
+    for (i, name) in SEARCH_NAMES.iter().enumerate() {
+        let n = SEARCH[i].load(Relaxed);
+        if n != 0 {
+            emit!("FOLDCOUNT search.{name}={n}");
+        }
     }
     for (i, name) in KMOVE_NAMES.iter().enumerate() {
         let (w, b) = (KMOVE[i][0].load(Relaxed), KMOVE[i][1].load(Relaxed));
