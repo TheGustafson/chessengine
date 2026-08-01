@@ -269,6 +269,30 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   tile walk exposes ~80 independent line accesses inside a ~320-µop window, so
   misses are MSHR-limited, not proximity-limited. Both FT weight tables are
   already `i8`; that precision lever is spent.
+- **CODE LAYOUT IS CLOSED (perf study 68, 2026-08-01)** — at every granularity,
+  and by the best tool that exists. LLVM's **machine function splitter**
+  (`-C llvm-args=-split-machine-functions`, plumbed as `PGO_EXTRA_RUSTFLAGS` in
+  `tools/build_pgo.sh`) compacted the hot region's address span **30.7 %**
+  (243,920 → 169,136 B), cut `search::<NonPv>`'s hot body 24.4 % and
+  `iterative_deepening`'s 47.7 %, and cost **+0.001 % instructions (0/14)**.
+  **Nothing moved.** Study 67 had already closed source-level cold-path
+  outlining and hot-callee dedup; this closes the profile-driven, zero-cost
+  version. **Address span is not the quantity — the number of distinct 64-byte
+  lines the frame EXECUTES is**, and relocating code cannot change it.
+- **★ THE PERF COUNTER RULE (perf study 68, 2026-08-01) — `ic_cache_fill_l2`,
+  `de_op_queue_empty` and `task-clock` GET A BYTE-IDENTICAL NULL IN THE SAME
+  PANEL OR THEY GET NO VERDICT.** Measured, not argued: across four 14–16-round
+  panels **on one day**, a **byte-identical** binary's paired median on
+  `ic_cache_fill_l2` read **−0.491 %, +0.431 %, +0.826 % and +2.290 %** — the
+  last of these larger than any fill effect this study series has ever reported.
+  In the same rounds, a binary whose `.text` genuinely differs (one cold,
+  never-called function; `--features pad68`) moved it **+0.055 %**. **So the
+  wander is the BOX, not the code layout** — which kills the "layout lottery"
+  explanation and puts study 67's fill-based evidence (+3.2 %, −1.5 %) inside
+  the noise. Study 67's *verdicts* stand; they also rest on `instructions:u`.
+  **`instructions:u` held 0.000 % in all five panels and is the only counter
+  here that can decide anything.** Prefer arms it can see. A remembered null
+  from a previous night is not a null.
 - **NEVER `pkill -f <pattern>`** (user instruction 2026-07-27, after it
   happened twice in one session). `pkill -f` matches every process's FULL
   command line — including the shell running the very command that typed the
