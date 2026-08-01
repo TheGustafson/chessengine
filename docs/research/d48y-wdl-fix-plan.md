@@ -13559,3 +13559,46 @@ decompose it. Not pursued, since the decision it would have informed is now made
 
 **D49:** sb1264, four services active, `xmatch` armed and waiting for sb1270
 (~13 min). **Study 64** working.
+
+## Tick — 2026-08-01 00:4x, MEMORY SCARE: 1023 MB free, swap exhausted — trainer protected
+
+The `xmatch` auto-screen fired correctly (sb1270 detected, packed, **stdev 427.3**
+— the frame still stable: 415–422 → 423.5 → 426.1 → **427.3** across 1000
+superbatches). But the tick's state check caught **1023 MB available and
+swap at 4095/4095 — fully exhausted.**
+
+**Nothing was misbehaving; the load was simply stacked:**
+
+| | RSS |
+|---|---|
+| trainer (`pump_train.py`) | 2233 MB — expected |
+| **study 64 build** | **2160 MB** |
+| match, 11 engine procs | 1848 MB (~168 MB each — normal for a 138 MB net) |
+| chrome | ~2 GB (the owner's, not mine to touch) |
+
+With swap gone, the OOM killer's next victim could have been the trainer — which
+is the more valuable job and 16 h from its endpoint.
+
+**Two proportionate interventions, neither disruptive:**
+
+1. **`systemctl --user set-property d49y.service MemoryLow=4G`** — a *reclaim
+   guarantee*, not a cap. It makes the kernel take pages from everything else
+   before the trainer.
+2. **`MemoryMax=2500M` on `xmatch`** — the match was unbounded; it is now
+   ceilinged with headroom over its 1830 MB working set.
+
+**Available went 1023 MB → 3687 MB**, because setting `MemoryLow` forced reclaim
+*elsewhere* instead of from the trainer. That is the intended mechanism, and it
+means the pressure was cache that could be given up, not a genuine shortfall.
+
+**Neither the trainer nor the match was interrupted** — `d49y` kept its
+`ActiveEnterTimestamp`, the screen ran on to 234/1500. **`memory.events` for both
+units still read `oom 0, oom_kill 0`**, i.e. this was caught *before* anything was
+killed rather than diagnosed afterwards.
+
+**Standing lesson for this box:** `free -m` before a build is necessary but not
+sufficient — **swap exhaustion is the earlier warning**, and it does not show up
+in the available-memory number until it is nearly too late. Check
+`free -m | grep Swap` as well.
+
+**D49:** sb1271, four services active + `xmatch` screening. 137 GB disk.
