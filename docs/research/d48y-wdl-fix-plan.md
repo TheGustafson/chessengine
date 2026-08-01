@@ -16556,3 +16556,33 @@ chain twice, my first orchestrator once). This is the opposite: a job reported
 FAILED while healthy. **Both come from reading a status instead of the thing the
 status is about** — and the fix is the same, look at the superbatch counter and
 the files on disk.
+
+---
+
+## 2026-08-01 10:17 — CYCLE 1 COMPLETE, cycle 2 running, and the sb1570 screen is already under way
+
+**The chain handed over correctly and unattended**, which is the first time
+tonight an orchestrator of mine did that:
+
+- **Cycle 1 done at sb1570** (10:06:04). Checkpoint saved as
+  `d49lrc1-sb1570-{raw,quant,ema-raw,ema-quant}.bin` — **all four files present**,
+  433,755,450 B raw, verified on disk rather than from the log line.
+- **Cycle 2 started immediately** (sb1570 → sb1600, same 1.7919e-5 → 0 ramp) and
+  is training at **191.6k pos/s**, sb1575.
+- `d49lrc1` shows `failed` — that is the orchestrator's own `systemctl stop`
+  producing a non-zero exit, not a fault.
+
+**`d49xml` picked up sb1570 on its own** (10:08:35, stdev 609.6 — right on
+canonical's 610), so **cycle 1's Elo reading against the +3.47 ± 11.22 anchor is
+already being taken**. No manual step was needed, which is what the earlier
+rearm-ordering work bought.
+
+**One gap, stated rather than papered over: there is NO sb1570 heldout.** The
+last heldout in cycle 1's journal is sb1560 (ema 0.010447); the cycle stopped at
+the sb1570 export before the heldout for that superbatch ran. So the "did the
+anneal finish below the pre-jump 0.010432 band?" question **cannot be answered
+from heldout for cycle 1** — only from games. Cycles 2 and 3 will have the same
+boundary behaviour, so the games are the readout for all three, as intended.
+
+**Live:** cycle 2 sb1575 → 1600; sb1570 screen in flight; memory 6703 MB; all
+units green.
