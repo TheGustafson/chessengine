@@ -15981,3 +15981,38 @@ alone until games say something.
 
 Sequenced behind `d49len` and gated on ≥3000 MB before each build — the box hit
 1568 MB at 08:02 and the trainer must not be the thing that pays.
+
+---
+
+## 2026-08-01 08:20 — the OOM was EXTERNAL, the shield held, and a stray SPRT was respawning
+
+**Owner: the OOM was an npm build in another project.** Confirmed from the
+kernel log — `cuda-EvtHandlr invoked oom-killer` at 08:15:21, global OOM, and the
+victim was **`fastchess`** (`oom_score_adj:1000`), a disposable.
+
+**The protection did exactly what it was built for under load I did not cause:**
+the kernel took a match process and **left the trainer untouched** — D49 never
+faltered (sb1523, 187.3k pos/s). That is the `oomshield` ordering working
+end-to-end, and it is the first external test it has had.
+
+**`d49len` survived** — verified by watching it advance (game 752 → 763 in 25 s),
+not by assuming.
+
+**Found and stopped a STRAY JOB: study 70's agent finished but left its SPRT
+running** (`s70-cand` vs `s70-base`). A third match, competing with the two that
+matter — and study 70 is not even gated or merged yet. Stopped it to protect the
+tunable re-test the owner just prioritised.
+
+**Two process lessons from doing it:**
+1. **It RESPAWNED.** Killing the `fastchess` children left `bash tools/sprt.sh`
+   alive, which immediately started a new one — a different pid appeared within
+   seconds. **Kill the WRAPPER first, then the children**, or you are playing
+   whack-a-mole with a supervisor.
+2. **`pgrep -f 's70-cand'` self-matched AGAIN** and reported 3 survivors that were
+   my own shell — the second time tonight. The count only became truthful after
+   excluding `shell-snapshots`/`pgrep`/`grep` and reading `/proc/<pid>/cmdline`
+   directly. **A raw `pgrep -f` count is never evidence when the pattern appears
+   in the command that types it.**
+
+Final: one `fastchess` (the length test), 4515 MB available, trainer healthy,
+`d49retest` and `d49len` both alive.
