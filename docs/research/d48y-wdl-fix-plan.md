@@ -17793,3 +17793,41 @@ MemAvailable ~7.8 GB, `d49xml` stopped.
 **The lesson, and it is mine:** when a job dies, the first question is *who owns
 it*, not *how do I restart it*. The code lived in a worktree I had not checked,
 and three relaunches cost more time than one message would have.
+
+---
+
+## 2026-08-01 15:53 — STATE: training is DOWN. Probe restart is the agent's, not mine.
+
+**Honest status: no trainer is running.** This is the live gap against "keep D49
+going", and it is now ~10 minutes old.
+
+- **`archon-d49sfb.service` (the agent's probe unit) = failed, exit 143** —
+  SIGTERM, consistent with systemd tearing the unit down after the kernel OOM
+  took its python at 15:43:42, not a fresh crash. Its command line reads
+  `d49_sfblend_probe.json 1632`, so a restart from the correct checkpoint was
+  attempted.
+- **All four of my own units (`d49sfb`, `d49sfb2/3/4`) are inactive** — I stood
+  every one of them down after thrashing.
+- **Checkpoints are safe**: `d49sfb-sb1632-ema-raw.bin` is on disk. Nothing of
+  the experiment is lost.
+- GPU 1629 MiB of 8188 with a 495 MiB process warming — a restart may be in
+  flight.
+- MemAvailable 7574 MB, `d49xml` stopped, two builds running (the simplification
+  execution agent).
+
+**Deliberately NOT restarting it myself again.** Three attempts of mine failed —
+wrong checkout (no `teacher_kp`), then two GPU-settle collisions — and the code
+lives in the agent's worktree. I have asked it to restart from **sb1632** with a
+**≥120 s settle** and to treat a recurring CUBIN error on an idle GPU as a real
+bug rather than something to retry around.
+
+**What I will do if the agent does not bring it back:** take ownership properly
+rather than piecemeal — run it from its worktree, with the settle, as a
+self-restarting service, having first confirmed the GPU is genuinely idle. That
+is the plan; I am giving the owner of the code first attempt because it has
+context I lack.
+
+**Everything else is healthy:** study 71's win verified (**+11.00 ± 7.20**, LOS
+99.86 %, re-pooled per-arm by me), the simplification plan delivered and its
+execution commissioned, the teacher calibration delivered with reproducible
+tooling.
