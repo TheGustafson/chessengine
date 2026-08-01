@@ -14412,3 +14412,42 @@ behind it.
 **NEXT:** PGO build off `9c1cef86`, then `frame_rerun.sh <pgo-binary>` for the
 frame curve under the NEW margins. Strength testing on the tunables is still
 owed.
+
+---
+
+## 2026-08-01 02:02 — tick: sb1340 level in the fair frame; PGO build under way
+
+**D49:** sb1354, 186.9k pos/s, heldout ema 0.010474. All seven units verified
+ACTIVE **by name, one query each** — no more positional `is-active` lists after
+last tick's misread.
+
+**The recurring matcher is doing its job unattended.** sb1340 screened and done,
+sb1350 already packing:
+
+| checkpoint | pack scale | Elo vs canonical | n |
+|---|---:|---:|---:|
+| sb1270 | 756 | -2.08 +/- 11.32 | 1500 |
+| sb1300 | 756 | +3.24 +/- 10.65 | 1500 |
+| sb1300 | 1068 | -8.57 +/- 10.57 | 1500 |
+| **sb1340** | **1068** | **+0.69 +/- 11.62** | 1500 |
+
+In the SAME (frame-fair, 1068) frame, D49 moved **-8.57 -> +0.69 between sb1300
+and sb1340** — about 9 Elo in 40 superbatches, though inside the combined bars.
+sb1340 stdev 598.5 / sb1350 598.5 vs canonical's 610: the frame-matched packing
+is holding its target.
+
+**Cancelled `d49f535` (the old-tunables 535 arm) — it would have STARVED.**
+`d49xml` screens every export (~24 min apart, ~25 min each), so the box is never
+idle and the arm's wait loop would never clear. It is also superseded: the whole
+frame curve re-runs under the new margins, so a 535 point measured under the OLD
+ones has little value. **535 folded into `frame_rerun.sh`**, which now runs
+1585 / 1068 / 756 / **535** — the full curve in one pass under the new tunables.
+
+**NOTE FOR THE RE-RUN LAUNCH:** `frame_rerun.sh` has the same wait-on-`d49xml`
+structure and will starve for the same reason. **Stop `d49xml` before launching
+it, and re-arm it after** — do not just fire and hope.
+
+**`pgotune.service` building** `sota,arch-d48x` PGO off `9c1cef86` with the
+canonical net as the profile eval-file (mandatory — a bench-only profile leaves
+the NNUE kernels unprofiled and PGO inert). Memory checked first: 6703 MB avail,
+capped 6G / no swap, `-j2`.
