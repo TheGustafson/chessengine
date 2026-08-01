@@ -15819,3 +15819,33 @@ produce.** Owner's call, and the run continues by default.
 **Note the heldout does NOT settle this either way** — it is still falling
 (t = −3.82) while Elo is flat, which is [[loss-is-not-elo]] in its purest form:
 the two instruments disagree and only games decide strength.
+
+---
+
+## 2026-08-01 07:50 — tick: the counter TRUST TABLE promoted to memory
+
+**D49:** sb1511, 188.5k pos/s, heldout ema **0.010432** — another run low.
+Matcher screening sb1500 (stdev 603.0). Study 70 committing as it goes
+(census landed, plus "the instrument it had to be rebuilt on"). All units green,
+5618 MB free.
+
+**Promoted tonight's most reusable finding to memory**, because it is the reason
+so few numbers survived and it will silently waste the next session otherwise:
+
+| counter | byte-identical null | usable |
+|---|---|---|
+| **`instructions:u`** | **0.000 %** (five panels) | **YES** |
+| **node counts** | exact | **YES, and load-immune** |
+| `ic_cache_fill_l2` | −0.491 / +0.431 / +0.826 / **+2.290 %** | no |
+| `branch-misses:u` | **−0.803 %** (11/16) | no |
+| `de_op_queue_empty`, `task-clock` | fail | no |
+| `cycles:u` | σ 1.57 % quiet, **+49.9 % loaded** | no |
+
+A genuinely different `.text` moved the fill counter **+0.055 %** — **the wander
+is the box, not the code.**
+
+**The corollary is what actually changes behaviour:** aim studies at **node
+counts** wherever the question allows, because they are discrete, exact and
+immune to a busy box — and this box carries a GPU trainer plus a continuous match
+at all times. That is precisely why study 70 was pointed at nodes-per-move rather
+than another per-node microarch arm.
