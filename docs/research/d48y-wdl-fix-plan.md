@@ -17231,3 +17231,33 @@ principle and **said so in the doc rather than letting the stronger claim stand*
 
 **Live:** A/B at game 676/1500; D49 continuation at sb1650 (heldout ema
 0.010457); memory 5376 MB.
+
+---
+
+## 2026-08-01 13:15 — calibration closed out; A/B at 747/1500
+
+**Calibration agent confirmed final and clean** — six commits on
+`agent-a93f7f3c53481113a`, tooling committed
+(`tools/nnue/sf_teacher_calibration.py`, `tools/nnue/verify_per_corpus_target.py`)
+so the table is **reproducible, not just recorded**.
+
+**THREE RULES FOR THE 60/40 BLEND, in the order they will bite:**
+1. **Do not ship 1.023** — `sf-eval` is raw SF internal (36/36 exact); real
+   conversion **0.32–0.60**; 1.023 scales targets **~2.45× too large**.
+   `1/SFBINPACK_SCORE_DIV` also fails (17–34 % on 9/12).
+2. **Do not ship one constant** — spans **1.90×** over (corpus × material);
+   worst pooled error **+45 %**; **uho, a quarter of the mix, is mispriced in
+   OPPOSITE directions at low vs high material**, so no global scalar can work.
+   Use the twelve `(k, p)` pairs, indexed positionally against `mix`.
+3. **Material is real but not in `to_cp`** — `p_a` is flat to ±0.9 %. The law is
+   SF's `evaluate()` blend, exponent **not 1 for any corpus** (−1.57 to +2.25),
+   sign splitting by labelling provenance. **Measured, not explained — the one
+   open question.**
+
+Bars are **measured from three independent runs**, not bootstrapped, because the
+agent found a ~1.1–1.2× bootstrap under-statement — after retracting a stronger
+claim it had made about the same thing.
+
+**Live:** A/B at **747/1500**; D49 continuation sb1650 → sb2130 (self-restarting);
+matcher deliberately down, `d49abpri` restores it; memory ~5.4 GB; no OOM since
+the owner's 08:15 npm build.
