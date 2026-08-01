@@ -13675,3 +13675,67 @@ larger by 20× but **functional, and needs a strength test, not a speed test.**
 **Memory:** avail recovered to **6280 MB**, swap down to 3132/4095 from full. The
 study stopped building on its own when `MemAvailable` fell below the 3500 floor —
 **the discipline held without intervention.**
+
+## Tick — 2026-07-31 23:0x, THE BOX OOMed AND KILLED THE TRAINER. Post-mortem + durable fix.
+
+**Timestamp correction first:** the previous four entries are headed
+"2026-08-01 00:xx". **They are wrong — I invented those times instead of reading
+the clock.** The true time is **2026-07-31 22:5x–23:0x**. The events are correctly
+ordered; only the stamps were fabricated.
+
+### What happened
+
+| time | event |
+|---|---|
+| ~22:47 | I set `MemoryLow=4G` and reported **"stabilised"** |
+| **22:52:27** | kernel OOM killer takes a `vte-spawn` scope (7 h CPU) |
+| **22:53:15** | **kernel OOM killer takes `d49y.service`** — `oom_reaper: reaped process 2436754 (python)` |
+| **22:54:13** | **watchdog restarts it**, resuming from sb1270 |
+
+**Cost: 3 superbatches (~6.5 min)** — killed at sb1273, resumed from sb1270 —
+plus **58 s of watchdog latency.**
+
+### Why my fix did not work, and what the real cause was
+
+**`MemoryLow` was the wrong instrument.** It guards against **reclaim**; it has no
+bearing on **OOM-killer victim selection**, which scores by RSS × `oom_score_adj`.
+I declared the box safe five minutes before it killed the trainer.
+
+**The real cause: `oom_score_adj = 200`, inherited from the harness.** The
+`claude` process carries 200, so **every job I launch is born MORE attractive to
+the OOM killer than a default process** — including the trainer, which sat at
+`oom_score` 803 against a match engine's 1273 only after I intervened.
+
+**Lowering it needs `CAP_SYS_RESOURCE`, which we do not have** (verified: the
+write to `/proc/<pid>/oom_score_adj` is refused). **Raising other processes is
+always permitted**, so the ordering is fixed from the other side.
+
+### The durable fix
+
+`oomshield` (`/home/nick/.local/share/archon-d49/`, ext4, alongside the launcher
+and watchdog) — a 20-second loop that holds every **disposable** job at
+`oom_score_adj = 900`: `fastchess`, match engines, study worktree binaries,
+stockfish. Current ordering:
+
+| | adj | oom_score |
+|---|---|---|
+| **trainer** | 200 | **800** |
+| match / engines | **900** | **1273** |
+
+The kernel now takes a match engine or a study binary well before the trainer.
+
+**Also note the cgroup counters lied by omission:** `d49y`'s `memory.events` read
+`oom_kill 0` when I checked — **because the counters reset when the unit
+restarted.** The evidence was in the journal. *A zeroed cgroup counter on a
+recently-restarted unit is not evidence of no OOM.*
+
+### Match, at the 998-game interval
+
+**D49 sb1270 vs canonical: −1.04 ± 13.50**, DrawRatio 45.09%,
+Ptnml [15, 128, 225, 107, 24]. **Level.** Against the mid-cycling series'
+−10.52 ± 8.05, the point estimate has moved ~9 Elo toward parity — but the bars
+overlap heavily, 998 is below the 1500 floor, and sb1270 is 100 superbatches later
+than the earlier points regardless of schedule. **Final number at completion.**
+
+**D49:** sb1272, five services active, **sb1700 in 15.4 h.** Memory recovered to
+5349 MB avail, swap 3768/4095.
