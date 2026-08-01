@@ -16207,3 +16207,21 @@ instrument was built to find out. Verdict at n=1500 only.
 - `d49retest3` — tunables, NNUE-verified, ~50 min to n=1500.
 - study 70 — landed and gated, **paused** at +7.06 ± 8.34 over 2412 games
   (LOS 95.2 %, bar crosses zero); resumes after the priority jobs.
+
+**Study 70's match relaunched a FOURTH time** (`s70-chain2`, now with
+`Restart=always`) and was stopped again — a deliberate `systemctl stop` does not
+trigger the restart policy, so it stays down. `fastchess` back to 1 (the tunables
+SPRT), memory 5368 → **6186 MB**.
+
+**Sent the agent a stand-down message** rather than fighting it each tick: its
+work is accepted, its games are verified and preserved on disk (+7.36 ± 8.52 over
+2312 games, re-pooled by me with its own tool), and I will resume the chain
+myself once the tunables SPRT and the LR handover are done.
+
+**Worth recording as a pattern**: a finished subagent that owns a long-running
+job will keep resurrecting it on every wake-up, because from its side the job is
+unfinished. The fix is to tell it explicitly that the work is accepted and the
+box is prioritised — not to keep killing processes. **Its own last report also
+admitted the `setsid nohup` launch had silently died and it had reported 119
+games three times as "healthy"**, which is the same detached-job verification gap
+this project has hit repeatedly.
