@@ -329,9 +329,27 @@ OOM killer, and both were self-inflicted:
 
 `tools/perf70/chain70.sh` is the fix: short segments (125 rounds each) that
 each write their own `sprt.out`, with a `free -m` wait before each so it backs
-off while the trainer is hungry instead of competing with it. It runs
-`setsid`-detached, **not** as a `systemd-run --user` unit — the first attempt
-did, and the unit was stopped from outside after 4.5 minutes.
+off while the trainer is hungry instead of competing with it.
+
+**How to launch it, having got this wrong twice.** `setsid nohup ... & disown`
+does **not** survive an agent tool-call boundary — the harness takes the
+process tree with it, and the chain died silently after one segment while its
+log still showed the segment it had started. A bare `systemd-run --user` unit
+survived longer but was stopped from outside after 4.5 minutes. What works is a
+transient unit **with a restart policy**, which the resume guard makes safe
+because a restart can only ever add segments:
+
+```
+systemd-run --user --unit=s70-chain2 --working-directory=$PWD \
+    -p Restart=always -p RestartSec=30 -p KillMode=mixed \
+    bash tools/perf70/chain70.sh engines/bin/s70-cand engines/bin/s70-base s70-chain 40 125
+```
+
+This is the standing "harness state is volatile / chains must self-launch"
+lesson arriving again in a new costume: **verify a detached job is still alive
+after a later tool call, not just that it started.** A stalled counter that
+reads the same three times is the tell — the log's last line will still name a
+segment that is no longer running.
 
 **Two more self-inflicted losses, both now fixed in the tool.**
 
