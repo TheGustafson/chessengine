@@ -181,10 +181,15 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   from `engines/canonical/` (see below) and pins two numbers, both reproduced
   by a from-source non-PGO build: the **eval hash**
   `2e1ede95…79c4` (sha256 of the forward-pass score for all 50
-  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1739588**
+  `tools/nnue/calib/wl50.fens`) and the **d13 node total 2045128**
   (`bench 16 1 13 <fens> depth <net>` — the net is the optional **6th arg**;
-  omit it and you silently measure PSQT, 3441859). Both were re-pinned on
-  2026-07-30 by the **`network_scale` 600 canonical promotion** (`859a442`,
+  omit it and you silently measure PSQT). The NODE pin was last moved on
+  2026-08-01 by **perf study 71's quiet SEE ordering penalty** (1979892 →
+  2045128, and the depth-6 `Bench:` pin 401733 → 300694) — a functional search
+  change, so the eval hash deliberately did NOT move. Before that, on the same
+  day, **perf study 70's two move-ordering fixes** (1739588 → 1979892, `Bench:`
+  587683 → 401733). Before those, both were
+  re-pinned on 2026-07-30 by the **`network_scale` 600 canonical promotion** (`859a442`,
   +14.78 ± 5.45 over 5880 games) — a four-byte header change with the payload
   byte-identical from offset 64, so the existing binary loads it with no
   rebuild; the −12.4% node drop is the hardcoded SF pruning margins biting
@@ -343,6 +348,76 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   i/node and declined. `format!`/`to_string`, per-node `env` reads, and gated
   counters all sweep clean. Re-run `guardsweep69.sh` after any new knob or
   diagnostic lands — it is one command and it terminates.
+- **★ NODE COUNTS ON A POSITION SET FAIL THEIR OWN NULL (perf study 70,
+  2026-08-01).** Measured, not argued. An **inert** ±1 jitter on quiet ordering
+  scores — a perturbation that can only re-break exact ties among moves whose
+  whole seven-plane history stack already agrees to the unit — moves the
+  **50-position wl50 d13 total by up to +18.3 %** (positive in all six seeds,
+  mean +9.3 %) and the 300-position d11 total by −4.7 %. **wl50 @ d13 is the set
+  the NNUE gate pins**, so it is fine as a FINGERPRINT and useless as a
+  measurement. What survives, in order of resolving power:
+  1. **the census statistics** (`--features census70`) — averages over
+     10⁵–10⁶ events inside ONE deterministic run: null spread **±0.15 pp** on
+     first-move cutoff rate, ±0.03 pp on the LMR re-search rate. Screen here.
+  2. **the paired SIGN TEST** over 1000 positions
+     (`tools/perf70/screen70.py`) — better/worse pinned at **505 ± 6** across
+     six null seeds. The paired geometric mean has a ±1.5 % null spread.
+  3. the summed total — keep it only because it is what a `Bench:` trailer is.
+
+  Corollary worth its own line: the null being one-signed says **generation
+  order is a real tiebreak.** `partial_insertion_sort` is stable, so
+  equal-scoring quiets keep movegen's piece-then-square order, and destroying
+  it costs nodes.
+- **★ A HISTORY ARM'S NODE WIN IS A PRUNING WIN UNTIL A MAGNITUDE CONTROL SAYS
+  OTHERWISE (perf study 70).** `r -= stat_score * RED_STATSCORE_NUM()` makes
+  history MAGNITUDE feed LMR directly, so any change to a bonus/malus constant
+  moves nodes through pruning, not ordering — and it moves `fhf` too, because a
+  pruned late move cannot be the one that cuts. Two of this study's largest
+  apparent wins died on that control: inverting the quiet-malus SHAPE read
+  −9.90 % nodes, and **pure magnitude with the shipped shape read −10.42 %**
+  (shape with magnitude pulled back: **+1.52 %**); a cross-kind malus read
+  −3.90 %, and **−0.29 pp of fhf / +5.88 % nodes once magnitude-compensated.**
+  Always run the magnitude arm.
+- **★ ORDERING QUALITY IS A PROXY, AND IT GOODHARTS (perf study 70).** The
+  quiescence recapture discount's fhf curve rises monotonically to the
+  *principled* constant (a full recapture, `112/16 · attacker`: **+4.63 pp**)
+  while the search gets **worse** there (+1.19 % nodes, 493/507 paired). Cause:
+  `QS_LATE_MOVE_LIMIT = 2` skips every non-checking non-recapture capture after
+  the second, so demoting a capture far enough **deletes** it. Shipped at 56/16.
+  Never pick an ordering constant off the ordering metric alone.
+- **★★ AND NODES ARE A PROXY TOO — THE SAME ARM, BOTH SIGNS (perf study 71,
+  2026-08-01).** The quiet SEE ordering penalty exists in two forms that differ
+  by ONE `.max(GOOD_QUIET_THRESHOLD() + 1)`. Unclamped it lets the demotion push
+  the quiet into the BAD pile, where late-move pruning can drop it: **−6.34 %
+  nodes, −3.13 % TOTAL instructions, and −5.35 ± 9.26 Elo over 1,948 games.**
+  Clamped it can only reorder: **−2.05 % nodes, +1.86 % total instructions, and
+  +11.00 ± 7.20 Elo over 3,350 games (LOS 99.9 %).** The version that wins every
+  cheap instrument is the version that loses. Mechanism: the move loop ALREADY
+  prunes losing quiets by SEE at `-QSEE_MULT · lmr_depth²` (SF parity), so the
+  unclamped demotion is a second, harsher, DEPTH-BLIND copy of an existing rule
+  — and SEE mis-prices pins, x-rays and sacrifices. **An ordering change that
+  can move a move across `GOOD_QUIET_THRESHOLD` is a pruning change; clamp it,
+  or test both.**
+- **★ THE TT-LESS DEFICIT IS 1.55× OVER-PRICED AS AN ORDERING TARGET (perf
+  study 71).** Study 70's 14.9 pp gap between `fhf(has ttMove)` = 0.9134 and
+  `fhf(no ttMove)` = 0.7632 assumes the two populations are comparable. Nulled
+  with `hidett=1` — hide the TT move from the MOVE PICKER only, every pruning /
+  reduction / extension gate still reading `tt_data.mv` — the same nodes cut
+  first **0.8175** of the time. So **9.6 pp is the TT move's ordering value and
+  5.4 pp is population**: nodes that own a TT move are ones the search has
+  already visited, and they are intrinsically easier. Only the 5.4 pp is
+  reachable by a better static orderer.
+- **THE FAIL-LOW MOVE IS NOT WORTH STORING, AND IIR ON UPPER ENTRIES LOSES 24
+  ELO (perf study 71).** Two doors closed with numbers. (a) 57.4 % of TT-less
+  NonPV entries HAVE an entry and no move, and half of those were written by a
+  main-search fail low — but storing that node's argmax move reads **−0.06 pp
+  of `fhf` and +2.3 % nodes** against its own pruning control, because at an
+  all-node the argmax is taken over LMR-reduced upper bounds of exactly the
+  moves the static ordering already ranked first. (b) The control itself —
+  making IIR, RFP's gate and the two LMR no-ttMove terms read NULL on an
+  UPPER-bound entry — is **−27.7 % nodes from IIR alone** and **−24.17 ± 15.11
+  Elo over 792 games**. SF's source says `(*Scaler) Making IIR more aggressive
+  scales poorly`; that is now measured on ARCHON.
 - **NEVER `pkill -f <pattern>`** (user instruction 2026-07-27, after it
   happened twice in one session). `pkill -f` matches every process's FULL
   command line — including the shell running the very command that typed the
@@ -395,7 +470,8 @@ arm**; **stay on ONE position, no aggregates during diagnosis**.
 2026-07-28: 371 files (206 one-shot campaign scripts, 129 per-session research
 docs, raw perf artifacts) were moved to `old/` because nothing live referenced
 them. Verified: no live file references any moved path, and
-`CHECK_NNUE_GATE=1 bash tools/check.sh` still exits 0 with `Bench: 587683`.
+`CHECK_NNUE_GATE=1 bash tools/check.sh` still exits 0 with `Bench: 587683` (that pin has since moved twice; see the
+NNUE-gate paragraph).
 **Nothing in `old/` is loaded or trusted**; several of its documents contain
 conclusions that were later refuted.
 
@@ -556,7 +632,7 @@ Concurrently: **stage-A SPSA** (12 params, V net + PGO tune binary,
 fn20k, 8 games × 2400 iters, exchange on DISK not tmpfs) — measured
 zero training interference.
 Engine: S0 search program COMPLETE (all six audit items; **depth-6
-bench pin now 587683**; tripwires clean); **PGO is THE
+bench pin now 300694**; tripwires clean); **PGO is THE
 standard build** (tools/build_pgo.sh WITH eval-file; pairs both-PGO;
 Bench: trailer stays portable-default); freebies landed (+~6% both
 arches); distributed-SPSA kit built+parked (D36 amended — no

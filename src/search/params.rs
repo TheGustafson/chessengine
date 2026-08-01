@@ -179,6 +179,92 @@ crate::tunables! {
     /// term — SEE handles attacker risk at the good/bad split gate.
     pub CAPTURE_MVV_FACTOR: Value = 7;
 
+    /// Recapture discount in the QUIESCENCE/ProbCut capture score, in 16ths
+    /// of the attacker's value (perf study 70). When the destination square is
+    /// defended, subtract `QS_CAPTURE_DEFENDED_NUM * attacker_value / 16`, so
+    /// a defended capture is ordered by roughly `7·victim − 3.5·attacker`
+    /// instead of `7·victim`.
+    ///
+    /// It applies ONLY where `depth <= DEPTH_QS`, i.e. only to the pipelines
+    /// that have no good/bad SEE split to price attacker risk with — the main
+    /// pipeline's `see_ge(m, -score/GOOD_CAPTURE_SEE_DIVISOR)` already does
+    /// that job, and study 70 measured the same term there as inert
+    /// (first-move cutoff rate −0.01 pp against a ±0.15 pp null).
+    ///
+    /// **56, not 112 — and the difference is the study's own Goodhart
+    /// warning.** 112/16 = 7 is the *principled* value: it prices the full
+    /// recapture in the same frame as `CAPTURE_MVV_FACTOR`, and it maximises
+    /// the statistic this term was built to move (quiescence first-move cutoff
+    /// rate: +4.63 pp at 112 against +3.63 at 56, both against a ±0.22 pp
+    /// null). It also makes the search WORSE: paired over 1000 positions, 112
+    /// reads +1.19 % nodes and 493/507 better/worse, while 56 reads −0.50 %
+    /// and 519/481. A full-recapture discount pushes defended captures past
+    /// `QS_LATE_MOVE_LIMIT`, which skips every non-checking non-recapture
+    /// capture after the second — so the ones whose defender is pinned or
+    /// overloaded are never searched at all. Half a recapture keeps the
+    /// ordering signal and leaves them in the window.
+    pub QS_CAPTURE_DEFENDED_NUM: Value = 56;
+
+    /// **Quiet SEE penalty (perf study 71).** Subtract this from a quiet's
+    /// ordering score when the move loses material by static exchange
+    /// evaluation (`!see_ge(m, 0)`), guarded on "the destination is in the
+    /// enemy attack map" — a quiet landing on a square no enemy attacks passes
+    /// `see_ge(m, 0)` trivially, so the guard skips most of the calls and
+    /// changes almost nothing (measured: `fhf` +0.47 guarded vs +0.45
+    /// unguarded at 65536).
+    ///
+    /// **What it adds that was not already there.** Stockfish's `score<QUIETS>`
+    /// (and ours, which is its exact transcription plus the D30 offense term)
+    /// has NO SEE term. Its nearest relative is the threat tier
+    /// `PieceValue[pt] * QUIET_THREAT_FACTOR * (attacked-at-from minus
+    /// attacked-at-to)`, and that tier knows only STRICTLY cheaper attackers —
+    /// so "rook to a square a rook attacks" is invisible to it, and for a PAWN
+    /// the tier is literally `Bitboard::EMPTY`. It is also blind to whether
+    /// the destination is defended.
+    ///
+    /// **Both halves of that matter, measured separately.** A free
+    /// approximation that only widens the tier to EQUAL-or-cheaper attackers
+    /// (`qeq`, no `see_ge` at all) reads +0.19 pp of NonPV `fhf` at its best
+    /// and turns NEGATIVE (−0.59) at this constant's magnitude: without
+    /// knowing that the destination is defended, "attacked by an equal piece"
+    /// is a bad predicate. The SEE call is what earns the term.
+    ///
+    /// **The second guard is `value > GOOD_QUIET_THRESHOLD`**, and it makes
+    /// the term both cheaper and better: a quiet already in the bad pile is
+    /// emitted after the bad captures whatever else happens to it, so paying
+    /// for its `see_ge` buys nothing. It removes **56 % of the SEE calls**
+    /// (0.354 -> 0.158 per scored quiet) and moves `fhf` from +0.43 to +0.48.
+    ///
+    /// **The demotion is CLAMPED at `GOOD_QUIET_THRESHOLD + 1`, and that is a
+    /// games-driven decision, not a stylistic one.** Unclamped, a big enough
+    /// penalty pushes the quiet into the BAD pile, where it is emitted after
+    /// the bad captures and becomes a late-move-pruning candidate — so the
+    /// term stops being ordering and starts being pruning. That version looks
+    /// better on every proxy (uho300 @ d11 nodes −6.34 %, total instructions
+    /// −3.13 %) and **lost games: −5.35 ± 9.26 Elo over 1,948 fixed-node
+    /// games**, the second instance in two studies of study 70's "ordering
+    /// quality is a proxy and it Goodharts". The mechanism is named: the
+    /// search ALREADY prunes losing quiets by SEE in the move loop, at
+    /// `-QSEE_MULT * lmr_depth²` — depth-scaled and permissive — and the
+    /// unclamped ordering demotion is a second, harsher, depth-blind copy of
+    /// the same rule. Clamped, the term cannot prune anything and keeps the
+    /// LARGER `fhf` gain (+0.50 pp overall, **+0.89 pp at TT-less nodes**).
+    ///
+    /// **The constant is not resolved inside 24576..98304 and is left to
+    /// SPSA.** Every point in that band reads +0.43..+0.56 pp of `fhf`
+    /// (14-18x its null); the ranking flips depending on which position set
+    /// and which statistic is read, which is the node metric's chaos and not
+    /// a curve.
+    ///
+    /// Ordering only: nothing downstream reads the picker's quiet score except
+    /// the emission order and the `GOOD_QUIET_THRESHOLD` split (`stat_score`,
+    /// which feeds LMR, is computed from the history tables directly), and the
+    /// clamp keeps the split itself fixed. The size- and magnitude-matched
+    /// RANDOM control — demote a pseudo-random 23 % of quiets, the same share
+    /// this predicate selects, by the same amount — reads **−1.17 pp of `fhf`
+    /// and +17.2 % nodes**, so the gain is the predicate and not the demotion.
+    pub QUIET_SEE_PENALTY: Value = 49152;
+
     // --- Move ordering: good/bad capture split (design/09 §3.6 stage 3) ---
 
     /// Divisor of the score-dependent SEE gate `see_ge(m, -score / 18)` that
@@ -606,6 +692,56 @@ crate::tunables! {
     /// (`docs/research/SCREENING.md` §10), which makes the untunable half of
     /// the same mechanism worth exposing.
     pub IIR_REDUCTION: Depth = 1;
+
+    /// **Fail-low best-move store (perf study 71).** A node whose move loop
+    /// raised alpha nowhere stores `Move::NULL` today, so the position comes
+    /// back TT-less next time even though the search knows perfectly well
+    /// which move scored highest. Study 71's census priced that: of the
+    /// 435,079 NonPV node entries that arrive with a TT ENTRY but no move,
+    /// **50.6 % were written by a main-search fail-low** (34.5 % at depth
+    /// 1–3, 16.1 % deeper) — 220 k entries, 17.7 % of all NonPV nodes.
+    ///
+    /// **MEASURED DEAD — leave it at 0.** Against its own pruning control the
+    /// store reads **−0.06 pp of NonPV `fhf` and +2.3 % nodes** (uho1000 @ d10,
+    /// null ±0.03 pp); alone it reads +0.08 pp and +3.9 % nodes. Mechanism: at
+    /// a NonPV all-node with a zero window every child returns an upper bound
+    /// from a REDUCED search, and the moves that survive the §3.5 pruning
+    /// cascade far enough to get a value are the ones the static ordering
+    /// already ranked first — so the argmax carries almost nothing the next
+    /// visit did not already have. Stockfish `eca43a97` and Reckless both
+    /// store nothing there, and this is why.
+    ///
+    /// Kept as a knob, not deleted, because it is the reproduction path for
+    /// that claim; `1` = store the argmax move. It rides an UPPER-bound entry
+    /// and is therefore never a singular-extension candidate; see
+    /// [`TT_UPPER_PRUNE_BLIND`] for what it does to the gates that read
+    /// `ttMove == NULL` as "this node is unresolved".
+    pub TT_FAILLOW_MOVE: i32 = 0;
+
+    /// **The pruning gates go blind to an UPPER-bound ttMove (perf study
+    /// 71).** Four sites read `tt_data.mv == Move::NULL` as evidence that the
+    /// node is unresolved and should be reduced or pruned harder: internal
+    /// iterative reduction, reverse futility's `ttMove == NULL || ttCapture`
+    /// gate, `RED_CUTNODE_NO_TTMOVE` and `RED_FULLDEPTH_NO_TTMOVE`. A move
+    /// attached to an UPPER-bound entry never raised alpha, so it is not that
+    /// evidence — with `1` those four sites read [`Worker::search`]'s
+    /// `tt_prune_move`, which is NULL on an UPPER entry.
+    ///
+    /// It is a separate knob from [`TT_FAILLOW_MOVE`] deliberately: the two
+    /// have to be screened as a 2x2 or the store's node effect is
+    /// indistinguishable from the pruning side effect of handing 20 % of
+    /// NonPV nodes a move they did not have (study 70's standing finding,
+    /// which cost that study two retracted headline arms).
+    ///
+    /// **REJECTED IN GAMES — never put this in an SPSA campaign.** Bit 1 (IIR)
+    /// alone is a **−27.7 %** tree at fixed depth, which is why it is tempting;
+    /// the other three bits are +0.3 %, +0.6 % and −0.05 %, inside the null. As
+    /// a PGO pair at 25 k fixed nodes it reads **−24.17 ± 15.11 Elo over 792
+    /// games, LOS 0.08 %**. Our IIR is already exact SF parity
+    /// (`search.cpp:1030`) and SF's own source carries
+    /// `(*Scaler) Making IIR more aggressive scales poorly` — this is that
+    /// comment, measured on ARCHON. Perf study 71 §2.1.
+    pub TT_UPPER_PRUNE_BLIND: i32 = 0;
 
     // --- Move-loop pruning: late move pruning (design/10 §3.5) ---
     //

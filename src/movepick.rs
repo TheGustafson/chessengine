@@ -41,8 +41,9 @@ use crate::movegen::{generate_captures, generate_evasions, generate_quiets};
 use crate::moves::{MAX_MOVES, Move, MoveList};
 use crate::search::params::{
     CAPTURE_MVV_FACTOR, EVASION_CAPTURE_BONUS, GOOD_CAPTURE_SEE_DIVISOR, GOOD_QUIET_THRESHOLD,
-    QUIET_CHECK_BONUS, QUIET_CHECK_SEE_MARGIN, QUIET_LOW_PLY_WEIGHT, QUIET_MAIN_HISTORY_WEIGHT,
-    QUIET_OFFENSE_FACTOR, QUIET_PAWN_HISTORY_WEIGHT, QUIET_SORT_DEPTH_FACTOR, QUIET_THREAT_FACTOR,
+    QS_CAPTURE_DEFENDED_NUM, QUIET_CHECK_BONUS, QUIET_CHECK_SEE_MARGIN, QUIET_LOW_PLY_WEIGHT,
+    QUIET_MAIN_HISTORY_WEIGHT, QUIET_OFFENSE_FACTOR, QUIET_PAWN_HISTORY_WEIGHT, QUIET_SEE_PENALTY,
+    QUIET_SORT_DEPTH_FACTOR, QUIET_THREAT_FACTOR,
 };
 use crate::types::{DEPTH_QS, Depth, PieceType, VALUE_ZERO, Value};
 
@@ -303,6 +304,9 @@ struct PtRow {
     threat_w: i32,
     /// `pt.value() * QUIET_OFFENSE_FACTOR()`, premultiplied.
     offense_w: i32,
+    /// Study 71 `qeq` arm only: squares attacked by an EQUAL-or-lesser piece.
+    #[cfg(feature = "arm70")]
+    eq: Bitboard,
 }
 
 /// The P-ORD quiet prior's per-move bonus, kept OUT of `init_quiets`' scoring
@@ -340,7 +344,12 @@ const NO_VICTIM: usize = 6;
 /// `see_ge` gate (doc 09 §3.6, step 7/8) accounts for attacker risk. En
 /// passant and quiet queen promotions have no piece on `to`, so they score a
 /// victim of 0 and use the [`NO_VICTIM`] slot.
-fn score_capture(board: &Board, hist: &Histories, m: Move) -> i32 {
+/// `defended` is the recapture map: the squares on which a capture will be
+/// answered. It is [`Bitboard::EMPTY`] for the main pipeline (see
+/// [`recapture_map`]) so the term folds away to one `and`/`test`.
+#[cfg_attr(not(feature = "arm70"), allow(unused_variables))]
+#[inline]
+fn score_capture(board: &Board, hist: &Histories, m: Move, defended: Bitboard) -> i32 {
     let pc = board
         .piece_on(m.from())
         .expect("a capture move starts on a piece of the side to move");
@@ -348,7 +357,65 @@ fn score_capture(board: &Board, hist: &Histories, m: Move) -> i32 {
     let victim_value = victim.map_or(0, |p| p.piece_type.value());
     let victim_slot = victim.map_or(NO_VICTIM, |p| p.piece_type as usize);
     let cap_hist = hist.capture[pc.index()][m.to().idx()][victim_slot].get();
-    CAPTURE_MVV_FACTOR() * victim_value + cap_hist
+    // MVV plus capture history, minus the recapture the victim's defender is
+    // about to make (perf study 70, quiescence only — see `recapture_map`).
+    // Pure MVV cannot tell RxN-for-free from RxN-and-lose-the-rook, and the
+    // quiescence pipeline has no SEE gate to find out: it emits every capture
+    // in this order, and `QS_LATE_MOVE_LIMIT` then skips everything past the
+    // second non-checking, non-recapture one. Mis-order the list and the
+    // winning capture is never searched at all.
+    #[cfg(not(feature = "arm70"))]
+    let qs_def = QS_CAPTURE_DEFENDED_NUM();
+    #[cfg(feature = "arm70")]
+    let qs_def = match crate::arm70::arm().qs_def {
+        -1 => QS_CAPTURE_DEFENDED_NUM(),
+        v => v,
+    };
+    // `mut` only for the study-70 arm bench below; the shipped build never
+    // reassigns it.
+    #[allow(unused_mut)]
+    let mut v = CAPTURE_MVV_FACTOR() * victim_value + cap_hist
+        - qs_def * pc.piece_type.value() * i32::from(defended.contains(m.to())) / 16;
+    #[cfg(feature = "arm70")]
+    {
+        let a = crate::arm70::arm();
+        // Least-valuable-attacker tiebreak: PxQ before QxQ when MVV and
+        // capture history cannot separate them.
+        if a.lva != 0 {
+            v -= pc.piece_type.value() / a.lva;
+        }
+        if a.def_cap != 0 && board.all_threats().contains(m.to()) {
+            v -= pc.piece_type.value() * a.def_cap / 16;
+        }
+    }
+    v
+}
+
+/// The recapture map for a picker at `depth`: the enemy attack map in the
+/// quiescence/ProbCut pipelines, and EMPTY in the main one.
+///
+/// The main pipeline already prices attacker risk exactly, at the good/bad
+/// split's `see_ge(m, -score / GOOD_CAPTURE_SEE_DIVISOR)` gate; study 70
+/// measured this cheaper approximation as inert there (−0.01 pp of first-move
+/// cutoff rate against a ±0.15 pp null) and it is not paid for. Returning
+/// EMPTY rather than branching per move keeps the scoring loop straight-line:
+/// `Bitboard::contains` on EMPTY is one `and` and one `setcc`.
+///
+/// `Board::all_threats` is filled once per position and cached, and every node
+/// that reaches capture scoring has already been evaluated — which under
+/// `sota` has already filled it.
+#[inline]
+fn recapture_map(board: &Board, depth: Depth) -> Bitboard {
+    if depth <= DEPTH_QS {
+        #[cfg(feature = "arm70")]
+        if crate::arm70::arm().def_pawn {
+            let them = board.side_to_move().flip();
+            return crate::attacks::pawn_attacks_bb(them, board.pieces(them, PieceType::Pawn));
+        }
+        board.all_threats()
+    } else {
+        Bitboard::EMPTY
+    }
 }
 
 /// The picker's explicit state machine (design/09 §3.5). Each pipeline is a
@@ -1003,8 +1070,9 @@ impl MovePicker {
         }
         #[cfg(feature = "policy")]
         let policy_weight = crate::policy::capture_weight();
+        let recapture = recapture_map(board, self.depth);
         for (i, &m) in list.iter().enumerate() {
-            let value = score_capture(board, hist, m);
+            let value = score_capture(board, hist, m, recapture);
             // Borrow `policy_scores` INSIDE the loop, not before it: binding it
             // outside holds an immutable borrow of `*self` across the whole
             // body, which collides with the `set_slot` below. Scoped here, NLL
@@ -1035,6 +1103,20 @@ impl MovePicker {
             cx::bump(&cx::IC_CALLS, 1);
             cx::bump(&cx::IC_SCORED, n as u64);
         }
+    }
+
+    /// Perf study 70's census hook: the `Stage` discriminant as the caller
+    /// observes it right after `next_move` returned. It identifies the
+    /// emitting stage uniquely without any extra state, because the two
+    /// stages that `return` do so *before* and *after* the bump respectively:
+    /// the four `*Tt` arms bump first (so the caller reads `CaptureInit`,
+    /// `EvasionInit`, `ProbcutInit`, `QcaptureInit` — none of which ever
+    /// returns a move itself), while every `select`-driven stage returns with
+    /// its own discriminant still live.
+    #[cfg(feature = "census70")]
+    #[inline]
+    pub fn stage_id(&self) -> u8 {
+        self.stage as u8
     }
 
     /// Late-move pruning (design/09 §3.5): abandon quiet generation and
@@ -1073,6 +1155,17 @@ impl MovePicker {
         let by_minor =
             by_pawn | by_type[PieceType::Knight as usize] | by_type[PieceType::Bishop as usize];
         let by_rook = by_minor | by_type[PieceType::Rook as usize];
+        // Study 71's `qeq` arm: the EQUAL-or-lesser tiers, built from the same
+        // cumulative unions. Only constructed for the arm bench.
+        #[cfg(feature = "arm70")]
+        let threat_eq: [Bitboard; 6] = [
+            by_pawn,
+            by_minor,
+            by_minor,
+            by_rook,
+            by_rook | by_type[PieceType::Queen as usize],
+            all_threats,
+        ];
         let threat: [Bitboard; 6] = [
             Bitboard::EMPTY, // Pawn: no cheaper attacker
             by_pawn,         // Knight
@@ -1181,12 +1274,27 @@ impl MovePicker {
         // real six-iteration loop with four bounds checks in it (measured
         // +326 instructions per call), while the literal is six independent
         // 32-byte stores LLVM folds into vector moves.
+        #[cfg(not(feature = "arm70"))]
         let row_of = |i: usize| PtRow {
             threat: threat[i],
             offense: offense_from[i],
             check: check_squares[i],
             threat_w: PieceType::ALL[i].value() * QUIET_THREAT_FACTOR(),
             offense_w: PieceType::ALL[i].value() * QUIET_OFFENSE_FACTOR(),
+        };
+        // Study 70's arm bench folds its per-16ths weights into the same
+        // premultiplied row, so the scoring loop is untouched.
+        #[cfg(feature = "arm70")]
+        let row_of = |i: usize| {
+            let a = crate::arm70::arm();
+            PtRow {
+                threat: threat[i],
+                offense: offense_from[i],
+                check: check_squares[i],
+                threat_w: PieceType::ALL[i].value() * QUIET_THREAT_FACTOR() * a.threat_w / 16,
+                offense_w: PieceType::ALL[i].value() * QUIET_OFFENSE_FACTOR() * a.offense_w / 16,
+                eq: threat_eq[i],
+            }
         };
         let rows: [PtRow; 6] = [
             row_of(0),
@@ -1266,6 +1374,7 @@ impl MovePicker {
                 let raw = m.raw16() as usize;
                 let q = crate::history::piece_to(pci, to);
 
+                #[cfg(not(feature = "arm70"))]
                 let mut value = QUIET_MAIN_HISTORY_WEIGHT() * main_plane[raw].get()
                     + QUIET_PAWN_HISTORY_WEIGHT() * crate::history::at_piece_to(pawn_plane, q)
                     + crate::history::at_piece_to(c1, q)
@@ -1273,6 +1382,17 @@ impl MovePicker {
                     + crate::history::at_piece_to(c3, q)
                     + crate::history::at_piece_to(c4, q)
                     + crate::history::at_piece_to(c6, q);
+                #[cfg(feature = "arm70")]
+                let mut value = {
+                    let a = crate::arm70::arm();
+                    QUIET_MAIN_HISTORY_WEIGHT() * main_plane[raw].get() * a.main_w / 16
+                        + QUIET_PAWN_HISTORY_WEIGHT() * crate::history::at_piece_to(pawn_plane, q)
+                        + crate::history::at_piece_to(c1, q) * a.c1_w / 16
+                        + crate::history::at_piece_to(c2, q)
+                        + crate::history::at_piece_to(c3, q)
+                        + crate::history::at_piece_to(c4, q)
+                        + crate::history::at_piece_to(c6, q)
+                };
 
                 if row.check.contains(m.to()) && board.see_ge(m, QUIET_CHECK_SEE_MARGIN()) {
                     value += QUIET_CHECK_BONUS();
@@ -1290,6 +1410,92 @@ impl MovePicker {
                     value += QUIET_LOW_PLY_WEIGHT() * lp[raw].get() / (1 + ply as i32);
                 }
 
+                // Perf study 71 — the quiet SEE penalty. Two guards, both of
+                // them free: `all_threats` is the enemy attack map
+                // `init_quiets` already built for the threat tiers, and a quiet
+                // landing on a square no enemy attacks passes `see_ge(m, 0)`
+                // trivially; and a quiet already below `GOOD_QUIET_THRESHOLD`
+                // is emitted after the bad captures whatever else happens to
+                // it. Together they leave 0.155 `see_ge` calls per scored
+                // quiet.
+                //
+                // Placed LAST on purpose — after the threat and offense terms,
+                // so the second guard reads the finished score. That is not
+                // just cheaper, it is the non-redundant order: the threat tier
+                // has already sunk "queen onto a square a rook attacks" below
+                // the threshold, and this term should be paying for the cases
+                // the tier is BLIND to (equal-valued attackers; a pawn, whose
+                // tier is literally `Bitboard::EMPTY`).
+                #[cfg(not(feature = "arm70"))]
+                if QUIET_SEE_PENALTY() != 0
+                    && value > GOOD_QUIET_THRESHOLD()
+                    && all_threats.contains(m.to())
+                    && !board.see_ge(m, 0)
+                {
+                    // CLAMPED at the threshold: the term REORDERS inside the
+                    // good pile and can never push a quiet into the bad one,
+                    // where it would be emitted after the bad captures and
+                    // become a candidate for late-move pruning. That is not a
+                    // detail — see the constant's doc comment: the unclamped
+                    // form's node win is pile-crossing, and it LOST games.
+                    value = (value - QUIET_SEE_PENALTY()).max(GOOD_QUIET_THRESHOLD() + 1);
+                }
+                #[cfg(feature = "arm70")]
+                {
+                    let a = crate::arm70::arm();
+                    let qsee = if a.qsee < 0 {
+                        QUIET_SEE_PENALTY()
+                    } else {
+                        a.qsee
+                    };
+                    // The shipped form has both guards on; `qseegq=0` is how
+                    // the screen turns the second one back off.
+                    let gq = a.qsee_gq || a.qsee < 0;
+                    let clamp = a.qsee_clamp || a.qsee < 0;
+                    let pt_ok = match a.qsee_pt {
+                        1 => pci % PieceType::COUNT == PieceType::Pawn as usize,
+                        2 => pci % PieceType::COUNT != PieceType::Pawn as usize,
+                        _ => true,
+                    };
+                    if (qsee != 0 || a.qsee_pv != 0)
+                        && pt_ok
+                        && self.depth >= a.qsee_depth
+                        && (!a.qsee_guard || all_threats.contains(m.to()))
+                        && (!gq || value > GOOD_QUIET_THRESHOLD())
+                        && {
+                            #[cfg(feature = "census70")]
+                            crate::census70::note_see_call();
+                            !board.see_ge(m, a.qsee_thr)
+                        }
+                    {
+                        // `pci = color * 6 + piece_type` (`Piece::index`).
+                        let pen =
+                            qsee + a.qsee_pv * PieceType::ALL[pci % PieceType::COUNT].value() / 16;
+                        value = if clamp && value > GOOD_QUIET_THRESHOLD() {
+                            (value - pen).max(GOOD_QUIET_THRESHOLD() + 1)
+                        } else {
+                            value - pen
+                        };
+                    }
+                    if a.qeq != 0 && row.eq.contains(m.to()) {
+                        value -= a.qeq;
+                    }
+                    if a.qsee_rand != 0 {
+                        let mut h = (m.raw16() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+                            ^ (pci as u64).wrapping_mul(0xD1B5_4A32_D192_ED03);
+                        h ^= h >> 31;
+                        h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+                        h ^= h >> 32;
+                        if (h % 1024) < a.qsee_rate as u64 {
+                            value -= a.qsee_rand;
+                        }
+                    }
+                    #[cfg(feature = "census70")]
+                    crate::census70::note_quiet(
+                        (!a.qsee_guard || all_threats.contains(m.to())) && !board.see_ge(m, 0),
+                    );
+                }
+
                 #[cfg(feature = "policy")]
                 if let Some(ps) = &self.policy_scores {
                     value += (policy_weight as f32 * ps.move_score(m.from(), m.to())) as i32;
@@ -1298,6 +1504,11 @@ impl MovePicker {
                 #[cfg(feature = "sota")]
                 if let Some(qp) = &self.quiet_prior {
                     value += quiet_prior_bonus(qp, m);
+                }
+
+                #[cfg(feature = "arm70")]
+                {
+                    value += crate::arm70::jitter_for(crate::arm70::arm(), m.raw16());
                 }
 
                 self.set_slot(base + i, ExtMove::new(m, value));
@@ -1358,7 +1569,17 @@ impl MovePicker {
         self.cur = base;
         self.end_cur = base + n;
         self.end_generated = base + n;
-        let sort_limit = QUIET_SORT_DEPTH_FACTOR() * self.depth;
+        #[allow(unused_mut)]
+        let mut sort_limit = QUIET_SORT_DEPTH_FACTOR() * self.depth;
+        #[cfg(feature = "arm70")]
+        {
+            let a = crate::arm70::arm();
+            if a.qsort_full {
+                sort_limit = i32::MIN;
+            } else if a.qsort_factor != 0 {
+                sort_limit = a.qsort_factor * self.depth;
+            }
+        }
         // See `sorted_covers`: with the prefix limit at or below the good/bad
         // threshold, the two emission stages split the region at one index.
         //
@@ -1408,15 +1629,57 @@ impl MovePicker {
         let main_plane = &hist.main[us as usize];
         let c1 = hist.cont_ref(self.cont_hist[0]);
 
+        // Deliberately NO recapture discount here, unlike the capture
+        // pipeline: measured, not assumed. Applying it to evasions cuts the
+        // in-check first-move cutoff gain this function's other change buys
+        // from +0.76 pp to +0.41 pp (perf study 70, ±0.11 pp null). The
+        // mechanism is that an evasion list is short and forced — "will I be
+        // recaptured" competes with "or I could just move the king", and the
+        // capture is often right anyway.
+        let recapture = Bitboard::EMPTY;
         for (i, &m) in list.iter().enumerate() {
             let value = if board.capture_stage(m) {
-                let victim_value = board.piece_on(m.to()).map_or(0, |p| p.piece_type.value());
-                victim_value + EVASION_CAPTURE_BONUS()
+                // The SAME capture score the main pipeline uses — MVV *and*
+                // capture history — lifted above every quiet evasion by the
+                // bonus (perf study 70). This used to be the raw victim value
+                // alone, i.e. capture history was consulted for every capture
+                // in the engine EXCEPT the ones played while in check, which
+                // are 27% of all NonPV cutoffs. Measured: +0.76 pp of
+                // in-check first-move cutoff rate against a ±0.20 pp null.
+                //
+                // The bonus is 2^28 and the score is bounded by
+                // `7·2538 + CAPT_D` in magnitude, so no capture can ever fall
+                // below a quiet evasion.
+                {
+                    #[cfg(feature = "arm70")]
+                    if crate::arm70::arm().evasion_mvv {
+                        let victim = board.piece_on(m.to()).map_or(0, |p| p.piece_type.value());
+                        self.set_slot(i, ExtMove::new(m, victim + EVASION_CAPTURE_BONUS()));
+                        continue;
+                    }
+                    score_capture(board, hist, m, recapture) + EVASION_CAPTURE_BONUS()
+                }
             } else {
                 let pc = board
                     .piece_on(m.from())
                     .expect("an evasion starts on a piece of the side to move");
-                main_plane[m.raw16() as usize].get() + c1[pc.index()][m.to().idx()].get()
+                #[allow(unused_mut)]
+                let mut v =
+                    main_plane[m.raw16() as usize].get() + c1[pc.index()][m.to().idx()].get();
+                // Study 70: give quiet evasions the SAME history stack the
+                // main pipeline gives quiets (pawn history + the deeper
+                // continuation planes), instead of main + cont1 only.
+                #[cfg(feature = "arm70")]
+                if crate::arm70::arm().evasion_full {
+                    let q = crate::history::piece_to(pc.index(), m.to().idx());
+                    let pawn_plane = hist.pawn_slot(board.pawn_key());
+                    v += QUIET_PAWN_HISTORY_WEIGHT() * crate::history::at_piece_to(pawn_plane, q)
+                        + crate::history::at_piece_to(hist.cont_ref(self.cont_hist[1]), q)
+                        + crate::history::at_piece_to(hist.cont_ref(self.cont_hist[2]), q)
+                        + crate::history::at_piece_to(hist.cont_ref(self.cont_hist[3]), q)
+                        + crate::history::at_piece_to(hist.cont_ref(self.cont_hist[5]), q);
+                }
+                v
             };
             self.set_slot(i, ExtMove::new(m, value));
         }
@@ -2203,6 +2466,71 @@ mod tests {
             .value
     }
 
+    /// Perf study 71 — `QUIET_SEE_PENALTY`, both guards and the ordering that
+    /// makes the second one non-redundant.
+    #[test]
+    fn quiet_see_penalty_fires_only_on_a_losing_quiet_the_threat_tier_misses() {
+        const BASE: i32 = 2 * -5 + 2 * -1262 + 5 * -552; // −5294, as above
+        let fresh = Histories::new();
+
+        // (a) The case the shipped threat tier is BLIND to: rook to a square an
+        //     enemy ROOK attacks. `threat[Rook]` is "attacked by a pawn, knight
+        //     or bishop", so an equal-valued attacker scores nothing, and the
+        //     destination is undefended — SEE alone catches it.
+        let b = board("3r3k/8/8/8/8/8/8/K3R3 w - - 0 1");
+        let rd1 = Move::normal(Square::E1, Square::D1);
+        assert!(
+            b.all_threats().contains(Square::D1),
+            "the black rook must attack d1 or the cheap guard skips the test"
+        );
+        // The offense term also fires here (the rook on d1 attacks the
+        // undefended enemy rook on d8), so the unclamped score would be
+        // `BASE + offense - QUIET_SEE_PENALTY()` = -41686 — well past the
+        // threshold, so the CLAMP catches it and the move stays the worst
+        // GOOD quiet instead of becoming a bad one. That clamp is the whole
+        // difference between an ordering change and a pruning change.
+        assert!(
+            BASE + PieceType::Rook.value() * QUIET_OFFENSE_FACTOR() - QUIET_SEE_PENALTY()
+                < GOOD_QUIET_THRESHOLD(),
+            "this case must be one the clamp actually binds on"
+        );
+        assert_eq!(
+            quiet_score(&b, &fresh, rd1, 7),
+            GOOD_QUIET_THRESHOLD() + 1,
+            "an equal-attacker hang is invisible to the threat tier, must be caught \
+             by SEE, and must be clamped to the bottom of the GOOD pile"
+        );
+
+        // (b) The same shape with the destination DEFENDED: Rxd1 Kxd1 is an
+        //     even trade, `see_ge(m, 0)` holds, and nothing is subtracted.
+        let b = board("3r3k/8/8/8/8/8/2K5/4R3 w - - 0 1");
+        assert_eq!(
+            quiet_score(&b, &fresh, rd1, 7),
+            BASE + PieceType::Rook.value() * QUIET_OFFENSE_FACTOR()
+        );
+
+        // (c) The cheap guard: a destination no enemy attacks never pays for a
+        //     `see_ge` and never loses a point.
+        let b = board(crate::fen::START_FEN);
+        assert_eq!(
+            quiet_score(&b, &fresh, Move::normal(Square::A2, Square::A3), 7),
+            BASE
+        );
+
+        // (d) NON-REDUNDANCY with the threat tier. A queen stepping onto a
+        //     rook-attacked square is already sunk below GOOD_QUIET_THRESHOLD
+        //     by the tier, so the second guard declines to pay for SEE at all
+        //     and the score is the tier's alone — see the (d) case of
+        //     `quiet_scoring_matches_hand_computed_values`, which pins exactly
+        //     that value.
+        let b = board("3rk3/8/8/8/8/8/8/Q3K3 w - - 0 1");
+        let qd1 = Move::normal(Square::A1, Square::D1);
+        assert_eq!(
+            quiet_score(&b, &fresh, qd1, 7),
+            BASE - PieceType::Queen.value() * QUIET_THREAT_FACTOR()
+        );
+    }
+
     #[test]
     fn quiet_scoring_matches_hand_computed_values() {
         // Fresh-history base: 2·main(−5) + 2·pawn(−1262) + 5·cont(−552).
@@ -2322,8 +2650,12 @@ mod tests {
         );
 
         // SLIDER, clear ray. Re1–d1 attacks the undefended queen on d8 down an
-        // empty d-file.
-        let open = board("3q3k/8/8/8/8/8/8/K3R3 w - - 0 1");
+        // empty d-file. The white king sits on c2 rather than a1 so that d1 is
+        // DEFENDED: without that, `QUIET_SEE_PENALTY` fires (the queen takes
+        // the rook for nothing) and buries the offense bonus this case exists
+        // to pin. Black's attack map — the only thing the offense term reads —
+        // is unaffected by where the white king stands.
+        let open = board("3q3k/8/8/8/8/8/2K5/4R3 w - - 0 1");
         assert!(!open.all_threats().contains(Square::D8));
         assert_eq!(
             quiet_score(&open, &fresh, Move::normal(Square::E1, Square::D1), 7),
@@ -2350,8 +2682,33 @@ mod tests {
         let exd5 = Move::normal(Square::E4, Square::D5);
         assert!(b.is_capture(exd5));
         let expect = CAPTURE_MVV_FACTOR() * PieceType::Knight.value() - 699;
-        assert_eq!(score_capture(&b, &Histories::new(), exd5), expect);
+        // Main pipeline: `recapture_map` is EMPTY, so the study-70 recapture
+        // discount cannot fire whatever the position looks like.
+        assert_eq!(
+            score_capture(&b, &Histories::new(), exd5, Bitboard::EMPTY),
+            expect
+        );
         assert_eq!(expect, 4768); // 7·781 − 699
+
+        // Quiescence: the same capture with d5 defended loses
+        // `QS_CAPTURE_DEFENDED_NUM/16` of the ATTACKER's value — the pawn's,
+        // not the knight's (perf study 70).
+        let defended = board("4k3/8/2b5/3n4/4P3/8/8/4K3 w - - 0 1");
+        assert!(
+            recapture_map(&defended, DEPTH_QS).contains(Square::D5),
+            "the bishop on c6 must defend d5 for the discount to arm"
+        );
+        assert_eq!(
+            score_capture(
+                &defended,
+                &Histories::new(),
+                exd5,
+                recapture_map(&defended, DEPTH_QS)
+            ),
+            expect - QS_CAPTURE_DEFENDED_NUM() * PieceType::Pawn.value() / 16,
+        );
+        // ... and the main pipeline's map is empty even in that position.
+        assert!(recapture_map(&defended, 1).is_empty());
     }
 
     #[test]

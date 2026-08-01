@@ -59,6 +59,61 @@ Reduction was never the cause; the low node count was the SYMPTOM of failing low
 | Blunders are RARE in still-playable positions | **0.16%** of our moves at wp ≥ 0.10 (6 of 3,698 scored). At the 0.06 bar it is ~1.3% |
 | 56% of our moves in lost games come from still-playable positions | 3,698 of 6,600 scored, `best_cp ≥ −250` |
 
+## MOVE ORDERING — the first census, 2026-08-01 (perf study 70)
+
+Full writeup: `docs/research/perf-study-70-move-ordering-census.md`. Instruments:
+`--features census70` (the census) and `--features arm70` (one runtime-configurable
+build for every candidate), both verified node-identical to the shipped tree.
+
+| claim | deciding evidence |
+|---|---|
+| **First-move beta-cutoff rate is 0.845 at NonPV nodes** — measured for the first time | uho300 @ d11, 648,988 NonPV cutoffs. PV 0.838, qsearch 0.842, in-check 0.937 |
+| **It splits 15 points on whether a TT move was available** | NonPV **0.9135 with / 0.7645 without**, and 46% of NonPV cutoffs are in the second group, which therefore owns **~70% of the engine's wasted cutoff work**. PV: 0.8812 / 0.6585. Qsearch: 0.9764 / **0.8262** with 90% of its cutoffs TT-less |
+| **Node counts on a position set FAIL their own null** | an INERT ±1 tie-break jitter moves the 50-position wl50 d13 total **+18.3%** (positive in all six seeds, mean +9.3%) and the 300-position d11 total −4.7%. wl50 @ d13 is the set the NNUE gate pins — a fingerprint, not a measurement |
+| The instruments that DO resolve ordering | census statistics: null spread **±0.15 pp** on fhf, ±0.03 pp on the LMR re-search rate. Paired sign test over 1000 positions: better/worse **505 ± 6** across six null seeds |
+| Generation order is a real tiebreak | the ±1 null is one-signed; `partial_insertion_sort` is stable, so equal-scoring quiets keep movegen's order and destroying it costs nodes |
+| **3.64% of NonPV LMR scouts beat alpha and force a full-depth re-search**, costing **21.4%** of the tree (nested, an upper bound) | 1,992,531 scouts, 72,466 re-searches, 994,940 nodes. **41.5% of re-searches are at move TWO**, 71% within moves 2–4 |
+| ~~Evasion ordering is the weak spot~~ — **REFUTED** | in-check fhf is **0.937**, better than not-in-check, because evasion lists are short. And giving quiet evasions the full seven-plane stack reads **−0.84 pp**, eight times the null: more history is WORSE there |
+| ~~The quiet malus SHAPE is a lever~~ — **RETRACTED** | inverting it read −9.90% nodes; **pure magnitude with the shipped shape reads −10.42%**, and shape with magnitude pulled back reads **+1.52%**. `r -= stat_score·RED_STATSCORE_NUM()` wires history magnitude into LMR, so a history arm's node win is a PRUNING win |
+| ~~Cross-kind malus (punish tried quiets when the best move was a capture)~~ — **REFUTED** | −3.90% nodes uncompensated; **−0.29 pp fhf and +5.88% nodes** once magnitude-compensated |
+| Sorting completeness is not the problem | a FULL quiet sort reads −0.02 pp of NonPV fhf (inside the null) |
+| An LVA tiebreak on captures is inert in the main pipeline | −0.02 pp; the good/bad split's `see_ge(m, −score/18)` already prices attacker risk |
+| The quiet threat term and the butterfly weight both EARN their keep | deleting the threat term: **−0.59 pp**; halving butterfly weight: **−0.52 pp**. Falsification controls pass |
+| The ARCHON-original D30 offense term does NOT | `offensew=0` reads **+0.07 pp**, inside the null, for an `attacks()` call per non-pawn quiet. Flagged, not acted on |
+| ~~Our capture history can outweigh MVV because our frame is compressed~~ — **REFUTED** | `PIECE_VALUES` is 208/781/825/1276/2538, exactly SF `eca43a97`'s frame |
+| ~~We clobber TT moves on a moveless store~~ — **REFUTED** | `TtEntry::save` rule 1 already preserves them |
+| **LANDED: quiescence recapture discount** (`QS_CAPTURE_DEFENDED_NUM = 56`) | qsearch fhf **+3.51 pp** against a ±0.16 pp null. Qsearch has no good/bad SEE split and `QS_LATE_MOVE_LIMIT = 2`, so mis-ordering DELETES a capture rather than delaying it. The same term in the MAIN pipeline is inert (−0.01 pp) and is not paid for |
+| **The ordering metric GOODHARTS** | that discount's fhf curve is still climbing at the principled constant (full recapture, +4.63 pp) where the search is already worse (+1.19% nodes, 493/507 paired vs −0.50% and 519/481 at 56). Shipped at 56 |
+| **LANDED: capture history on evasion captures** | in-check fhf **+0.64 pp** against a ±0.11 pp null. Capture history was consulted for every capture in the engine except the ones played while in check — 27% of NonPV cutoffs. Applying the recapture discount to evasions too CUTS this to +0.41 pp, so evasions deliberately do not get it |
+| Both landed together | −1.31% nodes paired over 1000 positions at d10 (null spread ±1.4%, so directional). **NO SPRT VERDICT** — the match died three times. Pooled pentanomially (`tools/perf70/pool_sprt.py`): **+7.60 ± 8.48 Elo over 2,332 games, LOS 96.05%**, LLR reached 0.93 of the 2.94 needed. **The bar still crosses zero.** `s70-chain` is accumulating |
+| fastchess APPENDS to its PGN but its stdout summary goes through `tee`, which TRUNCATES | a relaunch destroyed a completed 250-game segment's `sprt.out` and left every game intact. `tools/perf70/pgn_ptnml.py` recovers `Ptnml(0-2)` from the PGN by pairing on `[Round]` — validated against a surviving summary, reproducing `[28, 221, 457, 245, 40]` exactly |
+| A long match on this box dies to its own safety net | `systemd-run -p MemoryMax=4G` counts PAGE CACHE, which a 2000-game PGN fills; and `tools/oomlast.sh` sets `oom_score_adj=1000` **by design** so the trainer survives and the match does not. The lever is CONCURRENCY, not a cgroup cap |
+| `engines/bin/archon-s25` is a STALE baseline | it reads **1,799,710** on the wl50 d13 fingerprint against this tree's 1,739,588. Build a same-source PGO baseline for any SPRT |
+| `tools/sprt.sh` was passing NO `EvalFile` | an empty `EvalFile` silently evaluates PSQT, so every SPRT through that script measured a PSQT engine unless the caller appended the option by hand. Fixed: `NET=` defaults to `engines/canonical/net.cenn` and is printed |
+
+## MOVE ORDERING — the TT-less deficit, 2026-08-01 (perf study 71)
+
+Full writeup: `docs/research/perf-study-71-tt-less-move-ordering.md`. Same instruments,
+extended: `census70` now splits every TT-less node entry by WHY, and by which store site
+wrote it; `arm70` gains the `qsee` family and the `hidett` null.
+
+| claim | deciding evidence |
+|---|---|
+| **A node arrives TT-less for three different reasons, and only one is repairable** | uho300 @ d11, 757,789 TT-less NonPV node entries: **42.58 % probe MISS**, **57.41 % an entry with no move**, **0.001 % (8 events) a move that fails `pseudo_legal`**. Validation is not a source of the deficit |
+| **Half the moveless population is a MAIN-SEARCH FAIL LOW** | by the depth the moveless entry was stored at: eval-only cache 27.57 %, quiescence fail low 21.89 %, search fail low d1–3 **34.47 %**, d≥4 **16.08 %** — 220 k entries, 17.7 % of all NonPV nodes |
+| ~~Storing the fail-low argmax move fixes it~~ — **REFUTED** | against its own pruning control: **−0.06 pp fhf, +2.3 % nodes**. Alone it reads +0.08 pp (null ±0.03) and +3.9 % nodes. Mechanism: at an all-node the argmax is over LMR-reduced upper bounds of exactly the moves the static ordering already ranked first |
+| **A TT-availability arm is a PRUNING arm until controlled** — four sites read `ttMove == NULL` as "unresolved" | IIR, RFP's `ttMove == NULL \|\| ttCapture` gate, `RED_CUTNODE_NO_TTMOVE`, `RED_FULLDEPTH_NO_TTMOVE`. `TT_UPPER_PRUNE_BLIND` is a bitmask so the 2×2 is runnable in one binary |
+| **REJECTED: IIR on UPPER-bound entries** | **−27.7 % nodes from IIR alone** (the other three sites: +0.3 %, +0.6 %, −0.05 %), and **−24.17 ± 15.11 Elo over 792 fixed-node games, LOS 0.08 %**. SF `eca43a97` search.cpp:1029 says `(*Scaler) Making IIR more aggressive scales poorly`; now measured here |
+| **The 14.9 pp deficit is 1.55× over-priced as an ORDERING target** | `hidett=1` hides the TT move from the MOVE PICKER only (every pruning/reduction/extension gate still reads `tt_data.mv`): the same nodes cut first **0.8175** instead of 0.9134. So **9.6 pp is the TT move and 5.4 pp is population** — nodes with a TT move are re-visited nodes and are intrinsically easier |
+| **When a TT-less cutoff is not on move 1, the cutting move is a QUIET** | by index: move 2 is 78.8 % GoodQuiet, move 3 90.7 %. And of 156,444 TT-less quiet cutoffs, **85.5 % had ZERO captures before them** (mean 0.18) — the capture/quiet interleave is not the lever |
+| **The lever is the quiet SCORE: 28.5 % of TT-less quiet cutoffs were not the top-scored quiet** | 44,637 events, 15.1 % of the TT-less cutoff population |
+| **LANDED: `QUIET_SEE_PENALTY = 49152`**, clamped at `GOOD_QUIET_THRESHOLD + 1` | NonPV fhf **0.8435 → 0.8485**, TT-less **0.7632 → 0.7721** (+0.89 pp against a ±0.03 pp null), nodes −2.05 %. SF's `score<QUIETS>` has NO SEE term; its threat tier knows only STRICTLY cheaper attackers, ignores defence, and is `Bitboard::EMPTY` for a pawn |
+| **The CLAMP is the change, and only games could tell** | unclamped (the demotion may cross into the bad pile, where LMP can drop the move): **−6.34 % nodes, −3.13 % total instructions, −5.35 ± 9.26 Elo over 1,948 games**. Clamped: −2.05 % nodes, +1.86 % instructions, **+11.00 ± 7.20 Elo over 3,350 games, LOS 99.9 %**. The move loop already SEE-prunes quiets at `-QSEE_MULT·lmr_depth²`, so the unclamped form was a harsher depth-blind duplicate |
+| Two guards make the SEE call affordable | `all_threats.contains(to)` (already in hand) and `value > GOOD_QUIET_THRESHOLD()`, with the block placed AFTER the threat/offense terms: **0.093 `see_ge` per scored quiet**, +3.99 % instructions/node |
+| ~~A free "attacked by an EQUAL-or-cheaper piece" tier replaces the SEE call~~ — **REFUTED** | +0.19 pp at its best and **−0.59 pp** at the shipped magnitude. Without knowing the destination is defended the predicate is bad; the `see_ge` earns the term |
+| The predicate, not the demotion | size- and magnitude-matched RANDOM control (demote a pseudo-random 23 % of quiets, the same share, by the same amount): **−1.17 pp fhf, +17.2 % nodes** |
+| A fixed-node SPRT is BLIND to this term's cost | +3.99 % instructions/node ≈ 1.5 % wall clock (study 41's 2.6× ratio) ≈ 2.6 Elo at ~120 Elo/doubling. A real-TC confirmation is owed |
+
 ## WHY WE LOSE — the holistic answer (2026-07-28, full 404-game corpus)
 
 Full writeup: `searchopt/results/WHY-WE-LOSE-d48x.md`. Counted, not estimated.
