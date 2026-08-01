@@ -457,6 +457,10 @@ class TrainConfig:
     # a warm-up/main/anneal curve live in ONE config so long runs never
     # stop for an LR change (D48W schedule, user design 2026-07-27).
     lr_ramp: tuple = ()
+    # Superbatch export cadence. 10 = the historical default. The LR
+    # jump->anneal cycles set this to the cycle length so checkpoints land
+    # only at the BOTTOM of the cycle (LR -> 0).
+    export_every: int = 10
     # ---- v1.5 warm-refinement knobs (2026-07-26). All default to the
     # historical behaviour, so every existing config is untouched. ----
     # Per-tensor weight clips derived from each tensor's export encoding
