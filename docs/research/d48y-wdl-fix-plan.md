@@ -14883,3 +14883,44 @@ by construction with the miss-parallel/MSHR mechanism attached.
 
 The point of putting it there rather than in a study doc: a study doc is read by
 whoever already knows to look. CLAUDE.md is read by whoever does not.
+
+---
+
+## 2026-08-01 04:32 — D49 HAS OVERTAKEN CANONICAL: sb1410 = +15.06 +/- 10.84, LOS 99.68 %
+
+**D49:** sb1423, 188.3k pos/s, heldout ema 0.010449.
+
+**First result clearly OUTSIDE the bar.** 1500 games, 25k fixed nodes, frame-fair
+scale 1068, W491 / L426 / D583 (52.17 %), PairsRatio 1.25:
+
+| checkpoint | pack scale | Elo vs canonical | n |
+|---|---:|---:|---:|
+| sb1270 | 756 | -2.08 +/- 11.32 | 1500 |
+| sb1300 | 756 | +3.24 +/- 10.65 | 1500 |
+| sb1300 | 1068 | -8.57 +/- 10.57 | 1500 |
+| sb1340 | 1068 | +0.69 +/- 11.62 | 1500 |
+| **sb1410** | **1068** | **+15.06 +/- 10.84** | **1500** |
+
+Three consecutive frame-fair points moving one direction (-8.57 -> +0.69 ->
++15.06) and the newest is significant on its own. **Deliberately NOT
+extrapolating to sb1700**: the LR is decaying on the cosine schedule, gains
+flatten, and projecting a slope is the error [[quote-levels-not-trends]] exists
+for. The LEVEL is what is claimed: at sb1410 D49 beats canonical by ~15 Elo.
+
+**BINARY INCONSISTENCY, recorded deliberately rather than silently fixed.**
+`export_match_loop.sh:52` uses `./target-sota/release/chessengine`, which is the
+**OLD** binary — verified directly, `bench` = 587683, i.e. pre-`ebcea3ef`
+tunables. Main is now 486897.
+
+**Decision: leave it.** The per-export series' job is tracking D49's TRAJECTORY,
+and swapping the binary mid-series injects a discontinuity into exactly the
+comparison it exists to make. sb1300/1340/1410 are mutually comparable and stay
+that way.
+
+**But the sb1700 VERDICT must use the NEW PGO binary**
+(`chessengine-mainwt/engines/bin/archon-tunables`), because that is what would
+actually ship. Run the 5880-game screen (+/-5 Elo) with it, not with
+`target-sota`. Written here because it is the kind of detail that is invisible at
+the moment it matters.
+
+Study 67 running. Box 6066 MB, no OOM.
