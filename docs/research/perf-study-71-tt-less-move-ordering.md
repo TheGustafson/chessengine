@@ -32,7 +32,7 @@ for the first time: ordering the SAME nodes without their TT move costs
 ordering. What did land is a term the deficit's own stage census pointed at: a
 **SEE penalty on quiet ordering**, the one signal Stockfish's `score<QUIETS>`
 does not have, clamped so it can only reorder. TT-less `fhf` **0.7632 →
-0.7721**, and **+11.46 ± 7.35 Elo over 3,216 games** where the unclamped version
+0.7721**, and **+11.00 ± 7.20 Elo over 3,350 games** where the unclamped version
 of the same term — better on every proxy — lost 5.35 ± 9.26 over 1,948.
 
 ---
@@ -238,7 +238,7 @@ term stops being ordering and becomes pruning — and the pruning version looks
 |---|---|---|---|---|---|---|
 | unclamped, 32768, one guard | +0.42 | +0.71 | **+0.38 %** | +7.66 % | +8.06 % | **−3.71 ± 8.86** (2,156) |
 | unclamped, 49152, both guards | +0.39 | +0.73 | **−6.34 %** | +3.43 % | **−3.13 %** | **−5.35 ± 9.26** (1,948) |
-| **clamped, 49152, both guards** | **+0.50** | **+0.89** | −2.05 % | +3.99 % | +1.86 % | **+11.46 ± 7.35** (3,216, LOS 99.9 %) |
+| **clamped, 49152, both guards** | **+0.50** | **+0.89** | −2.05 % | +3.99 % | +1.86 % | **+11.00 ± 7.20** (3,350, LOS 99.9 %) |
 
 **Mechanism for the sign flip, and it is not a mystery**: the search *already*
 prunes losing quiets by SEE in the move loop, at `-QSEE_MULT · lmr_depth²`
@@ -284,10 +284,10 @@ fingerprints exactly (wl50 d13 = 1,979,892; uho300 d11 = 4,565,705).
 | `ttup=1` (IIR on UPPER entries) | 396 | 792 | 46.53 % | **−24.17 ± 15.11** | 0.08 % |
 | quiet SEE, unclamped 32768 | 1,078 | 2,156 | 49.47 % | −3.71 ± 8.86 | 20.6 % |
 | quiet SEE, unclamped 49152 | 974 | 1,948 | 49.23 % | −5.35 ± 9.26 | 12.9 % |
-| **quiet SEE, CLAMPED 49152 (shipped)** | **1,608** | **3,216** | **51.65 %** | **+11.46 ± 7.35** | **99.89 %** |
+| **quiet SEE, CLAMPED 49152 (shipped)** | **1,675** | **3,350** | **51.58 %** | **+11.00 ± 7.20** | **99.86 %** |
 
-**The bar clears zero on the shipped arm** (+11.46 − 7.35 = **+4.11**) at 3,216
-games with LOS 99.89 %. It is a pooled Elo bar rather than an accepted SPRT
+**The bar clears zero on the shipped arm** (+11.00 − 7.20 = **+3.80**) at 3,350
+games with LOS 99.86 %. It is a pooled Elo bar rather than an accepted SPRT
 verdict — the segments do not stop on their own — and it is stated as the
 former. Read the running total with
 

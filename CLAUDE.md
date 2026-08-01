@@ -391,7 +391,7 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   the quiet into the BAD pile, where late-move pruning can drop it: **−6.34 %
   nodes, −3.13 % TOTAL instructions, and −5.35 ± 9.26 Elo over 1,948 games.**
   Clamped it can only reorder: **−2.05 % nodes, +1.86 % total instructions, and
-  +11.46 ± 7.35 Elo over 3,216 games (LOS 99.9 %).** The version that wins every
+  +11.00 ± 7.20 Elo over 3,350 games (LOS 99.9 %).** The version that wins every
   cheap instrument is the version that loses. Mechanism: the move loop ALREADY
   prunes losing quiets by SEE at `-QSEE_MULT · lmr_depth²` (SF parity), so the
   unclamped demotion is a second, harsher, DEPTH-BLIND copy of an existing rule
