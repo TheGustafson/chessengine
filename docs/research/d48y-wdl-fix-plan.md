@@ -15494,3 +15494,18 @@ exactly `qtrace` + `SearchStats` + env probes.
 round — the reason it survives a loaded box, where `cycles:u` (+49.9 % under
 load) and `task-clock` (fails a byte-identical null) cannot be trusted at all
 tonight.
+
+**`archon-s69` built off main `18d4dcaf`: bench 587683** — matching the pin
+exactly, confirming node-identity (both wins are pure dead-work removal, so the
+tree must not move). Panel `wc69` launched: `--base archon-s25 --arm archon-s69
+--rounds 40 --nodes 100000 --elo`.
+
+**And I looked for `tools/wallclock_panel.py` in the wrong checkout again.**
+`find` in `/home/nick/projects/chessengine` returned nothing and I was one step
+from concluding the tool had been lost with the worktree cleanup. It is on
+**main** (`c788a056`, never deleted) — but **the primary checkout sits on
+`repr-gap-study`**, so the file is simply not in that working tree. The same trap
+as the stale handoff copy earlier tonight, and the same shape as the
+`tools/nnue/train.py` path error: **a missing file in one worktree is not
+evidence the file is missing.** Check `git log --all --diff-filter=D` and the
+other checkout before believing a deletion.
