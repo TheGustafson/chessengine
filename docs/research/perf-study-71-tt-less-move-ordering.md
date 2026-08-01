@@ -156,6 +156,16 @@ what a TT move *is*.
 **Study 70's headline is over-priced 1.55× as a static-ordering target.** Both
 halves are real; only one of them is reachable without a TT hit.
 
+**The one caveat, stated rather than buried.** Removing the hint changes the
+tree (4.57 M → 5.55 M nodes), so the "had a TT move" population under `hidett`
+is not literally the same set of nodes as under the shipped build. The arm is
+therefore one inference deep, not zero: what it establishes is that a large
+part of the gap survives when the hint is taken away, i.e. that the two
+populations differ in orderability. It does not resolve the 5.4 pp to three
+digits. A zero-inference version would need the census to remember, per node,
+what its own TT move would have been — worth building if anyone wants to price
+static-ordering headroom exactly.
+
 ## 4. Where the reachable half actually is
 
 With store policy dead, the whole 757,789-entry TT-less population depends on
