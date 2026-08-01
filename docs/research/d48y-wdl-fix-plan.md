@@ -15463,3 +15463,34 @@ decided at decision points, and this project has a receipt of 44e-6 of loss
 sitting alongside ~30 Elo of games. This regression is an **abort-condition
 instrument**: it says training is healthy and should continue. The strength claim
 is the separate pooled one, **+9.70 +/- 4.47 over 9000 games**.
+
+---
+
+## 2026-08-01 06:47 — measuring tonight's two landed wins in WALL-CLOCK, which fixed nodes cannot see
+
+**D49:** sb1484, 188.5k pos/s, heldout ema 0.010453. `d49xml` screening sb1470
+(stdev 602.6). Study 69 running.
+
+**The owed measurement.** Studies 67 and 68 landed the only two speed wins of the
+night — `qtrace` (**−2.33 % of measured search time**) and `SearchStats` +
+env-probe hoisting (**−0.559 % instructions, −29.9 per node**). **Neither has ever
+been measured in wall-clock on the shipped configuration**, and neither CAN be
+seen by a fixed-node match: at fixed 25k nodes a speed fix earns exactly zero.
+Both are also invisible in `Bench:` — both are node-identical.
+
+So the engine's two headline instruments — the bench fingerprint and every match
+run tonight — are structurally blind to the only two improvements that landed.
+
+**Building `archon-s69`, a clean PGO off main `18d4dcaf`** (studies 67 + 68, and
+crucially WITHOUT the reverted tunables). **`archon-s68` is NOT usable for this**:
+it was built off `fa530897`, which still carried the 154 `ebcea3ef` values that
+later measured −29.49 Elo and were reverted — panelling against it would mix a
+speed win with a 29-Elo regression.
+
+Baseline is `archon-s25` (canonical PGO, bench 587683), so the panel measures
+exactly `qtrace` + `SearchStats` + env probes.
+
+**Instrument: `tools/wallclock_panel.py`**, which interleaves its null WITHIN each
+round — the reason it survives a loaded box, where `cycles:u` (+49.9 % under
+load) and `task-clock` (fails a byte-identical null) cannot be trusted at all
+tonight.
