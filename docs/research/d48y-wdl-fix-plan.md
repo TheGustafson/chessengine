@@ -17702,3 +17702,53 @@ explicitly and it is minutes from launching).
 **Standing note on the directive:** D49 is deliberately stopped and the GPU held
 for the teacher probe. That is the one live deviation from "keep the training
 going", it is intentional, and it ends the moment the probe launches.
+
+---
+
+## 2026-08-01 15:40 — EXECUTION commissioned: implement the simplification plan and test it in games
+
+**Owner: "Lets implement all the simplificatins from the study and test them in
+games."** Commissioned at Fable level, worktree-isolated.
+
+**Step 0 is untangling the branches, because nothing is on main:**
+- study 70 (`a1079a65…`): two ordering fixes, **+7.60 ± 8.48, no verdict**;
+- study 71 (`a8bf84b5…`, built ON study 70): `QUIET_SEE_PENALTY` clamped,
+  **+11.00 ± 7.20 over 3350 games, LOS 99.86 %** — **I re-pooled its segments
+  myself and reproduced it exactly**;
+- the simplification plan (`a9ca00b3…`) quotes both.
+
+**Base is main + 70 + 71**, because 71's win was measured *on top of* 70, so
+70+71 is the tested configuration. Told to **verify** study 71's claimed pins
+(`Bench: 300694`, d13 `2045128`) rather than inherit them.
+
+**★ A VERIFICATION ERROR OF MINE, worth recording.** Checking study 71's +11.00 I
+pooled **all** its run directories together and got **−0.42 ± 4.54 over 8340
+games** — which reads as a flat refutation of a real win. It was
+apples-and-oranges: four different arms, including a **−24 Elo rejected** one.
+Pooling per arm reproduces every reported number exactly:
+
+| arm | games | Elo |
+|---|---:|---:|
+| `q3chain` (**shipped**, clamped) | 3350 | **+11.00 ± 7.20, LOS 99.86 %** |
+| `q2chain` (unclamped) | 1948 | −5.35 ± 9.26 |
+| `qseechain` | 2250 | −4.79 ± 8.65 |
+| `ttup` (IIR on UPPER) | 792 | **−24.17 ± 15.11, LOS 0.08 %** |
+
+**The tool was right; my aggregation was wrong.** Pooling is only valid within one
+arm — the same mistake in the other direction would have shipped a −24 Elo change.
+
+**Staging handed over intact:** Tier 0 (~900 lines, ~15 knobs, **must be
+bit-identical** — `Bench:`/eval-hash/d13 unmoved is the gate); Tier 0b (constify
+~65 handles, needs the **D50 decisions.md** amendment in the same commit);
+then games-gated baskets as **non-inferiority SPRTs (elo0=−3, elo1=+1)**,
+one-match A/B, same-source PGO, segmented, **EvalFile verified on the live argv**.
+KEEP list preserved — razoring, LMP, correction history, `stat_score` dock,
+`set_quiet_prior` (the last three are the future NNUE-head seams).
+
+**Armed with today's hardest-won rule:** *cheap proxies lie* — study 71's
+unclamped arm won on nodes (−6.34 %) and instructions (−3.13 %) and **lost the
+games**. Removals may not be accepted on node counts alone.
+
+**Box protected:** the owner's teacher probe `d49sfb` is live on the GPU and
+declared untouchable; `d49xml` must be stopped explicitly (its `is-active` is
+always true) and restarted after each SPRT.
