@@ -161,10 +161,10 @@ fn generate_all<const GT: u8, const WHITE: bool>(board: &Board, list: &mut MoveL
     use gen_type::{CAPTURES, EVASIONS, NON_EVASIONS, QUIETS};
     let us = if WHITE { Color::White } else { Color::Black };
     let ksq = board.king_square(us);
-    // The slider tables, read from the board as a plain field instead of
-    // through the `LazyLock` guard (perf study 69 §2); the closures below then
-    // use the `&'static` tables directly (attacks.rs hot-loop pattern).
-    let tables = board.attack_tables();
+    // One atomic-acquire deref for the whole generation pass; the slider
+    // closures below then use the `&'static` tables directly (attacks.rs
+    // hot-loop pattern).
+    let tables = attacks::tables();
 
     // Double check: only king moves can be legal — skip all non-king work.
     if GT != EVASIONS || !board.checkers().more_than_one() {
@@ -447,7 +447,7 @@ impl Board {
     /// the king-safety probes this serves.
     #[inline(always)]
     pub fn attackers_to_exist(&self, sq: Square, occupied: Bitboard, c: Color) -> bool {
-        let tables = self.attack_tables();
+        let tables = attacks::tables();
         let queens = self.pieces(c, PieceType::Queen);
         !(tables.rook_attacks(sq, occupied) & (self.pieces(c, PieceType::Rook) | queens))
             .is_empty()
@@ -574,7 +574,7 @@ impl Board {
                     ^ Bitboard::from_square(from)
                     ^ Bitboard::from_square(capsq))
                     | Bitboard::from_square(to);
-                let tables = self.attack_tables();
+                let tables = attacks::tables();
                 let queens = self.pieces(them, PieceType::Queen);
                 (tables.rook_attacks(ksq, occ) & (self.pieces(them, PieceType::Rook) | queens))
                     .is_empty()
@@ -671,11 +671,7 @@ impl Board {
         // 5b. Other pieces: `to` must be attacked from `from` on the
         //     current occupancy (`attacks` dispatches N/B/R/Q/K, so this
         //     handles king steps too).
-        else if !self
-            .attack_tables()
-            .attacks(pc.piece_type, from, self.all_occupancy())
-            .contains(to)
-        {
+        else if !attacks::attacks(pc.piece_type, from, self.all_occupancy()).contains(to) {
             return false;
         }
 

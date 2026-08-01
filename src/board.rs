@@ -246,7 +246,7 @@ impl CheckInfo {
             pinners[c.flip() as usize] = p;
         }
 
-        let tables = board.attack_tables();
+        let tables = attacks::tables();
         let them = board.side_to_move.flip();
         let ksq = board.king_square(them);
         let occ = board.all_occupancy;
@@ -770,50 +770,6 @@ impl PartialEq for ThreatCache {
 
 impl Eq for ThreatCache {}
 
-/// A handle on the process-wide magic slider tables that costs a field read
-/// instead of a `LazyLock` deref (perf study 69 §2).
-///
-/// `attacks::tables()` is `&*LazyLock<AttackTables>`, and a `LazyLock` deref is
-/// an **acquire atomic load of the `Once` state word plus a branch** — which no
-/// optimiser may hoist out of a recursive function, so the shipped engine ran
-/// it once per movegen/SEE/check-detection call site. It is worse than three
-/// instructions, too: x86 RIP-relative addressing has **no index register**, so
-/// the compiler must also materialise the table base with a `lea` before it can
-/// index `magics[sq]`. Measured on the shipped PGO binary: `mov <state>(%rip),
-/// %eax ; test %eax,%eax ; jne <init> ; lea <TABLES>(%rip),%rdi` at **5.14
-/// executions per node** across the whole engine (`tools/perf69/guardcost69.sh`).
-/// Held as a field it is one `mov` off `self`, and the base is already in a
-/// register.
-///
-/// It is **not part of the position** — every board in the process points at
-/// the same tables — so, exactly like [`ThreatCache`], it is invisible to
-/// `Debug` and to equality. Without that, `#[derive(PartialEq)]` on `Board`
-/// would compare 4 KB of magics per call and `#[derive(Debug)]` would print
-/// them.
-#[derive(Clone, Copy)]
-struct AttackTablesRef(&'static attacks::AttackTables);
-
-impl Default for AttackTablesRef {
-    fn default() -> Self {
-        // The one `LazyLock` deref per board, in the constructor.
-        Self(attacks::tables())
-    }
-}
-
-impl fmt::Debug for AttackTablesRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("attacks::TABLES")
-    }
-}
-
-impl PartialEq for AttackTablesRef {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl Eq for AttackTablesRef {}
-
 /// The stack of states BELOW the live ply (D8): a preallocated slab plus a
 /// cursor, **not** a `Vec` whose length is the cursor.
 ///
@@ -952,10 +908,6 @@ pub struct Board {
     /// Lazily-filled Wave-G threat map — see [`ThreatCache`]. Not part of the
     /// position: cloned cold, ignored by equality.
     threats: ThreatCache,
-
-    /// The magic slider tables — see [`AttackTablesRef`]. Not part of the
-    /// position: the same `&'static` in every board, ignored by equality.
-    attack_tables: AttackTablesRef,
 }
 
 impl Board {
@@ -974,24 +926,11 @@ impl Board {
             state: StateInfo::EMPTY,
             history,
             threats: ThreatCache::default(),
-            attack_tables: AttackTablesRef::default(),
         };
         // Even the empty board's root state is self-consistent (its key is
         // ZOBRIST.castling[0], its pawn key ZOBRIST.no_pawns, ...).
         board.init_state();
         board
-    }
-
-    /// The magic slider tables, without the `LazyLock` guard.
-    ///
-    /// **Prefer this to [`attacks::tables`] anywhere a `Board` is in scope**
-    /// (perf study 69 §2): the free functions `attacks::{attacks, rook_attacks,
-    /// bishop_attacks, queen_attacks}` and `attacks::tables()` each pay an
-    /// atomic state load, a branch and a `lea` at every call site the optimiser
-    /// cannot hoist them out of, which on a recursive search is *every node*.
-    #[inline(always)]
-    pub fn attack_tables(&self) -> &'static attacks::AttackTables {
-        self.attack_tables.0
     }
 
     pub fn piece_on(&self, sq: Square) -> Option<Piece> {
@@ -1251,7 +1190,7 @@ impl Board {
     /// `sq`, and vice versa.
     #[inline(always)]
     pub fn attackers_to(&self, sq: Square, occupied: Bitboard) -> Bitboard {
-        let tables = self.attack_tables();
+        let tables = attacks::tables();
         let queens = self.pieces_of_type(PieceType::Queen);
         (tables.rook_attacks(sq, occupied) & (self.pieces_of_type(PieceType::Rook) | queens))
             | (tables.bishop_attacks(sq, occupied)
@@ -1342,7 +1281,7 @@ impl Board {
     /// the reverse-futility test threw the result away. [`ThreatCache`] has the
     /// rationale and the invalidation argument.
     fn compute_threats(&self) -> ([Bitboard; 6], Bitboard) {
-        let tables = self.attack_tables();
+        let tables = attacks::tables();
         let us = self.side_to_move;
         let them = us.flip();
         // Sliders see through our king (king-danger x-ray).
@@ -1478,9 +1417,7 @@ impl Board {
             MoveKind::Promotion => {
                 let promo = m.promotion_piece().expect("promotion kind has a piece");
                 let occupied = self.all_occupancy ^ Bitboard::from_square(from);
-                self.attack_tables()
-                    .attacks(promo, to, occupied)
-                    .contains(ksq)
+                attacks::attacks(promo, to, occupied).contains(ksq)
             }
             // The one case the fast paths miss: discovered check through
             // the CAPTURED pawn's square.
@@ -1490,7 +1427,7 @@ impl Board {
                     ^ Bitboard::from_square(from)
                     ^ Bitboard::from_square(capsq))
                     | Bitboard::from_square(to);
-                let tables = self.attack_tables();
+                let tables = attacks::tables();
                 let queens = self.pieces(us, PieceType::Queen);
                 !((tables.rook_attacks(ksq, occupied)
                     & (self.pieces(us, PieceType::Rook) | queens))
@@ -2471,7 +2408,7 @@ impl Board {
         let mut stm = self.side_to_move;
         let mut attackers = self.attackers_to(to, occupied);
 
-        let tables = self.attack_tables();
+        let tables = attacks::tables();
         let queens = self.pieces_of_type(PieceType::Queen);
         let diagonal = self.pieces_of_type(PieceType::Bishop) | queens;
         let orthogonal = self.pieces_of_type(PieceType::Rook) | queens;

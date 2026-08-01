@@ -788,18 +788,50 @@ fn init_magics(
 
 static TABLES: LazyLock<AttackTables> = LazyLock::new(AttackTables::new);
 
-/// Force/fetch the magic tables. `main` forces it before the UCI loop so init
-/// never happens mid-search.
+/// Force/fetch the magic tables. Every deref of the `LazyLock` behind this
+/// costs an atomic acquire load plus a predicted branch — cheap, but hot
+/// loops (movegen, SEE, eval) should call `tables()` once at function entry
+/// and use the `&'static AttackTables` methods thereafter. `main` forces it
+/// before the UCI loop so init never happens mid-search.
 ///
-/// ⚠ **If a `Board` is in scope, call [`crate::board::Board::attack_tables`]
-/// instead.** Every deref of the `LazyLock` behind this is an atomic acquire
-/// load of the `Once` state, a branch, **and** a `lea` to materialise the table
-/// base (x86 RIP-relative addressing has no index register, so `magics[sq]`
-/// cannot fold the static's address into its own operand). Nothing may hoist
-/// that out of a recursive function. Perf study 69 §2 measured the whole
-/// sequence at **5.14 executions per node** in the shipped engine and moved
-/// every `Board`-side caller onto a field read; what is left here is the
-/// startup force, the tests, and the two NNUE threat paths that hold no board.
+/// ⚠ **MEASURED AND REJECTED, TWICE OVER. DO NOT RE-PROPOSE "put the tables in
+/// a `Board` field" WITHOUT READING THIS.** (Perf study 69 §2; study 68 §6
+/// pre-priced it at "zero cost" and named it the largest remaining item of its
+/// class. Both halves of that were wrong.)
+///
+/// The guard really is four instructions, not three — x86 RIP-relative
+/// addressing has no index register, so `magics[sq]` also needs a `lea` to
+/// materialise the base:
+///
+/// ```text
+///   mov  <TABLES+0x1040>(%rip),%eax   ; Once state, ACQUIRE
+///   test %eax,%eax
+///   jne  <init>                       ; never taken
+///   lea  <TABLES>(%rip),%rdi
+/// ```
+///
+/// It was replaced with an `&'static AttackTables` field on `Board`, resolved
+/// once per board, at every `board.rs` / `movegen.rs` / `movepick.rs` site —
+/// node-identical, eval-hash-identical, and it removed **all 60** `TABLES`
+/// references from `search::<NonPv>` and all 16 from `qsearch::<NonPv>`. Two
+/// numbers killed it:
+///
+/// - **Non-PGO pair (the source change alone): −0.077 % instructions, 10/10 =
+///   −4.1 per node.** A win, but an ORDER OF MAGNITUDE under the disassembly's
+///   ~15, because the field read replaces the `lea` (which was free and
+///   rematerialisable) rather than adding to it, and because the guard's own
+///   load/test/branch was already partly common-subexpression-eliminated.
+/// - **PGO pair (the shipped pipeline): +0.321 % instructions, 0/16 = +16.8 per
+///   node,** against a byte-identical null of +0.000 %. The arm shrinks its
+///   callees (`see_ge` −193 B, `init_quiets` −538 B, `qsearch` −903 B), PGO
+///   then inlines differently, and the cost lands in symbols the diff does not
+///   touch (`forward_into` +0.71 share points, `i8_deltas_into_inner` −0.81).
+///   Study 55 §0.1's size curve, from the other end.
+///
+/// The guard's whole measured budget is **4.98 dispatched ops per node** across
+/// the binary (`tools/perf69/guardcost69.sh`), of which `search::<NonPv>` owns
+/// 2.20 — and half of its 22 sites never execute. It is not worth a
+/// register-pressure trade in a 45 KB function.
 #[inline]
 pub fn tables() -> &'static AttackTables {
     &TABLES
