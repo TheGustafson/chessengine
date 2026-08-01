@@ -16881,3 +16881,34 @@ derived ~1.02. If it does not, the blend would train toward a corrupted target
 and that must be found in the regression, not 12 superbatches later.
 
 **Cycle 3 at sb1620/1630**; GPU frees shortly, anchor A/B fires automatically.
+
+---
+
+## 2026-08-01 12:17 — cycle 3 at sb1627/1630; the teacher calibration is unblocked
+
+**Cycle 3 at sb1627**, 195.1k pos/s — **3 superbatches from the bottom**, ~7 min.
+No mid-cycle exports have appeared, so `export_every` is holding all the way
+through. `d49c3` will then save `d49lrc3-sb1630-*` and fire the anchor A/B
+automatically. Memory 6874 MB, all units green.
+
+**Located the labelled corpus for the teacher calibration** —
+`data/nnue/jaxcorpora/` holds the shuffled training shards
+(`uho-band75-100.shuf.bin`, `pylon-band75-88.shuf.bin`,
+`wrongnnue-band75-95.shuf.bin`), plus `data/nnue/binpacks/farseerT76.binpack`.
+The D49 config's `per_corpus_target` has **12 (a, b) pairs**, i.e. twelve corpora
+with per-corpus frame targets already fitted — which is itself the evidence that
+**label frames differ per corpus** and that a single global teacher↔label
+constant would be wrong.
+
+**That sharpens the calibration plan concretely:** the regression must be run
+**per corpus**, not pooled. `per_corpus_target` already ranges from
+(142.8, 91.2) to (247.0, 122.3) — a **1.73× spread in the `a` term alone**. A
+single pooled slope fitted across all twelve would absorb that spread into the
+residual and produce a teacher target that is wrong for most shards.
+
+**So the 60/40 blend needs twelve calibrations, not one** — and the machinery for
+per-corpus frame handling already exists in the config, which is the good news.
+
+**Next step, still ~1 h and now fully specified:** `sf-eval` a sample from each
+corpus, regress teacher output against that corpus's stored labels, and compare
+each slope to its existing `per_corpus_target` pair.
