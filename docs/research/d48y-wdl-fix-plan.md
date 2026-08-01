@@ -16732,3 +16732,33 @@ sb1600, waits for sb1630, saves the protected checkpoint, then runs the
 **Verified live:** `[pump d49-1280] RESUME from sb1600 (fresh Adam transient)`,
 cycle 3 training. **Cycle 2's checkpoint survived** the handover — all four
 `d49lrc2-sb1600-*.bin` present, confirmed on disk. Memory 8877 MB.
+
+---
+
+## 2026-08-01 11:21 — cycle 3 relaunched and confirmed; cycle 2's result is in flight
+
+**Cycle 3 (new instance, `env[3243962]`) resumed from sb1600** — verified from
+the journal since 11:18, not from the pre-restart line which belonged to the old
+instance `env[3240355]`. Distinguishing the two mattered: the stale line showed
+sb1601 and would have read as progress from the wrong process.
+
+**`export_every` is holding so far**: zero `sb161*` exports exist, which is the
+correct state — under the old cadence sb1610 would already be due. The real proof
+comes at sb1630, when exactly one export should appear.
+
+**`d49xml` is screening sb1600 — cycle 2's end-of-anneal checkpoint** (stdev
+597.8). That gives the second point of the compounding question:
+
+| checkpoint | phase | Elo vs canonical |
+|---|---|---:|
+| sb1540 | anchor | +3.47 ± 11.22 |
+| sb1570 | cycle 1 anneal end | **+9.27 ± 11.04** |
+| **sb1600** | **cycle 2 anneal end** | **in flight** |
+| sb1630 | cycle 3 anneal end | pending |
+
+**If cycles compound, sb1600 should read above +9.27.** If it reads back near the
+anchor, the cycle-1 number was the ordinary ±11 spread of this series and the
+idea is not working — which is why the `d49c3` A/B against the anchor is armed
+regardless of what any single screen says.
+
+Memory 6881 MB, all units green, no OOM.
