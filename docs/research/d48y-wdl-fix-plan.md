@@ -15555,3 +15555,69 @@ rather than publish a number my own tool refused to stand behind.**
 Note the shape: this is the FOURTH fast instrument tonight to point somewhere
 games or mechanism would not follow — after `Bench:` −17.2 %, bench-nps +5.6 %,
 and the contaminated depth regex. The difference is that this one caught itself.
+
+---
+
+## 2026-08-01 07:10 — STUDY 69: branch mispredicts CLOSED with arithmetic, and it retracted its own claim
+
+**Merged `6d6e3e85`, gate `gate69` verifying. Verified by me: `TABLES` is still a
+`LazyLock` (`attacks.rs:789`) — the revert landed.** 15 new instruments.
+
+### Target B — built, measured, REVERTED
+
+Pre-registered **−0.19 to −0.28 %**; measured **+0.321 % instructions, 0/16**
+against a byte-identical null at +0.000 %. **The arm worked** (60 → 0 `TABLES`
+refs in `search::<NonPv>`) **and still lost.** Two mechanisms:
+
+1. **The guard is worth ~4 i/node, not ~15**: the field read *replaces* the
+   `lea`, because x86 RIP-relative addressing has no index register so the base
+   must be materialised either way. Study 68's §4.3 lesson repeating —
+   **counting a code sequence is not measuring it; you must count what replaces
+   it.**
+2. **A source change that alters hot function SIZES buys a PGO inline
+   re-decision that can cost 4× its direct effect and INVERT ITS SIGN.** Non-PGO
+   control: −0.077 %, 10/10 — i.e. the arm is a small win before PGO and a loss
+   after.
+
+**It wrote a sweeping claim and then built the null that retracted it.** It first
+concluded "the error bar on studies 61–68 is unknown", then built `pgonull69`
+(8 inert bytes on `Board`), which reads **+0.000 % (5/12) with every hot symbol
+byte-identical in size**. So the effect is real but **confined to edits that
+change hot-symbol sizes** — the earlier studies are not impeached. That is
+exactly the discipline this project asks for, done unprompted.
+
+### Target A — branch mispredicts, closed with arithmetic rather than opinion
+
+**MY BRIEF WAS WRONG AND IT CORRECTED ME.** I wrote "~15-cycle penalty"; the
+engine's **own measured** exchange rate is **9.13 cycles** (study 40 §3, from
+`ex_no_retire.empty`). I overstated the budget by ~64 %.
+
+Real budget: 21.65 misp/node × 9.13 = **6.02 % of cycles** — and **there is no
+concentration to attack**. The largest single source line is
+`movepick.rs:282` (the insertion-sort shift loop) at **4.49 % of the taken-mispredict
+population = 0.157 % of cycles**. Break-even is arithmetic: at 2.45 IPC,
+**22.4 instructions per mispredict removed**. The one arm built cost **39.1** and
+lost by 1.75×. Four candidates priced against the budget, all outside it before a
+line was written. My "first suspect" (the run-boundary test) ranks **twelfth**.
+
+New instrument the project lacked: a **per-branch-site mispredict profile
+resolved to source**, via AMD **LBR v2** (16-deep stack sampled uniformly in
+`instructions:u`) — `perf record -e branch-misses` has no precise mode on AMD.
+Plus an execution-rate probe for never-taken code, needed because **an LBR stack
+holds only TAKEN branches**: all ten `TABLES` guards show 0 of 418,976 entries
+while executing 2.20×/node.
+
+### Target C — dead-work class swept exhaustively and CLOSED
+
+The whole guard class is **4.21 ops/node in three statics**; **133 other candidate
+sites never execute**. The other forms sweep clean: `on_dirty` is properly
+`WANTS_DIRTY`-gated, no `format!`/`to_string` outside gated code, and the ~260
+`tunables!` getters compile to constants. **After paying twice (67, 68), this
+class is now empty.**
+
+### ★ Another counter fails its null
+
+**`branch-misses:u` fails its own byte-identical null (−0.803 %, 11/16)** and
+joins `ic_cache_fill_l2`, `de_op_queue_empty` and `task-clock` on the
+same-panel-null list. **`instructions:u` remains the only counter on this box that
+decides anything.**
