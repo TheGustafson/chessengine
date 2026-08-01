@@ -16260,3 +16260,48 @@ former is a different 35-game run that appended to the same PGN. Pool with
 
 **Live:** D49 sb1537 (sb1540 anchor ~7 min out, `d49lrc` waiting), tunables SPRT
 running NNUE-verified.
+
+---
+
+## 2026-08-01 08:58 — MY LR ORCHESTRATOR FAILED SILENTLY. Root-caused, fixed, relaunched.
+
+**It reported "ALL CYCLES COMPLETE" in 11 minutes** — impossible for three
+30-superbatch cycles. **And it left D49 not training at all**: `d49y` and `d49wd`
+both stopped, with nothing running in their place.
+
+**TWO bugs, both mine:**
+
+1. **Missing environment.** `d49lrc1` died in 1.5 s:
+   `RuntimeError: refusing to import jax without JAX_PLATFORMS=cpu (set
+   ARCHON_JAX_ALLOW_GPU=1 for a deliberate GPU session)`. The real launcher sets
+   `PYTHONUNBUFFERED=1 ARCHON_JAX_ALLOW_GPU=1 ARCHON_JAX_FT_IMPL=pallas`; I
+   copied the `uv run` line and **not the env prefix**.
+2. **The wait loop read failure as success.** It was
+   `is-active || break` — so a unit that never started looked identical to one
+   that finished. Cycles 2 and 3 then "completed" instantly at sb1540 and wrote
+   checkpoints for training that never happened.
+
+**Bug 2 is the worse one**: bug 1 is a missing variable, bug 2 is an orchestrator
+that CANNOT TELL SUCCESS FROM FAILURE. The fix now sleeps 45 s, aborts loudly if
+the unit is not up, and on exit checks whether the target superbatch was actually
+reached before declaring a cycle done — three `[lrc] ... aborting` paths where
+there were none.
+
+**Nothing was lost.** The **anchor is intact** — all four `d49anchor-sb1540-*.bin`
+saved before the failure, which was the one irreversible step. Deleted the two
+bogus `d49lrc{2,3}-sb1540-*.bin` that represented no training.
+
+**Relaunched and VERIFIED, not assumed:**
+- `out=data/nnue/experiments/d49-1280` for the cycle configs — same dir the
+  poller globs (the `name` field I set is cosmetic; **`out` controls the path**,
+  and had it differed the orchestrator would have hung forever).
+- LR ramp reads `[1539.999, 1.7919e-5] → [1540, 1.7919e-5] → [1570, 0.0]`.
+- `[pump d49-1280] RESUME from sb1540 (fresh Adam transient)` — warm from the
+  anchor, optimizer state reset, which is inherent to a warm restart and is part
+  of the treatment being tested.
+
+**The lesson to carry:** I gated the *builds* in this script on memory and
+working directory, and never asked what the script would do **if a child failed**.
+A "wait until the unit stops" loop is a success/failure conflation by
+construction. Every orchestrator wait needs a completion CRITERION, not just an
+exit signal.
