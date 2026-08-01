@@ -17484,3 +17484,35 @@ low LR instead.
 check is an **abort condition**, not a strength claim. The strength answer comes
 from pooling continuation checkpoints or a direct A/B against sb1630 once ~300 sb
 have accumulated.
+
+---
+
+## 2026-08-01 14:33 — TWO agents building at once; holding, with a stated contingency
+
+**D49 continuation sb1686**, 183.8k pos/s, self-restarting under `x500watch`.
+Memory **2833–3099 MB and stable**, zero kernel OOM since 14:00. Disk 133 GB.
+
+**Momentary read of "7 builds" was a cargo parallel spike** — steady state is 2.
+Checked the trend rather than reacting to the instantaneous number, which is the
+same discipline that avoided a needless intervention at 13:47.
+
+**But two agents are building simultaneously for the first time this session** —
+study 71 (TT-less deficit, currently running its `s71-qsee` arm) and the teacher
+build. Each was capped at 6G individually, which does not bound their sum.
+
+**CONTINGENCY, stated now so it is not improvised under pressure:** if
+`MemAvailable` goes below **2500 MB**, stand down **study 71**, not the teacher
+build. Reasoning: the owner escalated the teacher experiment explicitly ("get
+started", after correctly pointing out I had run the wrong thing), while study 71
+is discretionary profiling work whose arms are checkpointed and resumable. The
+trainer is protected either way by `oomshield` (disposables at oom_score_adj 900),
+so a squeeze kills a build or a match before it touches D49.
+
+**Teacher build status:** the plumbing turned out ~80 % present
+(`teacher_warm` → `ck.load_warm` → `make_update_step(teacher=)`, `distill_alpha`
+implementing exactly the 60/40 blend, and `teacher_frame_scale`/`offset`
+existing). The real work is the **Stockfish `.nnue` → ARCHON-checkpoint
+converter** at SF's own dims (1024/32/32) — tractable only because **the features
+are identical** (83,248 inputs). It is verified against `sf-eval` as an oracle and
+**instructed to report BEFORE launching** so the GPU is freed deliberately rather
+than by collision.
