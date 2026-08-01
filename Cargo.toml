@@ -37,50 +37,6 @@ required-features = ["datagen"]
 # four instructions that retire identically. Study 25 §1 ran this experiment
 # once, three architectures ago; this feature is the re-runnable form of it.
 split58 = []
-# ---- perf study 55 RETAINED MEASUREMENT ARMS, RE-PRICED BY STUDY 56.
-#
-# Study 55 retained three arms as "large wins alone, blocked only by
-# interaction", quoting -44.7 (`bcmisc55`) and -34.6 (`bcsort55`)
-# instructions/node. Those figures were measured against `base55` -- a substrate
-# that no longer exists, since study 55 then landed small-body inlining AND
-# `BUF_MASK` on top of it. Study 56 re-measured all three against the SHIPPING
-# binary and none of them survives:
-#
-#   arm         study 55 (vs base55)   study 56 (vs shipped)
-#   bcmisc55         -44.7 i/n              +7.7 i/n   (rebuilt from 0ce956f4)
-#   bcsort55         -34.6 i/n              +14.7 i/n
-#   bccont55          +5.8 i/n              +55.6 i/n
-#
-# The interaction did not BLOCK those wins, it consumed them. `bcmisc55`'s
-# useful half survived only after being respelled (`clamp` -> mask) and is now
-# landed unconditionally in `Worker::reduction`; the other two are kept
-# switchable purely as falsifications. See docs/research/perf-study-56-*.md §3.
-#
-# `bcsort55` (+14.7 i/n on the shipping tree): `partial_insertion_sort` reads
-# `head[q - 1]` twice per shifted element, once in the loop condition and once
-# in the body. NOT either rewrite study 23 rejected -- the permutation,
-# including the observable BadQuiet tail, is untouched; only the load count
-# changes. It still costs, alone (+14.7) and in combination (study 56 §5's
-# `c_fin4` is 14.7 i/n worse than the same binary without it).
-bcsort55 = []
-# `bccont55` (+55.6 i/n on the shipping tree -- the study's largest single
-# loser): `update_continuation_histories` has study 54's exact double-index
-# shape on a RUNTIME-LENGTH slice, and converting it to one subslice + reversed
-# zip did not pay. The shape being present is not sufficient. Study 55 measured
-# it at +5.8; on the shipped tree it is ten times worse.
-bccont55 = []
-# ---- perf study 53 arms (do_move / bounds-check deletion). Node-identical by
-# construction; each is a MEASUREMENT arm, promoted to unconditional if it wins.
-# `cont53`: pad CONT_NB 3328 -> 4096 and mask, folding the continuation-history
-# bounds check. Costs +1.125 MiB per WORKER THREAD and breaches design/09 §8's
-# 21 MiB catalogue budget -- measured, but not free.
-#
-# PERF STUDY 56 re-measured it on the shipping tree: -5.1 i/n ALONE, but adding
-# it to the study-56 landing set moves that set from -12.8 to -12.0 i/n, i.e. it
-# is DOMINATED -- it buys nothing on top and still costs the 1.125 MiB. Its
-# smaller sibling `cont_corr` (832 -> 1024, +288 KiB, inside the budget) DID
-# land. Keep this arm switchable; do not ship it without a fresh measurement.
-cont53 = []
 # perf study 48 DIAGNOSTIC PROBE: drop the PSQ1 trailer at load so the whole
 # psqt channel switches off. Changes the eval -- never ship it.
 nopsqt48 = []
@@ -89,14 +45,6 @@ nopsqt48 = []
 # expands the same entries to inline-folded constants and stays bench-
 # identical (D24). Tune builds are for the SPSA harness only, never shipped.
 tune = []
-# --- Perf study 54 ---
-# `nogc54` (perf study 54 §3, the open question study 53 §6 item 2 left):
-# study 53's `gc53` REVERTED, so its marginal cost/benefit can be
-# read on the shipped tree. Study 53 landed `gc53 + magic53` together and
-# reported that `magic53` alone was -22.3 loads/node (10/10) against the
-# combination's -10.6 (7/10, ns) while instructions added to 0.1/node. This
-# arm is the head-to-head that was missing. Node-identical.
-nogc54 = []
 # D47V deploy arch (768 accumulator, 32/32 head + skip). Mutually exclusive
 # with the default 1280/128/32 consts; build D47V-capable binaries with
 # `--features sota,arch-d47v`. Never combined into one binary — the CENN's
@@ -135,10 +83,10 @@ nnue-l1-1024 = []
 # Next capacity rungs for the UHO scaling ladder (2026-07-16); same rules.
 nnue-l1-2048 = []
 nnue-l1-4096 = []
-# Experimental learned policy head for MovePicker quiet ordering (design/17
-# Thrust II, src/policy.rs). OFF by default so the shipped engine + depth-6 bench
-# stay byte-identical; build the experiment with `--features policy`.
-policy = ["sota"]
+# The `policy` feature (D41 learned policy head, src/policy.rs) was DELETED
+# 2026-08-01 (simplification plan tier 0, item 0.10): the D41 policy era was
+# ditched (pol_lambda 0) and the feature was off in every shipped build. Git
+# keeps the prototype; MovePicker::set_quiet_prior remains as the seam.
 # The Observation Store (design/16 §3.5, D29/D43): the permanent four-layer
 # search-observation record + shard writer/reader, std-only TLV. OFF by
 # default so the tournament/bench binary compiles it out (§6 bench
@@ -223,29 +171,18 @@ cong51 = ["sota"]
 # it can be MEASURED rather than assumed. Never shipped; `black_box`ed, so the
 # node count is unchanged.
 skidprobe = ["sota"]
-# Perf study 34's MOVE-ORDERING CENSUS. Study 23 measured how much work
-# `init_quiets` does; this measures how much of it the search ever USES —
-# per picker, how far into the scored-and-sorted quiet list the move loop
-# actually walked, plus the cutoff-move-index distribution. Relaxed atomics on
-# paths that make no search decision, so the tree stays bit-identical
-# (verified by `tools/perf34/ident34.sh`); the binary is NOT a timing
-# reference. Never shipped.
-census34 = []
-# Perf study 34's NULL ARM: builds the study's `GoodQuiet`/`BadQuiet` split
-# with the split DISABLED, so the binary carries the arm's struct layout,
-# fields and loop shape while doing the pre-study amount of scanning. Its
-# purpose is to price the instrument on the same machinery the arm moves.
-# Measurement only, never shipped.
-null34 = []
-# Perf study 34 arm 2: `partial_insertion_sort`'s BRANCHLESS fixed-width
-# insertion window. **DECIDED BY PERF STUDY 40 -- IT LOSES, AND IT STAYS OFF.**
-# The mechanism is real (-4.409% of all engine branch mispredicts, 60/60 paired
-# rounds) and it was priced on `ex_no_retire.empty` rather than `cycles:u`:
-# it buys 9.93 cycles/node of front-end bubble and pays 17.40 cycles for the
-# +42.58 instructions, i.e. +0.19% of cycles, about -0.3 Elo. The exchange rate
-# that decides it -- 9.13 cycles per mispredict on this engine, not the ~18
-# study 34 assumed -- is in `src/movepick.rs`. Do not re-open blind.
-insertwin34 = []
+# Perf study 70's move-ordering QUALITY census: the same beta-cutoff population
+# study 34 counted, but split by NODE KIND (PV/NonPV/qsearch), REMAINING DEPTH,
+# and the `MovePicker` STAGE that emitted the cutting move, plus the all-nodes
+# study 34 never counted. Relaxed atomics on decision-free paths (tree stays
+# bit-identical, `tools/perf70/ident70.sh`); never shipped.
+census70 = []
+# Perf study 70's move-ordering ARM BENCH: every candidate ordering change
+# behind ONE runtime-configurable build (`ARCHON_A70=lva=8,...`). The study's
+# metric is nodes-to-depth, a deterministic integer that cannot see the cost of
+# the env read, so one build screens a dozen hypotheses. Never shipped; with no
+# environment set it must reproduce the shipped node count exactly.
+arm70 = []
 # Perf study 29's TRAFFIC-PINNING probes. Both keep the load COUNT of every
 # accumulator kernel bit-for-bit identical and collapse ONE stream's working
 # set to a single hot line, so the drop in L1 misses / load-stall cycles is
@@ -445,28 +382,6 @@ ttpft242 = []
 # on paths that make no search decision, so the tree stays bit-identical
 # (`tools/perf42/ident42.sh`); the binary is NOT a timing reference.
 ttcensus42 = []
-# Perf study 42's SPECULATIVE TT prefetch: `Board::prefetch_key` finally gets
-# the caller its own doc comment promises, in the main move loop right after
-# the legality check -- the whole pruning cascade earlier than hook A. Also
-# node-identical (a cache hint decides nothing), so it is gated on the same
-# `Bench:` fingerprint as the rest.
-ttspec42 = []
-# Arm 2 of the same question: the speculative hint moved BELOW the §3.5 pruning
-# cascade, where the move is committed. Arm 1 pays for a hint on every move that
-# is then pruned (+95.6 instructions/node against 1.07 probes/node); from here
-# the hint count collapses to the probe count while the overlap on offer is
-# still the whole singular verification search.
-ttspec2_42 = []
-# Perf study 44's HISTORY-PREFETCH arm. `init_quiets` reads seven randomly
-# addressed history cells per quiet from ~20 MiB of tables; study 44 sampled
-# `ex_no_retire.load_not_complete` and found the function owns 6.57% of every
-# load-stall cycle in the engine, 89% of it load-wait. This feature software-
-# pipelines an `_MM_HINT_T0` hint `PF_DIST` moves ahead of the read, the same
-# mechanism study 42 priced at 3.5% of engine cycles on the TT.
-# ADDITIVE, so the base arm is today's `main` verbatim; node-identical by
-# construction (a hint computes no value the score depends on) and gated on
-# the `Bench:` fingerprint like every other study arm.
-histpf44 = []
 # ---- perf study 67: THE INSTRUCTION-CACHE ARM.
 #
 # `search::<NonPv>` is 45,565 bytes against a 32 KB L1i and carries **34.06 %
@@ -564,14 +479,6 @@ hskip60 = []
 # L1 lookups. The rule that now covers all nine kills: a hint pays only where
 # the miss is cold AND SERIALISING.
 htail60 = []
-# Perf study 40's DOSE AMPLIFIER for `partial_insertion_sort` (`src/dose40.rs`).
-# `insertwin34` is a ~0.2%-of-cycles trade and six nulls put the `cycles:u`
-# floor on this box an order of magnitude above that, so the arm is replayed
-# `P40_DOSE` extra times per call over REAL earlier inputs held in a ring: the
-# same trade at (D+1)x its size, regressed back to one call by a dose series.
-# The search tree is untouched at every dose (node count + eval hash gated).
-# Measurement only, never shipped.
-dosesort40 = []
 # Perf study 43's SOFTWARE-PREFETCH arm for the Finny warm refresh, selected by
 # `P43_PF` at run time so control and arm are the SAME BYTES (study 29 built its
 # prefetch arm as a separate binary, and its own §5.3 records a byte-different

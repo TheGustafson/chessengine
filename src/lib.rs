@@ -53,18 +53,17 @@ pub fn archon_s68_layout_null(x: u64) -> u64 {
 #[used]
 static ARCHON_S68_LAYOUT_NULL: fn(u64) -> u64 = archon_s68_layout_null;
 
+/// Perf study 70's runtime-configurable move-ordering ARM BENCH.
+#[cfg(feature = "arm70")]
+pub mod arm70;
 pub mod attacks;
 pub mod bench;
 pub mod bitboard;
 pub mod board;
-/// Perf study 34's move-ordering census (instrument only).
-#[cfg(feature = "census34")]
-pub mod census34;
+/// Perf study 70's move-ordering QUALITY census (instrument only).
+#[cfg(feature = "census70")]
+pub mod census70;
 pub mod cuckoo;
-/// Perf study 40's dose amplifier for the movepick partial sort
-/// (instrument only; the search tree is untouched at every dose).
-#[cfg(feature = "dosesort40")]
-pub mod dose40;
 pub mod eval;
 pub mod fen;
 pub mod history;
@@ -74,8 +73,6 @@ pub mod moves;
 #[cfg(feature = "datagen")]
 pub mod obs;
 pub mod perft;
-#[cfg(feature = "policy")]
-pub mod policy;
 pub mod search;
 #[cfg(feature = "search-control")]
 pub mod search_control;

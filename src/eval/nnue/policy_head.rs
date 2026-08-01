@@ -174,31 +174,10 @@ impl QuietPrior {
     }
 }
 
-/// P-ORD experiment knobs (env, read once). `CPL_ORD_W` scales logits into
-/// history units; 0 (the default) disables the prior entirely — the search
-/// never constructs a [`QuietPrior`] and ordering is bit-identical to
-/// pre-P-ORD. `CPL_ORD_MIN_DEPTH` keeps the per-quiet dots off the shallow
-/// tree (default 1 = everywhere in main search; qsearch never scores quiets).
-pub fn ord_weight() -> f32 {
-    static W: std::sync::LazyLock<f32> = std::sync::LazyLock::new(|| {
-        std::env::var("CPL_ORD_W")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0.0)
-    });
-    *W
-}
-
-/// See [`ord_weight`].
-pub fn ord_min_depth() -> i32 {
-    static D: std::sync::LazyLock<i32> = std::sync::LazyLock::new(|| {
-        std::env::var("CPL_ORD_MIN_DEPTH")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(1)
-    });
-    *D
-}
+// The P-ORD env knobs (`CPL_ORD_W`, `CPL_ORD_MIN_DEPTH`) and the search-side
+// plumbing that read them were deleted 2026-08-01 (simplification plan tier 0,
+// item 0.9). The head/QuietPrior types stay: `MovePicker::set_quiet_prior` is
+// the seam a future policy head plugs into.
 
 #[cfg(test)]
 mod tests {
@@ -276,13 +255,6 @@ mod tests {
                 "prior argmax must match best_move in {fen}"
             );
         }
-    }
-
-    #[test]
-    fn ord_weight_defaults_off() {
-        // Env unset in the test runner ⇒ the experiment must be OFF.
-        assert_eq!(ord_weight(), 0.0);
-        assert_eq!(ord_min_depth(), 1);
     }
 
     #[test]

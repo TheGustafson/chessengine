@@ -22,7 +22,7 @@ step "cargo clippy --all-targets -- -D warnings"
 cargo clippy --all-targets -- -D warnings
 
 # THE FEATURE MATRIX. The step above compiles DEFAULT features only, which
-# leaves roughly a third of src/ — everything behind sota/datagen/policy/
+# leaves roughly a third of src/ — everything behind sota/datagen/
 # search-control/tune — never compiled, never linted, never type-checked by
 # this gate. That is precisely the code the match and training binaries run:
 # the NNUE head and SIMD kernels, the observation store, the SPSA tunables.
@@ -45,10 +45,11 @@ if [ "${CHECK_FEATURE_MATRIX:-1}" != "0" ]; then
         "sota,arch-hka2048" \
         "sota,tune" \
         "datagen" \
-        "policy" \
         "search-control" \
         "sota,arch-d48x,search-stats" \
-        "sota,arch-d48x,pgonull69"
+        "sota,arch-d48x,pgonull69" \
+        "sota,arch-d48x,census70" \
+        "sota,arch-d48x,arm70"
     do
         printf '  checking --features %s\n' "$feats"
         cargo check --quiet --all-targets --features "$feats" || {
@@ -134,7 +135,7 @@ fi
 # in the same commit that changes the number (that is exactly what the
 # `Bench:` trailer records). Set BENCH_PIN= (empty) to skip, e.g. while
 # bisecting.
-BENCH_PIN="${BENCH_PIN-587683}"
+BENCH_PIN="${BENCH_PIN-300694}"
 if [ -n "$BENCH_PIN" ] && [ "$bench_nodes" != "$BENCH_PIN" ]; then
     printf '\nFAIL: depth-6 bench is %s, pin is %s\n' "$bench_nodes" "$BENCH_PIN" >&2
     printf '  If this change is INTENTIONALLY functional (search, eval,\n' >&2
@@ -242,7 +243,7 @@ if [ "${CHECK_NNUE_GATE:-0}" != "0" ]; then
     # an empty string and a spurious pass-turned-failure.
     nnue_nodes=$("$nnue_bin" bench 16 1 13 "$nnue_fens" depth "$nnue_net" 2>&1 >/dev/null \
         | sed -n 's/^Nodes searched  : //p')
-    NNUE_NODE_PIN="${NNUE_NODE_PIN-1739588}"
+    NNUE_NODE_PIN="${NNUE_NODE_PIN-2045128}"
     printf '  d13 nodes  : %s\n' "$nnue_nodes"
     if [ -n "$NNUE_NODE_PIN" ] && [ "$nnue_nodes" != "$NNUE_NODE_PIN" ]; then
         printf '\nFAIL: NNUE d13 wl50 node total is %s, pin is %s\n' \

@@ -1060,7 +1060,25 @@ pub const RAZOR_DEPTH_MULT: Value = 300;
 
 The rule of thumb for reviewers: **any bare numeric literal in
 `search/`, `movepick.rs`, or `see.rs` that a tuner could move is a defect**
-— it must be a named `params` constant.
+— it must be a NAMED `params` handle.
+
+**D50 amendment (2026-08-01): named, not necessarily tunable.** The rule
+above built a 309-knob surface of which 246 were never in any campaign, a
+154-value refresh from a newer Stockfish measured −1.39 ± 10.43 over 1500
+games, and SPSA moved almost nothing it did touch — the surface did not pay.
+The default is therefore REVERSED: a handle starts as an entry in
+`params.rs`'s `constants!` block (same `NAME()` call-site spelling,
+compile-time constant in every build, off the SPSA surface), and **becomes a
+tunable when a campaign wants it, not by default** — promotion is a one-line
+move into the `tunables!` block. Three families are constified on principle:
+structural denominators/fixed-point scales (a numerator/denominator pair is
+one degree of freedom; the denominator is representation), non-strength
+knobs (poll cadence, info throttle), and never-turned handles (the
+implicit-×1 batch; the TM soft-stop f64 family, which fixed-node testing is
+structurally blind to). The load-bearing knobs — LMR family, RFP margins,
+NMP bar, futility bases, aspiration delta, history bonus/malus scales,
+correction weights — stay tunable: they are the search's actual degrees of
+freedom.
 
 ### 3.9 How design docs, reference notes, and code relate
 

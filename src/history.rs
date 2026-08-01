@@ -126,25 +126,10 @@ const BUTTERFLY_SIZE: usize = 1 << 16; // 65536
 pub const LOW_PLY_SIZE: usize = 5;
 const VICTIM_NB: usize = 7; // 6 piece types + a "no victim" slot (ep, quiet promos)
 const CONT_NB: usize = 3328; // in_check(2) × capture(2) × piece13 × to(64)
-/// Allocated slab count for `cont` (perf study 53, arm `cont53`).
-///
-/// [`CONT_NB`] is not a power of two, so `cont[id.0 as usize]` cannot be proved
-/// in range and every `cont_ref`/`cont_mut` carries a `cmp $3328` / `jae
-/// panic_bounds_check`. Padding the allocation to 4096 and masking the index
-/// makes the mask a no-op ([`ContHistId::new`]'s bijection caps ids at 3327)
-/// and folds the check away.
-///
-/// **It is not free: +768 slabs × 1536 B = +1.125 MiB per `Histories`, i.e.
-/// per WORKER THREAD.** That takes the catalogue from 19.979 MiB to 21.104 MiB
-/// and breaches design/09 §8's ≤21 MiB budget, which is why this is a feature
-/// rather than the default.
-#[cfg(feature = "cont53")]
-const CONT_ALLOC: usize = CONT_NB.next_power_of_two(); // 4096
-#[cfg(not(feature = "cont53"))]
+/// Allocated slab count for `cont`. (Perf study 53's `cont53` arm padded this
+/// to 4096 to fold the bounds check away, at +1.125 MiB per worker — over the
+/// design/09 §8 budget; the arm was declined and deleted 2026-08-01.)
 const CONT_ALLOC: usize = CONT_NB;
-/// Index mask for [`CONT_ALLOC`] — see that constant.
-#[cfg(feature = "cont53")]
-const CONT_MASK: usize = CONT_ALLOC - 1;
 const CONT_CORR_NB: usize = 832; // piece13 × to(64)
 /// Allocated slab count for `cont_corr` (perf study 56, arm `contcorr56`).
 ///
@@ -232,51 +217,10 @@ pub fn at_piece_to_mut<const D: i32>(
     &mut plane.as_flattened_mut()[q]
 }
 
-/// Issue an L1 cache hint for one address. **A pure hint** — see
-/// [`prefetch_piece_to`] for why that word is load-bearing here.
-///
-/// Perf study 44 §6: this is `TranspositionTable::prefetch`'s mechanism
-/// pointed at the *other* multi-megabyte random-access structure in the
-/// engine. The history catalogue is ~20 MiB (`pawn` 12.6 MB, `cont` 5.1 MB)
-/// and shares a 32 MB L3 with a 16 MB TT and ~29 MB of NNUE weights, so a
-/// history line is a DRAM-class access for the same reason a TT line is.
-///
-/// D14(a): a FUNCTION-scoped relaxation of the crate-wide
-/// `#![deny(unsafe_code)]`, deliberately narrower than `tt`'s module-scoped
-/// one — this module is otherwise entirely safe and should stay that way, so
-/// the exemption is attached to the single intrinsic that needs it rather
-/// than to the file.
-#[allow(unsafe_code)]
-#[inline]
-pub fn prefetch_line<T>(p: *const T) {
-    #[cfg(all(target_arch = "x86_64", feature = "histpf44"))]
-    {
-        use std::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
-        // SAFETY: identical to `TranspositionTable::prefetch`. `_mm_prefetch`
-        // performs no memory access observable by the abstract machine, writes
-        // nothing, and cannot fault even on a wild address — the hardware
-        // drops a bad hint. Every caller below forms `p` with `wrapping_add`
-        // precisely so that an out-of-range index is a defined (if useless)
-        // pointer value rather than UB before it ever reaches this call.
-        unsafe { _mm_prefetch(p.cast::<i8>(), _MM_HINT_T0) };
-    }
-    #[cfg(any(not(target_arch = "x86_64"), not(feature = "histpf44")))]
-    let _ = p;
-}
-
-/// Cache-hint the cell [`at_piece_to`] is about to read.
-///
-/// # Why `wrapping_add` and not `[q]`
-/// The index is derived from a mailbox byte for a move the caller has not yet
-/// validated (it is looking *ahead* in the move list), so a bounds check here
-/// would either panic or cost a branch on the hot path. A prefetch has no
-/// observable effect, so the correct handling of a hypothetical out-of-range
-/// `q` is to hint a useless line, not to panic — and `wrapping_add` gets that
-/// without ever forming an out-of-bounds pointer under the aliasing rules.
-#[inline]
-pub fn prefetch_piece_to<const D: i32>(plane: &[[StatEntry<D>; 64]; 12], q: usize) {
-    prefetch_line(plane.as_flattened().as_ptr().wrapping_add(q));
-}
+// The `histpf44` software-pipelined history prefetch API (`prefetch_line`,
+// `prefetch_piece_to`) lived here until 2026-08-01 — measured, declined, and
+// deleted with the other inert perf arms (simplification tier 0, item 0.15).
+// Study 44 §6 has the measurements.
 
 /// The four correction-history fields that share one `corr[slot][stm]` cell.
 ///
@@ -563,27 +507,13 @@ impl Histories {
     /// Resolve a continuation-history key to its slab (read side).
     #[inline]
     pub fn cont_ref(&self, id: ContHistId) -> &PieceToHist {
-        #[cfg(feature = "cont53")]
-        {
-            &self.cont[id.0 as usize & CONT_MASK]
-        }
-        #[cfg(not(feature = "cont53"))]
-        {
-            &self.cont[id.0 as usize]
-        }
+        &self.cont[id.0 as usize]
     }
 
     /// Resolve a continuation-history key to its slab (write side).
     #[inline]
     pub fn cont_mut(&mut self, id: ContHistId) -> &mut PieceToHist {
-        #[cfg(feature = "cont53")]
-        {
-            &mut self.cont[id.0 as usize & CONT_MASK]
-        }
-        #[cfg(not(feature = "cont53"))]
-        {
-            &mut self.cont[id.0 as usize]
-        }
+        &mut self.cont[id.0 as usize]
     }
 
     /// The pawn-history slot for a position, masked by its pawn key.
@@ -647,22 +577,11 @@ impl Histories {
         let q = piece_to(pc.index(), to.idx());
         let mut positive_count = 0usize;
 
-        // Perf study 55 mechanism B. The shipped loop indexes `stack[cur - i]`
-        // TWICE per iteration — once for `current_move`, once for `cont_hist` —
-        // and `stack` is a `&[Stack]`, a slice with a RUNTIME length, so each
-        // index is a real bounds check with its own panic edge. That is exactly
-        // the shape study 54 measured at +9.4 i/n against its iterator twin's
-        // −21.3: two indexed reads where one borrow would do.
-        //
-        // The `bccont55` arm takes ONE subslice — `cur >= SS_OFFSET` (7) and
-        // `CONT_OFFSET_WEIGHTS` has 6 entries, so `cur - N` is in bounds by the
-        // precondition asserted above — and walks it in reverse, which maps
-        // `frames[N - 1]` to offset 1. Emission order, arithmetic and writes are
-        // untouched, so the tree is bit-identical.
-        //
-        // The body is a `macro_rules!` so both loop shapes share one source (the
-        // shape study 54 §2 used for the same reason): a `let` binding holding a
-        // borrow of `*self` cannot live across `self.cont_mut(id)`.
+        // The body is a `macro_rules!` (the shape study 54 §2 used for the
+        // same reason): a `let` binding holding a borrow of `*self` cannot
+        // live across `self.cont_mut(id)`. (Study 55's `bccont55` subslice
+        // rewrite of this loop measured +55.6 i/n on the shipped tree and was
+        // deleted 2026-08-01.)
         macro_rules! cont_body {
             ($idx:expr, $weight:expr, $frame:expr) => {{
                 let idx: usize = $idx;
@@ -691,19 +610,6 @@ impl Histories {
             }};
         }
 
-        #[cfg(feature = "bccont55")]
-        {
-            const N: usize = params::CONT_OFFSET_WEIGHTS.len();
-            let frames = &stack[cur - N..cur];
-            for (idx, (&weight, frame)) in params::CONT_OFFSET_WEIGHTS
-                .iter()
-                .zip(frames.iter().rev())
-                .enumerate()
-            {
-                cont_body!(idx, weight, frame);
-            }
-        }
-        #[cfg(not(feature = "bccont55"))]
         for (idx, &weight) in params::CONT_OFFSET_WEIGHTS.iter().enumerate() {
             cont_body!(idx, weight, &stack[cur - (idx + 1)]);
         }
@@ -785,9 +691,16 @@ impl Histories {
     ) {
         debug_assert!(cur >= SS_OFFSET);
 
+        #[cfg(not(feature = "arm70"))]
+        let tt_bonus = params::STAT_BONUS_TTMOVE();
+        #[cfg(feature = "arm70")]
+        let tt_bonus = match crate::arm70::arm().tt_bonus {
+            -1 => params::STAT_BONUS_TTMOVE(),
+            v => v,
+        };
         let mut bonus = (params::STAT_BONUS_DEPTH_MULT() * depth - params::STAT_BONUS_DEPTH_SUB())
             .min(params::STAT_BONUS_MAX())
-            + params::STAT_BONUS_TTMOVE() * (best_move == tt_move) as i32
+            + tt_bonus * (best_move == tt_move) as i32
             + stack[cur - 1].stat_score / params::STAT_BONUS_STATSCORE_DIV();
         let malus = (params::STAT_MALUS_DEPTH_MULT() * depth - params::STAT_MALUS_DEPTH_SUB())
             .min(params::STAT_MALUS_MAX());
@@ -798,23 +711,56 @@ impl Histories {
             bonus += (bonus as i64 * tried / params::STAT_BREADTH_DIVISOR()) as i32;
         }
 
+        #[cfg(not(feature = "arm70"))]
+        let (best_num, malus_start, malus_decay, cross) = (
+            params::QUIET_BEST_BONUS_NUM(),
+            params::QUIET_MALUS_START_NUM(),
+            params::QUIET_MALUS_DECAY_NUM(),
+            false,
+        );
+        #[cfg(feature = "arm70")]
+        let (best_num, malus_start, malus_decay, cross) = {
+            let a = crate::arm70::arm();
+            let pick = |v: i32, d: i32| if v == 0 { d } else { v };
+            (
+                pick(a.best_bonus, params::QUIET_BEST_BONUS_NUM()),
+                pick(a.malus_start, params::QUIET_MALUS_START_NUM()),
+                pick(a.malus_decay, params::QUIET_MALUS_DECAY_NUM()),
+                a.cross_malus != 0,
+            )
+        };
+        let quiet_malus = |me: &mut Self, board: &Board, stack: &[Stack]| {
+            // Geometrically decaying malus: earliest failures punished hardest.
+            let mut m = malus * malus_start / params::STAT_WEIGHT_DEN();
+            for &q in quiets_searched {
+                m = m * malus_decay / params::STAT_WEIGHT_DEN();
+                me.update_quiet_histories(board, stack, cur, q, -m);
+            }
+        };
+        let capture_malus = |me: &mut Self, board: &Board| {
+            for &c in captures_searched {
+                me.capture_entry_mut(board, c)
+                    .update(-malus * params::CAPTURE_MALUS_NUM() / params::STAT_WEIGHT_DEN());
+            }
+        };
         if !board.capture_stage(best_move) {
             self.update_quiet_histories(
                 board,
                 stack,
                 cur,
                 best_move,
-                bonus * params::QUIET_BEST_BONUS_NUM() / params::STAT_WEIGHT_DEN(),
+                bonus * best_num / params::STAT_WEIGHT_DEN(),
             );
-            // Geometrically decaying malus: earliest failures punished hardest.
-            let mut m = malus * params::QUIET_MALUS_START_NUM() / params::STAT_WEIGHT_DEN();
-            for &q in quiets_searched {
-                m = m * params::QUIET_MALUS_DECAY_NUM() / params::STAT_WEIGHT_DEN();
-                self.update_quiet_histories(board, stack, cur, q, -m);
-            }
+            quiet_malus(self, board, stack);
         } else {
             self.capture_entry_mut(board, best_move)
                 .update(bonus * params::CAPTURE_BEST_BONUS_NUM() / params::STAT_WEIGHT_DEN());
+            // Study 70 arm: the tried quiets also failed at this node, and the
+            // shipped code throws that evidence away whenever the best move
+            // happened to be a capture.
+            if cross {
+                quiet_malus(self, board, stack);
+            }
         }
 
         // Refutation malus: the parent's move was a quiet it tried first and
@@ -836,10 +782,7 @@ impl Histories {
             }
         }
 
-        for &c in captures_searched {
-            self.capture_entry_mut(board, c)
-                .update(-malus * params::CAPTURE_MALUS_NUM() / params::STAT_WEIGHT_DEN());
-        }
+        capture_malus(self, board);
     }
 
     /// The capture-history value for `m` in `board` (read side): the same
@@ -1054,13 +997,8 @@ const HISTORIES_BYTES: usize = size_of::<[[StatEntry<MAIN_D>; BUTTERFLY_SIZE]; 2
     + size_of::<StatEntry<TT_MOVE_D>>();
 // The catalogue is ~20 MiB: comfortably under the 21 MiB budget (§8), and
 // well over 19 MiB (a guard against a table silently shrinking away).
-/// design/09 §8 criterion 2. Arm `cont53`'s power-of-two padding costs
-/// +1.125 MiB and does not fit the 21 MiB budget; the feature raises the bound
-/// explicitly rather than deleting the guard.
-#[cfg(not(feature = "cont53"))]
+/// design/09 §8 criterion 2.
 const HISTORIES_BUDGET: usize = 21 * 1024 * 1024;
-#[cfg(feature = "cont53")]
-const HISTORIES_BUDGET: usize = 22 * 1024 * 1024;
 const _: () = assert!(HISTORIES_BYTES <= HISTORIES_BUDGET);
 const _: () = assert!(HISTORIES_BYTES > 19 * 1024 * 1024);
 

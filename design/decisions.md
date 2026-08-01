@@ -722,3 +722,27 @@ strength. Two constraints in permanent tension, resolved in this order:
   honestly at equal-time. Supersedes all factored policy encodings
   (exp-0121, the killed joint-128). Amends D40/D41 arch lineage; the
   768/L2=16 incumbent remains the fallback ship.
+
+- **D50** (2026-08-01): **Tunables are opt-in.** Reverses design/01 §3.8's
+  reviewer default ("any bare literal a tuner could move is a defect ⇒ make
+  it a tunable"). Evidence the surface did not pay: 309 tunables, 246 never
+  in any SPSA campaign; the 154-value refresh from a newer Stockfish
+  measured −1.39 ± 10.43 over 1500 games; SPSA moved almost nothing it did
+  touch (`RED_MOVECOUNT` drifted ~0 over 3,280 games while neighbours moved
+  100+). New rule: **a constant becomes a tunable when a campaign wants it,
+  not by default.** Mechanically: `params.rs` gains a `constants!` sibling
+  of `tunables!` (same `NAME()` call-site spelling, compile-time constant in
+  every build, absent from `set_tunable`/`tunables_list`); promotion back is
+  a one-line move. Constified on principle: structural denominators and
+  fixed-point scales (a num/den pair is ONE degree of freedom), non-strength
+  knobs, the never-turned implicit-×1 batch, and the TM soft-stop f64 family
+  (fixed-node testing is structurally blind to TM; the two ARCHON-derived
+  entries with measured rationale — INSTABILITY_CHANGES_DECAY,
+  TIME_REDUCTION_STABILITY_LO/HI — stay live). Blend triples
+  `(BEST_W, BETA_W, DEN)` whose weights sum to the denominator fold to one
+  weight. The load-bearing knobs (LMR family, RFP margins, NMP bar, futility
+  bases, aspiration delta, history bonus/malus scales, correction weights)
+  stay tunable — they are the search's actual degrees of freedom and the
+  place a future SPSA or learned controller acts. Landed with tier 0/0b of
+  `docs/research/search-simplification-plan-2026-08-01.md`: 313 → 225
+  tunables on the study-70/71 base, bit-identical bench by construction.

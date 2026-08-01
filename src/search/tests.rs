@@ -432,87 +432,6 @@ fn rfp_prune_margin_folds_the_threat_relaxation_with_the_right_sign() {
     );
 }
 
-/// EXP-UNC-1: the uncertainty margin scale is 1.0 (off) exactly when disabled
-/// or unwarmed, scales up above-average uncertainty and down below-average,
-/// and is clamped to [0.7, 1.5]. Pins the SIGN so a wiring/sign regression is
-/// caught apart from the search control flow.
-#[cfg(feature = "sota")]
-#[test]
-fn unc_margin_scale_signs_and_clamps() {
-    // Disabled / no fresh sigma / unwarmed sigma_bar → exactly 1.0 (off).
-    assert_eq!(unc_margin_scale(0.2, 0.1, 0.0), 1.0, "c1=0 is off");
-    assert_eq!(unc_margin_scale(0.0, 0.1, 1.0), 1.0, "no sigma this node");
-    assert_eq!(unc_margin_scale(0.2, 0.0, 1.0), 1.0, "sigma_bar unwarmed");
-    // Above-average uncertainty (σ̂ > σ̄) → LARGER margin (prune less; safety).
-    assert!(unc_margin_scale(0.12, 0.10, 1.0) > 1.0);
-    // Below-average uncertainty → SMALLER margin (prune more; the Elo).
-    assert!(unc_margin_scale(0.08, 0.10, 1.0) < 1.0);
-    // Symmetric mid response is exact.
-    assert!((unc_margin_scale(0.11, 0.10, 0.5) - 1.05).abs() < 1e-6);
-    // Clamped both ways.
-    assert_eq!(unc_margin_scale(1.0, 0.10, 1.0), 1.5, "clamped high");
-    assert_eq!(unc_margin_scale(0.01, 0.10, 1.0), 0.7, "clamped low");
-}
-
-/// Multi-head WDL TM consumer: 1.0 (off) when disabled or uncaptured;
-/// decisive roots bank clock, clamped to [0.8, 1.0] (shrink-only).
-#[cfg(feature = "sota")]
-#[test]
-fn wdl_tm_factor_signs_and_clamps() {
-    assert_eq!(wdl_tm_factor(0.9, 0.0), 1.0, "c3=0 is off");
-    assert_eq!(wdl_tm_factor(0.0, 0.5), 1.0, "no root capture is off");
-    assert_eq!(wdl_tm_factor(-1.0, 0.5), 1.0, "negative guard");
-    let f = wdl_tm_factor(0.8, 0.2);
-    assert!(f < 1.0 && f > 0.8, "decisive root banks time: {f}");
-    assert!(
-        (wdl_tm_factor(1.0, 5.0) - 0.8).abs() < 1e-6,
-        "floor clamp at 0.8"
-    );
-    assert!(
-        (wdl_tm_factor(0.05, 0.1) - 0.995).abs() < 1e-6,
-        "linear region"
-    );
-}
-
-/// EXP-UNC-1 consumer 2: the TM factor is 1.0 (off) when disabled/unwarmed,
-/// lengthens the budget at an above-average-uncertainty root and shortens it
-/// below, clamped to [0.8, 1.25] (narrower than the margin scale).
-#[cfg(feature = "sota")]
-#[test]
-fn unc_tm_factor_signs_and_clamps() {
-    assert_eq!(unc_tm_factor(0.2, 0.1, 0.0), 1.0, "c2=0 is off");
-    assert_eq!(unc_tm_factor(0.0, 0.1, 1.0), 1.0, "no root sigma");
-    assert_eq!(unc_tm_factor(0.2, 0.0, 1.0), 1.0, "sigma_bar unwarmed");
-    assert!(
-        unc_tm_factor(0.12, 0.10, 1.0) > 1.0,
-        "sharp root → think longer"
-    );
-    assert!(
-        unc_tm_factor(0.08, 0.10, 1.0) < 1.0,
-        "reliable root → think less"
-    );
-    // Clamp bounds round-trip f32→f64, so compare approximately.
-    assert!(
-        (unc_tm_factor(1.0, 0.10, 1.0) - 1.25).abs() < 1e-6,
-        "clamped high"
-    );
-    assert!(
-        (unc_tm_factor(0.01, 0.10, 1.0) - 0.8).abs() < 1e-6,
-        "clamped low"
-    );
-}
-
-#[test]
-fn rfp_return_blend_weights_sum_to_the_denominator() {
-    // The return `(716·beta + 308·eval)/1024` is a weighted average, so
-    // its result lies between beta and eval — the weights must sum to
-    // the denominator or the blend would drift off the [beta, eval] band.
-    assert_eq!(
-        params::RFP_RET_BETA_W() + params::RFP_RET_EVAL_W(),
-        params::RFP_RET_DEN()
-    );
-}
-
 /// Drive `search` directly at a fixed ply on a fresh stack — the RFP
 /// analogue of [`qsearch_at`]. `nodes` is zeroed so a return with
 /// `w.nodes == 0` proves the node made no move (RFP short-circuited
@@ -558,7 +477,7 @@ fn rfp_fires_on_a_winning_nonpv_node_and_returns_the_blend() {
     let v = search_at::<NonPv>(&mut w, &tt, beta - 1, beta, depth, true, 1);
     assert_eq!(
         v,
-        (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval) / params::RFP_RET_DEN()
+        (params::RFP_RET_BETA_W() * beta + (1024 - params::RFP_RET_BETA_W()) * eval) / 1024
     );
     assert_eq!(w.nodes, 0, "RFP must return before making any move");
 }
@@ -578,7 +497,7 @@ fn rfp_never_fires_on_a_pv_node() {
     assert!(w.nodes > 0, "a PV node must not RFP-prune");
     assert_ne!(
         v,
-        (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval) / params::RFP_RET_DEN(),
+        (params::RFP_RET_BETA_W() * beta + (1024 - params::RFP_RET_BETA_W()) * eval) / 1024,
         "the PV node must not return the RFP blend"
     );
 }
@@ -1375,7 +1294,7 @@ fn nmp_prunes_a_winning_cut_node_via_the_null_search() {
     assert!(v >= beta, "the null search fails high");
     assert_ne!(
         v,
-        (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval) / params::RFP_RET_DEN(),
+        (params::RFP_RET_BETA_W() * beta + (1024 - params::RFP_RET_BETA_W()) * eval) / 1024,
         "the return is the null value, not the (vetoed) RFP blend"
     );
 }
@@ -1885,12 +1804,8 @@ fn qsearch_stand_pat_fail_high_blends_toward_beta() {
     let eval = static_eval(&w.board);
     let beta = eval - 100;
     let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
-    let (w_best, w_beta, den) = (
-        params::QS_STANDPAT_BEST_W(),
-        params::QS_STANDPAT_BETA_W(),
-        params::QS_STANDPAT_DEN(),
-    );
-    assert_eq!(v, (w_best * eval + w_beta * beta) / den);
+    let w_beta = params::QS_STANDPAT_BETA_W();
+    assert_eq!(v, ((1024 - w_beta) * eval + w_beta * beta) / 1024);
     assert_eq!(w.nodes, 0, "a stand-pat cutoff searches nothing");
     let cached = tt.probe(w.board.key());
     assert!(cached.hit);
@@ -2050,14 +1965,10 @@ fn qsearch_in_check_never_stands_pat() {
     let beta = 0;
     let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
     assert_eq!(w.nodes, 1, "in check the evasion must be searched");
-    let (w_best, w_beta, den) = (
-        params::QS_FAILHIGH_BEST_W(),
-        params::QS_FAILHIGH_BETA_W(),
-        params::QS_FAILHIGH_DEN(),
-    );
+    let w_beta = params::QS_FAILHIGH_BETA_W();
     assert_eq!(
         v,
-        (w_best * -corrected_eval(&after, Some(kh2)) + w_beta * beta) / den
+        ((1024 - w_beta) * -corrected_eval(&after, Some(kh2)) + w_beta * beta) / 1024
     );
     assert!(v >= beta, "still a fail high after the blend");
 }
@@ -2077,12 +1988,11 @@ fn qsearch_fail_high_softening_blends_toward_beta() {
     let beta = eval + 100;
     let v = qsearch_at::<NonPv>(&mut w, &tt, beta - 1, beta);
     assert_eq!(w.nodes, 1);
-    let (w_best, w_beta, den) = (
-        params::QS_FAILHIGH_BEST_W(),
-        params::QS_FAILHIGH_BETA_W(),
-        params::QS_FAILHIGH_DEN(),
+    let w_beta = params::QS_FAILHIGH_BETA_W();
+    assert_eq!(
+        v,
+        ((1024 - w_beta) * -static_eval(&after) + w_beta * beta) / 1024
     );
-    assert_eq!(v, (w_best * -static_eval(&after) + w_beta * beta) / den);
 }
 
 #[test]
@@ -3539,7 +3449,6 @@ fn go_depth_full_window_on(fen: &str, depth: Depth, tt: &TranspositionTable) -> 
         w.root_depth = d;
         for rm in w.root_moves.iter_mut() {
             rm.previous_score = rm.score;
-            rm.previous_pv.clone_from(&rm.pv);
         }
         w.sel_depth = 0;
         w.root_delta = 2 * VALUE_INFINITE;

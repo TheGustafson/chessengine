@@ -196,109 +196,15 @@ fn rfp_prune_margin(
     ) - params::RFP_THREAT_MARGIN() * Value::from(no_own_threat)
 }
 
-/// EXP-UNC-1 (search study bet 1): default EMA shift for the running mean value
-/// uncertainty `σ̄` (α = 2⁻¹⁰ = 1/1024). Env-overridable via `ARCHON_UNC_EMA_SHIFT`
-/// so Gate 2 can sweep it — D33 reviewer B argued a fast α self-centers within a
-/// search and subtracts out the cross-phase (endgame-low-σ̂) component, likely the
-/// stronger Elo half, so a slower α (shift ≥ 13) or a fixed σ̄ is worth trying.
-#[cfg(feature = "sota")]
-const UNC_EMA_SHIFT_DEFAULT: i32 = 10;
-
-/// EXP-UNC-1: the position-conditioned RFP/futility margin scale from the value
-/// uncertainty `σ̂` relative to its running mean `σ̄` (design: consumer 1). The
-/// eval is trusted MORE (tighter margin, prune more — where the Elo lives) where
-/// σ̂ is below average, and LESS (looser margin, prune less — safety) where it is
-/// above. Returns exactly `1.0` (no change) when disabled (`c1 == 0`), when there
-/// is no fresh σ̂ this node (`sigma <= 0`), or before σ̄ has warmed
-/// (`sigma_bar <= 0`) — so a variance-less net or the default coefficient is
-/// bit-identical. Clamped to [0.7, 1.5] to bound the effect (study formula).
-#[cfg(feature = "sota")]
-#[inline]
-fn unc_margin_scale(sigma: f32, sigma_bar: f32, c1: f32) -> f32 {
-    if c1 == 0.0 || sigma <= 0.0 || sigma_bar <= 0.0 {
-        return 1.0;
-    }
-    (1.0 + c1 * (sigma - sigma_bar) / sigma_bar).clamp(0.7, 1.5)
-}
-
-/// EXP-UNC-1 consumer 2: the TM soft-stop time scale from the ROOT value
-/// uncertainty. Think LONGER (factor > 1) at a sharp/unclear root, SHORTER at a
-/// reliable one — ARCHON's TM otherwise has zero position content. Returns
-/// exactly `1.0` (bit-identical) when disabled / no root σ̂ / σ̄ unwarmed;
-/// clamped to [0.8, 1.25] (design). Narrower bound than the margin scale — time
-/// is a scarcer, riskier lever than a prune margin. Returns `f64` to fold into
-/// `soft_stop`'s `total_time` without a precision hop.
-#[cfg(feature = "sota")]
-#[inline]
-fn unc_tm_factor(root_sigma: f32, sigma_bar: f32, c2: f32) -> f64 {
-    if c2 == 0.0 || root_sigma <= 0.0 || sigma_bar <= 0.0 {
-        return 1.0;
-    }
-    f64::from((1.0 + c2 * (root_sigma - sigma_bar) / sigma_bar).clamp(0.8, 1.25))
-}
-
-/// Head-free TM soft-stop **contestedness** scale (2026-07-28, searchopt):
-/// scale the clock by how *undecided* the SEARCH's own root score is.
-///
-/// This is [`wdl_tm_factor`]'s idea without the net dependency. That one reads
-/// `|P(win) − P(loss)|` from a WDL sidecar and [`unc_tm_factor`] reads a σ̂
-/// head; **D48X carries neither, so both are measurably inert** — with the
-/// coefficients forced on, `ARCHON_TM_TRACE` emits byte-identical soft-stop
-/// sequences. The settled root score is already in hand at every soft-stop
-/// decision, so this factor works on any net and needs no retrain.
-///
-/// # Why it keys on CONTESTEDNESS and not decisiveness
-///
-/// The first cut of this was shrink-only on decided roots, mirroring
-/// `wdl_tm_factor`. **That has the wrong sign for the measurement that
-/// motivated it**, a point the NNUE architecture study made about
-/// `ARCHON_WDL_TM_C3` and which applies here identically. Measured at 10+0.1,
-/// normalised by each engine's own mean, we under-spend against SF18 at BOTH
-/// extremes — 0.559 vs 0.679 when balanced, 0.546 vs 0.819 when clearly winning
-/// — while over-spending in the 1.5–3.0 band. Shrinking decided roots pushes
-/// the winning band *further* from SF and only reaches the balanced band
-/// indirectly, by banking clock for later moves.
-///
-/// So the factor keys on `contested = 1 − min(|score|, KNEE)/KNEE`, which is 1
-/// at a dead-level root and 0 once the score reaches the knee. **The sign of
-/// `TM_SCORE_C` then selects the hypothesis** rather than the code assuming
-/// one: positive spends more on contested roots (the direct reading of the
-/// measurement), negative spends less (the bank-it-for-later reading). Both are
-/// reachable from one tunable, so the game decides which is right instead of me.
-///
-/// Returns exactly `1.0` when disabled (`TM_SCORE_C == 0`, the default) or on a
-/// non-finite score, so `total_time` is bit-identical and the four-factor
-/// golden tests hold.
-#[inline]
-fn score_tm_factor(best_value: Value, c_num: i32, knee: Value) -> f64 {
-    if c_num == 0 || knee <= 0 || !is_valid(best_value) {
-        return 1.0;
-    }
-    // `saturating_abs` rather than `abs`: a mate score sits near `Value::MIN`
-    // and a plain negation would overflow in debug. Saturating is also the
-    // right semantics here — a mate IS maximally decided, and clamping to the
-    // knee below discards the magnitude anyway.
-    let contested = 1.0 - f64::from(best_value.saturating_abs().min(knee)) / f64::from(knee);
-    (1.0 + f64::from(c_num) / 1024.0 * contested)
-        .clamp(params::TM_SCORE_FLOOR(), params::TM_SCORE_CEIL())
-}
-
-/// Multi-head consumer (D41 rich-net, 2026-07-21): TM soft-stop decisiveness
-/// scale from the ROOT WDL head. A root the head already calls decided
-/// (|P(win) − P(loss)| high) earns LESS clock — bank it for genuinely
-/// contested positions. Shrink-only ([0.8, 1.0]): the σ̂ factor above owns
-/// "unclear → think longer", so the two heads pull one lever from independent,
-/// independently-tunable directions. Returns exactly `1.0` (bit-identical)
-/// when disabled (`ARCHON_WDL_TM_C3`=0, the default), when the loaded net has
-/// no WDL sidecar, or before a root capture.
-#[cfg(feature = "sota")]
-#[inline]
-fn wdl_tm_factor(root_decisiveness: f32, c3: f32) -> f64 {
-    if c3 == 0.0 || root_decisiveness <= 0.0 {
-        return 1.0;
-    }
-    f64::from((1.0 - c3 * root_decisiveness).clamp(0.8, 1.0))
-}
+// Speculative TM/margin head hooks DELETED here 2026-08-01 (simplification
+// plan tier 0, items 0.7/0.8): `score_tm_factor` + the TM_SCORE_* knobs (the
+// back-loading hypothesis they served was refuted at real TC, −36.6 ± 22.5),
+// and the EXP-UNC-1 / WDL-TM apparatus (`unc_margin_scale`, `unc_tm_factor`,
+// `wdl_tm_factor`, six Worker fields, four ARCHON_* env vars) — D48X carries
+// neither a σ̂ nor a WDL head, so all of it was measurably inert (byte-identical
+// ARCHON_TM_TRACE with the coefficients forced on). A real head integration is
+// one multiplicative factor in `soft_stop` and one margin scale at the RFP
+// site, both single-line re-insertions; git keeps the prototypes.
 
 /// Feature-gated qsearch decision trace (`--features search-control`,
 /// enabled at runtime by `ARCHON_QTRACE=1`).
@@ -355,10 +261,7 @@ fn qtrace(_: usize, _: Value, _: Value, _: Value, _: Move, _: &str) {}
 /// positive, so the truncation is a plain floor.
 #[inline]
 fn lmp_move_count(depth: Depth, improving: bool) -> i32 {
-    // The depth² term carries a coefficient (identity at 1024) because it,
-    // not LMP_BASE, is what actually sets this threshold — see LMP_DEPTH_MULT.
-    (params::LMP_BASE() + params::scale_1024(depth * depth, params::LMP_DEPTH_MULT()))
-        / (params::LMP_IMPROVING_DEN() - i32::from(improving))
+    (params::LMP_BASE() + depth * depth) / (params::LMP_IMPROVING_DEN() - i32::from(improving))
 }
 
 /// The parent-futility bound (design/10 §3.5, the move loop's quiet branch):
@@ -419,9 +322,7 @@ fn capture_futility_value(
     static_eval
         + params::CFUT_BASE()
         + params::CFUT_LMRDEPTH_MULT() * lmr_depth
-        // Class 4: `captured_value` is in PIECE_VALUES (Stockfish's material
-        // frame) while `static_eval` is ours, ~0.64x of it. Identity at 1024.
-        + params::scale_1024(captured_value, params::CFUT_PIECE_MULT())
+        + captured_value
         + params::CFUT_HIST_MULT() * capt_hist / params::CAPT_HIST_DEN()
 }
 
@@ -884,6 +785,142 @@ pub struct SearchStats {
     /// Null-move-pruning attempts and cutoffs.
     pub nmp_try: u64,
     pub nmp_cut: u64,
+    /// Per-gate fire counters (search-simplification census, 2026-08-01),
+    /// indexed by [`Gate`]. Same zero-cost discipline as the fields above:
+    /// the disabled twin has no array and `gate()` is an empty body.
+    pub gates: [u64; Gate::COUNT],
+}
+
+/// One countable search-gate event (search-simplification census,
+/// 2026-08-01). Exists in every build — the *type* is free; only the
+/// enabled [`SearchStats`] carries the array it indexes. Names mirror the
+/// node-step labels in `search()`/`qsearch()`.
+#[derive(Clone, Copy)]
+#[repr(usize)]
+pub enum Gate {
+    /// Main-search node entries (post depth<=0 boundary) — the denominator.
+    MainEntry,
+    /// Main-search node entries while in check.
+    MainInCheck,
+    /// N9 razoring returns (drop to qsearch).
+    Razor,
+    /// N10 RFP returns.
+    Rfp,
+    /// N11 NMP verification searches run.
+    NmpVerify,
+    /// N12 IIR depth reductions applied.
+    Iir,
+    /// N6 hindsight depth += 1.
+    HindUp,
+    /// N6 hindsight depth -= 1.
+    HindDown,
+    /// N13 ProbCut candidate moves actually searched (qsearch probe made).
+    ProbcutMove,
+    /// N13 ProbCut fail-high returns.
+    ProbcutCut,
+    /// N14 in-check small-ProbCut returns.
+    CheckCut,
+    /// N6b wrong-direction-bound TT penalize writes.
+    TtPenalize,
+    /// N6b quiet-ttMove history bonus fired on a TT cutoff.
+    TtcutBonus,
+    /// N8 eval-diff parent history nudge fired.
+    EvalDiff,
+    /// Move-loop LMP threshold reached (skip_quiet_moves called).
+    LmpSkip,
+    /// Move-loop capture-futility prunes.
+    CfutPrune,
+    /// Move-loop capture/check SEE prunes.
+    CseePrune,
+    /// Move-loop continuation-history prunes.
+    ChistPrune,
+    /// Move-loop parent-futility prunes.
+    PfutPrune,
+    /// Move-loop quiet-SEE prunes.
+    QseePrune,
+    /// Singular exclusion searches run.
+    SeTry,
+    /// Singular verdict: extend (value < singular_beta).
+    SeSingular,
+    /// Singular double extension granted.
+    SeDouble,
+    /// Singular triple extension granted.
+    SeTriple,
+    /// Singular verdict: multicut return.
+    SeMulticut,
+    /// Singular verdict: negative extension (either arm).
+    SeNegExt,
+    /// Step-12 equal-value dither promotions offered (inc == 1).
+    Dither,
+    /// Step-14 fail-low parent bonus, quiet-parent arm.
+    FlQuiet,
+    /// Step-14 fail-low parent bonus, capture-parent arm.
+    FlCapture,
+    /// Node-exit correction-history update fired.
+    CorrUpd,
+    /// Qsearch node entries (the qsearch denominator; distinct from
+    /// `qnodes`, which counts made moves).
+    QsEntry,
+    /// Qsearch TT-cutoff returns.
+    QsTtcut,
+    /// Qsearch stand-pat cutoff returns.
+    QsStandpat,
+    /// Qsearch late-move prunes.
+    QsLatemove,
+    /// Qsearch futility prunes.
+    QsFut,
+    /// Qsearch SEE-vs-window prunes.
+    QsSeeWindow,
+    /// Qsearch hard-SEE-floor prunes.
+    QsSeeFloor,
+    /// Qsearch narrow stalemate scans (generate_legal paid).
+    QsStaleScan,
+}
+
+impl Gate {
+    /// Number of gates — the census array length.
+    pub const COUNT: usize = Gate::QsStaleScan as usize + 1;
+    /// Display names, index-aligned with the enum.
+    pub const NAMES: [&'static str; Gate::COUNT] = [
+        "main_entry",
+        "main_in_check",
+        "razor",
+        "rfp",
+        "nmp_verify",
+        "iir",
+        "hind_up",
+        "hind_down",
+        "probcut_move",
+        "probcut_cut",
+        "check_cut",
+        "tt_penalize",
+        "ttcut_bonus",
+        "evaldiff",
+        "lmp_skip",
+        "cfut_prune",
+        "csee_prune",
+        "chist_prune",
+        "pfut_prune",
+        "qsee_prune",
+        "se_try",
+        "se_singular",
+        "se_double",
+        "se_triple",
+        "se_multicut",
+        "se_negext",
+        "dither",
+        "fl_quiet",
+        "fl_capture",
+        "corr_upd",
+        "qs_entry",
+        "qs_ttcut",
+        "qs_standpat",
+        "qs_latemove",
+        "qs_fut",
+        "qs_see_window",
+        "qs_see_floor",
+        "qs_stale_scan",
+    ];
 }
 
 /// The shipped shape: no fields, therefore no stores. See the enabled twin.
@@ -909,6 +946,7 @@ impl SearchStats {
         lmr_plies: 0,
         nmp_try: 0,
         nmp_cut: 0,
+        gates: [0; Gate::COUNT],
     };
 }
 
@@ -918,6 +956,18 @@ impl SearchStats {
 }
 
 impl SearchStats {
+    /// One census gate event (search-simplification census, 2026-08-01).
+    /// Same discipline as every other bump: empty body when disabled.
+    #[inline(always)]
+    pub fn gate(&mut self, g: Gate) {
+        #[cfg(any(test, feature = "search-stats"))]
+        {
+            self.gates[g as usize] += 1;
+        }
+        #[cfg(not(any(test, feature = "search-stats")))]
+        let _ = g;
+    }
+
     /// One qsearch node.
     #[inline(always)]
     pub fn qnode(&mut self) {
@@ -1080,13 +1130,6 @@ pub struct Worker {
     /// `bestmove` is always printable; [`Worker::root_hygiene`] both
     /// maintains it and rolls back to it.
     pub last_best_move_pv: Vec<Move>,
-    /// The previous iteration's PV for the line being searched (SF's
-    /// `lastIterationIdxPV`, search.cpp:367): snapshotted from
-    /// `root_moves[pv_idx].previous_pv` before every aspiration search, read
-    /// by the node-entry `follow_pv` recurrence when
-    /// [`params::FOLLOW_PV_MODE`] is on. Empty on iteration 1, so `follow_pv`
-    /// marks only the root there — same as SF.
-    last_iter_pv: Vec<Move>,
     /// Score belonging to [`Self::last_best_move_pv`] (§3.5).
     pub last_best_move_score: Value,
     /// Iteration at which the best root move last changed — the
@@ -1125,73 +1168,14 @@ pub struct Worker {
     tm_best_previous_average_score: Value,
     /// Per-thread eval state (design/11 §3.1); empty in Phase A.
     eval_ctx: EvalContext,
-    /// EXP-UNC-1: RFP/futility uncertainty coefficient (env `ARCHON_UNC_RFP_C1`,
-    /// default 0.0 = off → bit-identical). Read once at Worker construction.
-    #[cfg(feature = "sota")]
-    unc_rfp_c1: f32,
-    /// EXP-UNC-1: running mean value-uncertainty σ̄ (EMA), 0.0 until the first
-    /// fresh σ̂. Per-worker; the ratio `(σ̂−σ̄)/σ̄` self-calibrates as it warms.
-    #[cfg(feature = "sota")]
-    sigma_bar: f32,
-    /// EXP-UNC-1 consumer 2: TM soft-stop uncertainty coefficient (env
-    /// `ARCHON_UNC_TM_C2`, default 0.0 = off). Read once at construction.
-    #[cfg(feature = "sota")]
-    unc_tm_c2: f32,
-    /// EXP-UNC-1 consumer 2: the ROOT position's value uncertainty σ̂ (ply-0
-    /// fresh eval), read by [`Worker::soft_stop`]. 0.0 until a root eval lands.
-    #[cfg(feature = "sota")]
-    root_sigma: f32,
-    /// Multi-head WDL TM consumer: soft-stop decisiveness coefficient (env
-    /// `ARCHON_WDL_TM_C3`, default 0.0 = off). Read once at construction.
-    #[cfg(feature = "sota")]
-    wdl_tm_c3: f32,
-    /// Multi-head WDL TM consumer: the ROOT position's decisiveness
-    /// |P(win) − P(loss)| from the WDL head (ply-0 fresh eval), read by
-    /// [`Worker::soft_stop`]. 0.0 until a root eval lands.
-    #[cfg(feature = "sota")]
-    root_wdl_d: f32,
-    /// EXP-UNC-1: the σ̄ EMA rate α (env `ARCHON_UNC_EMA_SHIFT`, default
-    /// [`UNC_EMA_SHIFT_DEFAULT`]). Read once at construction; swept in Gate 2.
-    #[cfg(feature = "sota")]
-    unc_ema_alpha: f32,
     /// Per-thread move-ordering statistics (design/09 §3.4, D23): butterfly/
     /// low-ply/capture/continuation/pawn/correction history. Read by the
     /// [`MovePicker`] scoring and written by [`Histories::update_all_stats`]
     /// at node exit. `new_search()` decays it each `go`; `ucinewgame` clears
     /// it (uci.rs). ~20 MiB behind a `Box` so it never transits the stack.
     pub histories: Box<Histories>,
-    /// Per-search snapshot of the D47 policy head (perf study 13 §4.1).
-    ///
-    /// The two hot call sites used to reach for
-    /// [`crate::eval::nnue::active_policy_head`] directly, which takes a
-    /// **process-wide `RwLock` read lock** — two atomic read-modify-writes and
-    /// a poison check — at every interior node with no TT move **at depth >= 3**,
-    /// and once more per node whenever `CPL_ORD_W` is set (it defaults to 0, so
-    /// the measured −4.8 i/n is the first site alone). Nets are
-    /// installed once per `go` (`refresh_eval_net`), never mid-search, so the
-    /// value is a per-search constant; [`SotaContext`] already snapshots the
-    /// same handle at net-set time, and this is that pattern applied to the
-    /// search. `None` (the production case, no `.cpol` sidecar) collapses both
-    /// sites to one predictable `test`/`jne`.
-    ///
-    /// [`SotaContext`]: crate::eval::nnue::sota_context::SotaContext
-    #[cfg(feature = "sota")]
-    policy_head: Option<&'static crate::eval::nnue::policy_head::PolicyHead>,
-    /// Perf study 68 — the same snapshot, extended to the two knobs that
-    /// GUARD that handle. `ord_weight()` and `ord_min_depth()` are
-    /// `LazyLock`s over environment variables, i.e. process constants, and
-    /// `ord_weight() != 0.0` is the FIRST test at the P-ORD site — so the
-    /// shipped build performed a `Once`-state acquire load, a compare, a
-    /// branch and an `f32` load at **every interior main-search node** to
-    /// re-learn that `CPL_ORD_W` is unset. A `LazyLock` deref cannot be
-    /// hoisted out of a recursive function: it reads an atomic. Snapshotted
-    /// per `go`, the whole site is one `ucomiss` against a register.
-    #[cfg(feature = "sota")]
-    ord_weight: f32,
-    #[cfg(feature = "sota")]
-    ord_min_depth: i32,
-    /// Ditto for the `ARCHON_NMP_ALLNODE` A/B gate (a `OnceLock<bool>` read
-    /// at every node that reaches the null-move block).
+    /// Per-`go` snapshot of the `ARCHON_NMP_ALLNODE` A/B gate (a
+    /// `OnceLock<bool>` read at every node that reaches the null-move block).
     nmp_allnode: bool,
     /// Poll-cadence bitmask for [`Worker::check_time`] (design/12 §3.8;
     /// Reckless bundle D31): the real clock/limit check runs when `nodes &
@@ -1228,12 +1212,6 @@ pub struct Worker {
     /// `Minimal` report mode (design/12 §3.13): suppress per-iteration `info`
     /// lines. Installed by `setup`; main worker only.
     minimal: bool,
-
-    /// Experiment (design/17 Thrust II): the shared learned move-prior, cloned
-    /// into each node's [`MovePicker`]. `None` unless `POLICY_NET` is set; the
-    /// default build does not compile the field.
-    #[cfg(feature = "policy")]
-    policy_net: Option<Arc<crate::policy::PolicyNet>>,
 
     /// Main-worker-only, bounded observational LMR telemetry. It is compiled
     /// only for search-control experiments and has no authority over search.
@@ -1303,7 +1281,6 @@ impl Worker {
             limits: Limits::new(),
             tm: TimeManager::new(),
             last_best_move_pv: Vec::new(),
-            last_iter_pv: Vec::new(),
             last_best_move_score: -VALUE_INFINITE,
             last_best_move_depth: 0,
             iter_value: [VALUE_DRAW; ITER_VALUE_RING],
@@ -1312,41 +1289,7 @@ impl Worker {
             tm_time_reduction: crate::timeman::TIME_REDUCTION_INIT,
             tm_best_previous_average_score: VALUE_INFINITE,
             eval_ctx: EvalContext::new(),
-            #[cfg(feature = "sota")]
-            unc_rfp_c1: std::env::var("ARCHON_UNC_RFP_C1")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0.0),
-            #[cfg(feature = "sota")]
-            sigma_bar: 0.0,
-            #[cfg(feature = "sota")]
-            unc_tm_c2: std::env::var("ARCHON_UNC_TM_C2")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0.0),
-            #[cfg(feature = "sota")]
-            root_sigma: 0.0,
-            #[cfg(feature = "sota")]
-            wdl_tm_c3: std::env::var("ARCHON_WDL_TM_C3")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0.0),
-            #[cfg(feature = "sota")]
-            root_wdl_d: 0.0,
-            #[cfg(feature = "sota")]
-            unc_ema_alpha: 2.0f32.powi(
-                -std::env::var("ARCHON_UNC_EMA_SHIFT")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(UNC_EMA_SHIFT_DEFAULT),
-            ),
             histories: Histories::new(),
-            #[cfg(feature = "sota")]
-            policy_head: None,
-            #[cfg(feature = "sota")]
-            ord_weight: 0.0,
-            #[cfg(feature = "sota")]
-            ord_min_depth: 1,
             nmp_allnode: false,
             check_time_mask: params::CHECK_TIME_CALLS as u64 - 1,
             thread_idx: 0,
@@ -1356,8 +1299,6 @@ impl Worker {
             output: None,
             options: Options::new(),
             minimal: false,
-            #[cfg(feature = "policy")]
-            policy_net: crate::policy::shared_from_env(),
             #[cfg(feature = "search-control")]
             search_trace: None,
             #[cfg(feature = "search-control")]
@@ -1512,12 +1453,6 @@ impl Worker {
         #[cfg(feature = "sota")]
         self.eval_ctx
             .set_protected_halfka_net(crate::eval::nnue::active_protected_halfka_net());
-        // Perf study 13 §4.1: snapshot the policy head here, with the nets, so
-        // the per-node sites never take the process-wide `RwLock`.
-        #[cfg(feature = "sota")]
-        {
-            self.policy_head = crate::eval::nnue::active_policy_head();
-        }
     }
 
     /// Lazily create the in-search observation recorder (design/16 §3.5.5) when
@@ -1907,15 +1842,10 @@ impl Worker {
         self.counters.nodes.store(0, Ordering::Relaxed);
         self.counters.best_move_changes.store(0, Ordering::Relaxed);
         self.nmp_min_ply = 0;
-        // Perf study 68: the process-constant env probes, read ONCE per `go`
-        // here rather than once per node at their use sites. `iterative_deepening`
+        // Perf study 68: the process-constant env probe, read ONCE per `go`
+        // here rather than once per node at its use site. `iterative_deepening`
         // is the one entry both the pool path and the direct bench/test path go
         // through, which is why the reset above lives here too.
-        #[cfg(feature = "sota")]
-        {
-            self.ord_weight = crate::eval::nnue::policy_head::ord_weight();
-            self.ord_min_depth = crate::eval::nnue::policy_head::ord_min_depth();
-        }
         self.nmp_allnode = crate::search::nmp_allnode_probe();
         self.check_time_mask = self.compute_check_time_mask();
         self.last_best_move_pv.clear();
@@ -1970,47 +1900,7 @@ impl Worker {
         if self.root_moves.is_empty() {
             return; // mate/stalemate at the root: nothing to search
         }
-        // Refresh before the optional root-policy consumer. Frozen-classic
-        // heads reuse this protected accumulator and have no board-refresh
-        // trunk of their own.
         self.eval_ctx.refresh_root(&self.board);
-        // EXP-UNC-1 (D33 review, reviewers A/B/C): reset the root uncertainty
-        // per search. The persistent TT means the root usually hits a cached
-        // eval on move N+1, so a fresh root σ̂ isn't recaptured every search;
-        // without this reset `root_sigma` would leak a PRIOR move's value into
-        // the TM soft-stop. Worst case now: 0.0 → `unc_tm_factor` returns 1.0
-        // (consumer 2 self-disables that search) rather than mis-scaling on a
-        // different position's uncertainty.
-        #[cfg(feature = "sota")]
-        {
-            self.root_sigma = 0.0;
-            // Same leak guard for the WDL decisiveness: a TT-cached root eval
-            // on move N+1 would otherwise leave move N's |P(w)−P(l)| scaling
-            // move N+1's clock. 0.0 → wdl_tm_factor self-disables this search.
-            self.root_wdl_d = 0.0;
-        }
-        #[cfg(feature = "policy")]
-        if crate::policy::root_order_enabled() {
-            let scores = self.policy_net.as_ref().and_then(|net| {
-                if net.uses_classic_accumulator() {
-                    self.eval_ctx
-                        .classic_policy_accumulators(&self.board, 0)
-                        .and_then(|(stm, ntm, activation)| {
-                            net.scores_from_classic(stm, ntm, activation, self.board.side_to_move())
-                        })
-                } else {
-                    net.scores(&self.board)
-                }
-            });
-            if let Some(scores) = scores {
-                for root_move in &mut self.root_moves {
-                    let mv = root_move.pv[0];
-                    root_move.policy_score =
-                        (scores.move_score(mv.from(), mv.to()) * 1024.0) as i32;
-                }
-                sort_descending(&mut self.root_moves);
-            }
-        }
         // Per-`go` history refresh (design/09 §3.4): decay the butterfly
         // history toward zero so recent searches dominate, and refill the
         // low-ply history. Correction/capture/continuation tables persist
@@ -2067,10 +1957,8 @@ impl Worker {
             tot_best_move_changes /= params::INSTABILITY_CHANGES_DECAY();
 
             // Snapshot last iteration (§3.5).
-            for (idx, rm) in self.root_moves.iter_mut().enumerate() {
+            for rm in self.root_moves.iter_mut() {
                 rm.previous_score = rm.score;
-                rm.previous_pv.clone_from(&rm.pv);
-                rm.previous_score_exact = idx < multi_pv;
             }
 
             // SF's `bestValue`: the value the LAST MultiPV line's root
@@ -2083,12 +1971,6 @@ impl Worker {
             for pv_idx in 0..multi_pv {
                 self.pv_idx = pv_idx;
                 self.sel_depth = 0; // per PV line (§3.9)
-                // SF search.cpp:367 — arm the follow-PV recurrence with THIS
-                // line's previous-iteration PV. Unconditional (the snapshot is
-                // inert while FOLLOW_PV_MODE is 0, whose gate lives at the
-                // node-entry write).
-                self.last_iter_pv
-                    .clone_from(&self.root_moves[pv_idx].previous_pv);
                 root_best_value = self.aspiration_search(tt, stop, search_again_counter);
                 // Order the completed lines among themselves (§3.5) — a
                 // no-op at MultiPV 1, but the shape is load-bearing for
@@ -2236,6 +2118,12 @@ impl Worker {
                 st.nmp_cut,
                 st.nmp_cut as f64 / st.nmp_try.max(1) as f64
             );
+            // The per-gate census (search-simplification study, 2026-08-01).
+            let mut line = String::from("SSTATS3");
+            for (name, count) in Gate::NAMES.iter().zip(st.gates.iter()) {
+                line.push_str(&format!(" {name}={count}"));
+            }
+            eprintln!("{line}");
         }
     }
 
@@ -2530,17 +2418,17 @@ impl Worker {
         self.stack[cur].in_check = in_check;
         self.stack[cur].move_count = 0;
         self.stack[cur].stat_score = 0;
-        // followPV (SF search.cpp:752-755, toggled by FOLLOW_PV_MODE): this
-        // node sits on the previous iteration's PV path iff its parent did
-        // AND the parent's move was that PV's move at the parent's ply. Read
-        // by N12's IIR exemption and the quiet-pruning PV-path exemption.
-        // At mode 0 the flag stays `false` everywhere — bit-identical to the
-        // pre-toggle tree (the P9 item-9 parked state).
-        self.stack[cur].follow_pv = params::FOLLOW_PV_MODE() != 0
-            && (NT::ROOT
-                || (self.stack[cur - 1].follow_pv
-                    && ply - 1 < self.last_iter_pv.len()
-                    && self.stack[cur - 1].current_move == self.last_iter_pv[ply - 1]));
+        self.stats.gate(Gate::MainEntry);
+        if in_check {
+            self.stats.gate(Gate::MainInCheck);
+        }
+        // Deliberate SF divergence: no followPV tracking (SF search.cpp:
+        // 752-755 marks nodes on the previous iteration's PV path and exempts
+        // them from IIR and quiet pruning). Built as the FOLLOW_PV_MODE toggle,
+        // it never won a measurement between P9 and 2026-08-01; the whole
+        // apparatus (per-node stack write, a per-line PV clone per iteration,
+        // two consumer conditions) was deleted by tier 0 of the
+        // simplification plan.
         // Parent-move facts (design/10 §3.4 N2): `prev_sq` is the parent's
         // destination (None after a null move / at the root), `prior_capture`
         // whether the parent's move captured. Read by N6b's TT-cutoff parent
@@ -2564,7 +2452,7 @@ impl Worker {
             self.sel_depth = self.sel_depth.max(ply as i32 + 1);
         }
         // §3.9 cadence: every main-search node entry; qsearch relies on
-        // these checks above it. (`follow_pv` semantics arrive with doc 10.)
+        // these checks above it.
         self.check_time(stop);
 
         if !NT::ROOT {
@@ -2636,6 +2524,40 @@ impl Worker {
         }
         // A capturing ttMove does not veto RFP (N10) and shapes the singular
         // extension margins (§3.6); a quiet one is a standing reason to search.
+        // Perf study 71 — the fail-low best-move store. Resolved once per node
+        // so the arm bench's override costs one branch, not one per use site.
+        #[cfg(not(feature = "arm70"))]
+        let fl_mode = params::TT_FAILLOW_MOVE();
+        #[cfg(feature = "arm70")]
+        let fl_mode = match crate::arm70::arm().fl_move {
+            -1 => params::TT_FAILLOW_MOVE(),
+            v => v,
+        };
+        #[cfg(not(feature = "arm70"))]
+        let up_blind = params::TT_UPPER_PRUNE_BLIND();
+        #[cfg(feature = "arm70")]
+        let up_blind = match crate::arm70::arm().tt_up_blind {
+            -1 => params::TT_UPPER_PRUNE_BLIND(),
+            v => v,
+        };
+        // A move on an UPPER-bound entry never raised alpha, so it carries none
+        // of the "this node is resolved" information that IIR, RFP's `ttMove
+        // == NULL || ttCapture` gate and the two LMR no-ttMove terms read
+        // `tt_data.mv` for. `TT_UPPER_PRUNE_BLIND` is a BITMASK over those four
+        // sites — 1 IIR, 2 RFP, 4 LMR-cutnode, 8 LMR-fulldepth, 15 all — so the
+        // screen can name which of them owns the effect instead of reporting
+        // the bundle. `tt_capture` is deliberately NOT masked: it also shapes
+        // the singular-extension margins, and mixing that in would make the arm
+        // two changes wearing one name.
+        let tt_upper_hidden =
+            up_blind != 0 && tt_data.bound == Bound::Upper && tt_data.mv != Move::NULL;
+        let pruning_tt_move = |bit: i32| {
+            if tt_upper_hidden && (up_blind & bit) != 0 {
+                Move::NULL
+            } else {
+                tt_data.mv
+            }
+        };
         let tt_capture = tt_data.mv != Move::NULL && self.board.capture_stage(tt_data.mv);
 
         // Steps 6+7 — the static-eval slot, then the TT cutoff (doc 07
@@ -2647,10 +2569,6 @@ impl Worker {
         // Perf study 64 census: did THIS node pay for a real forward pass?
         #[cfg(feature = "foldcount")]
         let mut fresh_eval = false;
-        // EXP-UNC-1: this node's value uncertainty σ̂ (0.0 = none this node);
-        // set on a fresh sota eval, read at the RFP margin below.
-        #[cfg(feature = "sota")]
-        let mut node_sigma: f32 = 0.0;
         // `improving` is hoisted out of the not-in-check branch: doc 10's LMR
         // reduction (below, in the move loop) reads it even when this node is
         // in check — where SF pins it `false` (the pre-check eval bears no
@@ -2698,41 +2616,6 @@ impl Worker {
                         ply,
                     )
                 };
-                // EXP-UNC-1: on a FRESH sota eval, capture this node's value
-                // uncertainty σ̂ and fold it into the running mean σ̄. Env-gated —
-                // skipped entirely unless a consumer coefficient (ARCHON_UNC_RFP_C1
-                // for the RFP margin, ARCHON_UNC_TM_C2 for the TM soft-stop) is set,
-                // so zero overhead and bit-identical by default. `last_sigma()` is
-                // invalidated at the top of `evaluate()`, so a material-draw /
-                // non-SOTA node yields None here (no stale fold) — D33 review.
-                #[cfg(feature = "sota")]
-                if (self.unc_rfp_c1 != 0.0 || self.unc_tm_c2 != 0.0)
-                    && !(tt_hit && is_valid(tt_data.eval))
-                    && let Some(s) = self.eval_ctx.last_sigma()
-                {
-                    node_sigma = s;
-                    self.sigma_bar = if self.sigma_bar > 0.0 {
-                        self.sigma_bar + (s - self.sigma_bar) * self.unc_ema_alpha
-                    } else {
-                        s
-                    };
-                    // Consumer 2 reads the ROOT position's uncertainty in soft_stop.
-                    if ply == 0 {
-                        self.root_sigma = s;
-                    }
-                }
-                // Multi-head WDL TM consumer: capture the root decisiveness from
-                // the WDL head's fresh ply-0 eval (same freshness rules as σ̂:
-                // `last_wdl()` is invalidated at the top of `evaluate()`, so a
-                // TT-served root never folds a stale distribution).
-                #[cfg(feature = "sota")]
-                if self.wdl_tm_c3 != 0.0
-                    && ply == 0
-                    && !(tt_hit && is_valid(tt_data.eval))
-                    && let Some([l, _d, w]) = self.eval_ctx.last_wdl()
-                {
-                    self.root_wdl_d = (w - l).abs();
-                }
                 // S1 (design/10 N6, D22): `ss.static_eval` is the CORRECTED
                 // eval — raw plus the correction-history delta — and every
                 // downstream consumer (improving/opponent_worsening, hindsight,
@@ -2776,6 +2659,7 @@ impl Worker {
         let opponent_worsening = self.stack[cur].static_eval > -self.stack[cur - 1].static_eval;
         if prior_reduction >= params::HINDSIGHT_RED_UP() && !opponent_worsening {
             depth += 1;
+            self.stats.gate(Gate::HindUp);
         }
         if prior_reduction >= params::HINDSIGHT_RED_DOWN()
             && depth >= 2
@@ -2783,6 +2667,7 @@ impl Worker {
                 > params::HINDSIGHT_EVAL_SUM()
         {
             depth -= 1;
+            self.stats.gate(Gate::HindDown);
         }
 
         // N6b — the NonPV TT cutoff runs for ALL nodes, in check or not
@@ -2835,6 +2720,7 @@ impl Worker {
                             .piece_on(ttm.from())
                             .is_some_and(|p| p.color == us)
                     {
+                        self.stats.gate(Gate::TtcutBonus);
                         let bonus =
                             (params::TTCUT_BONUS_MULT() * depth).min(params::TTCUT_BONUS_CAP());
                         self.histories.update_quiet_histories(
@@ -2920,6 +2806,7 @@ impl Worker {
                 // Wrong-direction bound (item 20): the only reason the cutoff
                 // failed is a bound pointing the wrong way — age the mismatching
                 // entry out faster.
+                self.stats.gate(Gate::TtPenalize);
                 probe.writer.penalize(1);
             }
         }
@@ -2961,6 +2848,7 @@ impl Worker {
                 && !self.stack[cur - 1].in_check
                 && !prior_capture
             {
+                self.stats.gate(Gate::EvalDiff);
                 let them = self.board.side_to_move().flip();
                 let eval_diff = (-self.stack[cur - 1].static_eval - self.stack[cur].static_eval)
                     .clamp(params::EVALDIFF_CLAMP_LO(), params::EVALDIFF_CLAMP_HI())
@@ -2996,12 +2884,7 @@ impl Worker {
             // confirms the loss. No `is_decisive` guard is needed: a winning
             // `eval` fails the `<` test outright, so wins are never razored.
             if !NT::PV
-                && eval
-                    < alpha
-                        - params::RAZOR_BASE()
-                        - params::RAZOR_DEPTH_MULT() * depth * depth
-                        // Widen where our eval has historically been wrong.
-                        - correction_value.abs() / params::RAZOR_CORR_DIV()
+                && eval < alpha - params::RAZOR_BASE() - params::RAZOR_DEPTH_MULT() * depth * depth
             {
                 #[cfg(feature = "foldcount")]
                 if fresh_eval {
@@ -3009,6 +2892,7 @@ impl Worker {
                         crate::eval::nnue::foldcount::Sc::MainFreshRazor,
                     );
                 }
+                self.stats.gate(Gate::Razor);
                 return self.qsearch::<NonPv>(tt, stop, alpha, beta, ply);
             }
 
@@ -3028,7 +2912,7 @@ impl Worker {
             if fresh_eval
                 && !self.stack[cur].tt_pv
                 && depth < params::RFP_MAX_DEPTH()
-                && (tt_data.mv == Move::NULL || tt_capture)
+                && (pruning_tt_move(2) == Move::NULL || tt_capture)
                 && !is_loss(beta)
             {
                 use crate::eval::nnue::foldcount as fc;
@@ -3116,7 +3000,7 @@ impl Worker {
             if !self.stack[cur].tt_pv
                 && depth < params::RFP_MAX_DEPTH()
                 && eval >= beta
-                && (tt_data.mv == Move::NULL || tt_capture)
+                && (pruning_tt_move(2) == Move::NULL || tt_capture)
                 && !is_loss(beta)
                 && !is_win(eval)
             {
@@ -3141,10 +3025,7 @@ impl Worker {
                 // exactly, for both values of `flag`. The right-hand side never
                 // evaluates the flag when `C(false)` already prunes or when
                 // `C(true)` cannot, which confines `all_threats()` to the band
-                // where the relaxation decides. The equivalence survives the
-                // EXP-UNC-1 rescale below because that scale is non-negative and
-                // `as Value` truncation is monotone, so it cannot reorder the
-                // two margins.
+                // where the relaxation decides.
                 //
                 // Why this is worth doing: `Board::ensure_threats` memoises on
                 // the position key, but RFP runs BEFORE any child search, so the
@@ -3161,29 +3042,14 @@ impl Worker {
                 // It is a MEMO, so deferring never duplicates work — the first
                 // later consumer pays what this site used to.
                 let rfp_margin = |flag: bool| -> Value {
-                    let margin = rfp_prune_margin(
+                    rfp_prune_margin(
                         depth,
                         tt_hit,
                         improving,
                         opponent_worsening,
                         correction_value,
                         flag,
-                    );
-                    // EXP-UNC-1: position-condition the RFP margin by the value
-                    // uncertainty (consumer 1). unc_margin_scale returns exactly
-                    // 1.0 when disabled or when there is no fresh σ̂ this node,
-                    // and the else keeps the integer margin untouched →
-                    // bit-identical by default (verified: sota bench 147691 with
-                    // the coeff unset).
-                    #[cfg(feature = "sota")]
-                    let margin = if self.unc_rfp_c1 != 0.0 {
-                        (margin as f32
-                            * unc_margin_scale(node_sigma, self.sigma_bar, self.unc_rfp_c1))
-                            as Value
-                    } else {
-                        margin
-                    };
-                    margin
+                    )
                 };
                 let prune = eval - rfp_margin(false) >= beta
                     || (eval - rfp_margin(true) >= beta && {
@@ -3197,8 +3063,12 @@ impl Worker {
                             crate::eval::nnue::foldcount::Sc::MainFreshRfp,
                         );
                     }
-                    return (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval)
-                        / params::RFP_RET_DEN();
+                    self.stats.gate(Gate::Rfp);
+                    // One degree of freedom (D50 blend fold): the eval weight
+                    // is the beta weight's complement to 1024.
+                    return (params::RFP_RET_BETA_W() * beta
+                        + (1024 - params::RFP_RET_BETA_W()) * eval)
+                        / 1024;
                 }
             }
 
@@ -3228,10 +3098,6 @@ impl Worker {
                         - params::NMP_EVAL_DEPTH() * depth
                         - params::NMP_EVAL_IMPROVING() * Value::from(improving)
                         + params::NMP_EVAL_BASE()
-                        // Raise the bar where our eval has historically been
-                        // wrong: NMP's premise is that the static eval can be
-                        // trusted enough to skip a move.
-                        + correction_value.abs() / params::NMP_CORR_DIV()
                 && self.stack[cur].excluded_move == Move::NULL
                 && self.board.non_pawn_material(us) != 0
                 && ply as i32 >= self.nmp_min_ply
@@ -3286,6 +3152,7 @@ impl Worker {
                     // here confirms the cutoff. The disable window spans the
                     // whole verification subtree, so it cannot recursively
                     // null-move back to the same (possibly zugzwang) cutoff.
+                    self.stats.gate(Gate::NmpVerify);
                     self.nmp_min_ply = ply as i32
                         + params::NMP_VERIFY_NUM() * (depth - r) / params::NMP_VERIFY_DEN();
                     let v = self.search::<NonPv>(tt, stop, beta - 1, beta, depth - r, false, ply);
@@ -3306,15 +3173,13 @@ impl Worker {
             // of reverted item 9 in the doc's narrow shape): a PV or cut node
             // (= !all_node) with no ttMove searches one ply shallower rather
             // than paying full price for a tree the TT can't seed. The P9
-            // revert was the broad follow-PV-shaped form under PSQT eval;
-            // `follow_pv` is live iff FOLLOW_PV_MODE=1 (node-entry write),
-            // exempting the previous iteration's PV path exactly like SF.
-            if !self.stack[cur].follow_pv
-                && (NT::PV || cut_node)
+            // revert was the broad follow-PV-shaped form under PSQT eval.
+            if (NT::PV || cut_node)
                 && depth >= params::IIR_MIN_DEPTH()
-                && tt_data.mv == Move::NULL
+                && pruning_tt_move(1) == Move::NULL
             {
                 depth -= params::IIR_REDUCTION();
+                self.stats.gate(Gate::Iir);
             }
 
             // N13 — ProbCut (design/10 §3.4, Wave-E item 16): a cheap search
@@ -3340,12 +3205,7 @@ impl Worker {
                 let probcut_depth = depth
                     - params::PROBCUT_DEPTH_SUB()
                     - params::PROBCUT_IMPROVING_SUB() * Depth::from(improving);
-                // Class 4: an EVAL-frame gap fed to `see_ge`, whose threshold
-                // is in PIECE_VALUES. Identity at 1024.
-                let threshold = params::scale_1024(
-                    probcut_beta - self.stack[cur].static_eval,
-                    params::SEE_THRESH_MULT(),
-                );
+                let threshold = probcut_beta - self.stack[cur].static_eval;
                 let mut mp = MovePicker::new_probcut(&self.board, tt_data.mv, threshold);
                 while let Some(m) = mp.next_move(&self.board, &self.histories) {
                     if m == self.stack[cur].excluded_move || !self.board.legal(m) {
@@ -3358,6 +3218,7 @@ impl Worker {
                     // continuation-history mis-key if the picker ever changed.
                     let capture = self.board.capture_stage(m);
                     let moved_piece = self.board.piece_on(m.from());
+                    self.stats.gate(Gate::ProbcutMove);
                     self.do_move(tt, m, gives_check, capture, moved_piece, ply);
                     // Cheap qsearch verification first, then — if it held — a
                     // real reduced search.
@@ -3391,6 +3252,7 @@ impl Worker {
                         );
                         if !is_decisive(value) {
                             // Shift the surplus back onto our window.
+                            self.stats.gate(Gate::ProbcutCut);
                             return value - (probcut_beta - beta);
                         }
                     }
@@ -3412,6 +3274,7 @@ impl Worker {
             && !is_decisive(tt_value)
             && tt_value >= check_probcut_beta
         {
+            self.stats.gate(Gate::CheckCut);
             return check_probcut_beta;
         }
 
@@ -3448,66 +3311,82 @@ impl Worker {
             self.stack[cur - 5].cont_hist,
             self.stack[cur - 6].cont_hist,
         ];
-        // D47 policy ordering (v1): when the TT offers no move, fill the slot
-        // with the policy-argmax — legal by construction; the picker treats it
-        // exactly like a TT move (pseudo-legality re-checked there). The
-        // Zobrist-stamped accessor guarantees the activation belongs to THIS
-        // node (a cheap-path/skipped eval yields None — correct, not stale).
-        // Depth-gated to keep movegen+dot off the shallow tree. Without a
-        // .cpol sidecar `active_policy_head()` is None => bit-identical.
-        #[cfg(feature = "sota")]
-        let picker_tt_move = if tt_data.mv == Move::NULL
-            && depth >= 3
-            && let Some(head) = self.policy_head
-            && let Some(l2) = self.eval_ctx.last_l2_for(&self.board)
-        {
-            head.best_move(&self.board, l2).unwrap_or(Move::NULL)
+        // Perf study 71's null for the deficit itself: order the node as if the
+        // TT had offered nothing, while every pruning/reduction/extension gate
+        // still reads `tt_data.mv`.
+        #[cfg(not(feature = "arm70"))]
+        let picker_tt_move = tt_data.mv;
+        #[cfg(feature = "arm70")]
+        let picker_tt_move = if crate::arm70::arm().hide_tt {
+            Move::NULL
         } else {
             tt_data.mv
         };
-        #[cfg(not(feature = "sota"))]
-        let picker_tt_move = tt_data.mv;
         #[cfg(feature = "foldcount")]
         if fresh_eval {
             crate::eval::nnue::foldcount::note_search(
                 crate::eval::nnue::foldcount::Sc::MainFreshMoveLoop,
             );
         }
+        // `MovePicker::set_quiet_prior` is the seam a future policy head plugs
+        // into for quiet ordering (one call here). The D47 `.cpol` sidecar
+        // plumbing that used to feed it (per-`go` policy_head snapshot, the
+        // no-TT-move argmax fill, CPL_ORD_W/CPL_ORD_MIN_DEPTH) and the D41
+        // `policy`-feature machinery were deleted 2026-08-01 (simplification
+        // tier 0, items 0.9/0.10): no `.cpol` exists in production and the D41
+        // policy era was ditched. Git keeps both prototypes.
         let mut mp = MovePicker::new(&self.board, picker_tt_move, depth, ply, cont_hist);
-        // P-ORD: attach the trained head's quiet-move prior. The activation is
-        // copied NOW — the Zobrist-stamped stash dies at the first child eval,
-        // long before QuietInit. `CPL_ORD_W` unset/0 ⇒ never constructed ⇒
-        // ordering bit-identical.
-        #[cfg(feature = "sota")]
-        if self.ord_weight != 0.0
-            && depth >= self.ord_min_depth
-            && let Some(head) = self.policy_head
-            && let Some(l2) = self.eval_ctx.last_l2_for(&self.board)
-        {
-            mp.set_quiet_prior(head.quiet_prior(&self.board, l2, self.ord_weight));
-        }
-        #[cfg(feature = "policy")]
-        {
-            mp.set_policy_net(self.policy_net.clone());
-            if crate::policy::enabled_at(depth, ply) {
-                if let Some(net) = self
-                    .policy_net
-                    .as_ref()
-                    .filter(|net| net.uses_classic_accumulator())
-                {
-                    let scores = self
-                        .eval_ctx
-                        .classic_policy_accumulators(&self.board, ply)
-                        .and_then(|(stm, ntm, activation)| {
-                            net.scores_from_classic(stm, ntm, activation, self.board.side_to_move())
-                        });
-                    mp.set_policy_scores(scores);
+
+        // Perf study 70's census: node kind, and whether the picker got a
+        // usable TT move to order on (the constructor's branchless skip
+        // leaves `stage_id()` on the `*Tt` discriminant only when it did).
+        #[cfg(feature = "census70")]
+        let c70_kind = match (NT::ROOT, NT::PV, in_check) {
+            (true, _, _) => crate::census70::KIND_ROOT,
+            (_, true, false) => crate::census70::KIND_PV,
+            (_, true, true) => crate::census70::KIND_PV_CHK,
+            (_, false, false) => crate::census70::KIND_NONPV,
+            (_, false, true) => crate::census70::KIND_NONPV_CHK,
+        };
+        // Study 71: "the node had a usable TT move", asked of the TT rather
+        // than of the picker's stage, so the `hidett` null still splits the
+        // census by the population it is nulling. Identical to the old
+        // `matches!(mp.stage_id(), 0 | 7)` whenever nothing hides the move.
+        #[cfg(feature = "census70")]
+        let c70_had_tt = tt_data.mv != Move::NULL && self.board.pseudo_legal(tt_data.mv);
+        #[cfg(feature = "census70")]
+        crate::census70::node_entry(
+            c70_kind,
+            depth,
+            c70_had_tt,
+            {
+                // Study 71: which of the three TT-less failures this was.
+                if !tt_hit {
+                    crate::census70::WHY_MISS
+                } else if tt_data.mv == Move::NULL {
+                    crate::census70::WHY_MOVELESS
+                } else {
+                    crate::census70::WHY_UNUSABLE
                 }
-            }
-        }
+            },
+            tt_data.depth,
+        );
+        // Index of the move that is currently `best_move` (study 70 census).
+        #[cfg(feature = "census70")]
+        let mut c70_best_idx = 0i32;
+        // Study 71: capture-stage moves emitted so far, and the running rank
+        // of the current move among the quiets.
+        #[cfg(feature = "census70")]
+        let (mut c70_caps_before, mut c70_quiet_rank) = (0i32, 0i32);
 
         let mut best_value = -VALUE_INFINITE;
         let mut best_move = Move::NULL;
+        // Perf study 71: the argmax move of the whole loop, tracked even when
+        // it never raises alpha, so a fail-low node can leave the TT an
+        // ordering hint instead of `Move::NULL`. Folds away entirely when
+        // `TT_FAILLOW_MOVE` is the default 0 (a literal in the non-`tune`
+        // build), which is what keeps the shipped tree bit-identical.
+        let mut fl_move = Move::NULL;
         let mut move_count = 0;
         // Tried non-best moves, split by kind, for the node-result history
         // burst (doc 09 §3.9). Fixed 32-slot buffers — no heap on the hot
@@ -3561,6 +3440,17 @@ impl Worker {
                 continue;
             }
             let is_capture = self.board.capture_stage(m);
+            // Study 71's ordering diagnostic: the split of the move loop into
+            // its two stages, so a non-first cutoff can say WHICH of them put
+            // the cutting move late.
+            #[cfg(feature = "census70")]
+            {
+                if is_capture {
+                    c70_caps_before += 1;
+                } else {
+                    c70_quiet_rank += 1;
+                }
+            }
             // The mover, resolved ONCE for the whole iteration (perf study 23
             // arm 6). It used to be read from the mailbox three times — in the
             // capture arm's SEE gate, in the quiet arm's continuation-history
@@ -3583,8 +3473,6 @@ impl Worker {
             // and the singular verification, i.e. hundreds of cycles more
             // overlap. The cost is that a pruned move's hint is wasted, which
             // is why this is measured rather than assumed.
-            #[cfg(feature = "ttspec42")]
-            tt.prefetch(self.board.prefetch_key(m));
             move_count += 1;
             self.stack[cur].move_count = move_count;
             let nodes_before = self.nodes; // root effort accounting (§3.4)
@@ -3602,14 +3490,6 @@ impl Worker {
             // piece `gives_check` would read back out of the mailbox, and the
             // intervening `stack[cur].move_count` store blocks the CSE. See
             // `Board::gives_check_by`.
-            // Perf study 54 arm `nogc54` reverts JUST this line to the
-            // pre-study-53 spelling, so `gc53`'s marginal effect can be
-            // measured on the tree that actually shipped it — study 53 §0.2
-            // left that open because its own control was not inert and
-            // `magic53` alone beat the combination on loads by 11.7/node.
-            #[cfg(feature = "nogc54")]
-            let gives_check = self.board.gives_check(m);
-            #[cfg(not(feature = "nogc54"))]
             let gives_check = self.board.gives_check_by(m, moved_piece);
             let mut new_depth = depth - 1;
             let delta = beta - alpha;
@@ -3648,6 +3528,7 @@ impl Worker {
                 // threshold there, but the `!is_loss` guard keeps the block
                 // dormant until an evasion has produced a non-loss value.
                 if move_count >= lmp_move_count(depth, improving) {
+                    self.stats.gate(Gate::LmpSkip);
                     mp.skip_quiet_moves();
                 }
 
@@ -3670,13 +3551,9 @@ impl Worker {
                 let mut lmr_depth = new_depth - r / params::RED_UNIT();
 
                 // Captures and checking moves (Wave-B item 8, design/10 §3.5)
-                // take their own futility/SEE gates; quiets — spared only on
-                // the last iteration's PV path at a PV node (`!follow_pv ||
-                // !PV`; `follow_pv` is written at node entry iff
-                // FOLLOW_PV_MODE=1, else always false and this OR is always
-                // true) — take parent futility then negative-SEE pruning. The `else` already implies a quiet
-                // non-check, so its condition drops the `!is_capture &&
-                // !gives_check` the capture arm now consumes.
+                // take their own futility/SEE gates; quiets take parent
+                // futility then negative-SEE pruning. The `else` already
+                // implies a quiet non-check.
                 if is_capture || gives_check {
                     // The capture history `capt_hist = capture[moved][to]
                     // [captured]` (doc 09; the NO_VICTIM slot for en passant
@@ -3704,6 +3581,7 @@ impl Worker {
                             capt_hist,
                         ) <= alpha
                         {
+                            self.stats.gate(Gate::CfutPrune);
                             continue;
                         }
                     }
@@ -3718,9 +3596,10 @@ impl Worker {
                     if (alpha >= VALUE_DRAW || self.board.non_pawn_material(us) != moved_value)
                         && !self.board.see_ge(m, -capture_see_margin(depth, capt_hist))
                     {
+                        self.stats.gate(Gate::CseePrune);
                         continue;
                     }
-                } else if !self.stack[cur].follow_pv || !NT::PV {
+                } else {
                     // Continuation-history pruning (design/10 §3.5, Wave-C
                     // item 11): the FIRST quiet gate, ahead of parent futility
                     // and quiet SEE. A quiet whose combined recent history
@@ -3739,32 +3618,12 @@ impl Worker {
                     // quiet's score below `-QHIST_PRUNE_MULT·depth`.
                     let pci = moved_piece.index();
                     let to = m.to().idx();
-                    // Perf study 55 mechanism B: three 2-D `[pci][to]` chains,
-                    // each re-deriving the same offset and re-checking the inner
-                    // row. `stat_score` — called from THIS loop iteration, 160
-                    // lines below — already uses study 36's flat `piece_to` form
-                    // for two of these three planes. Bit-identical: `history.rs`
-                    // proves `p[pci][to] == p.as_flattened()[piece_to(pci, to)]`.
-                    #[cfg(feature = "bccont55")]
-                    let cont_history = {
-                        let q = crate::history::piece_to(pci, to);
-                        crate::history::at_piece_to(
-                            self.histories.cont_ref(self.stack[cur - 1].cont_hist),
-                            q,
-                        ) + crate::history::at_piece_to(
-                            self.histories.cont_ref(self.stack[cur - 2].cont_hist),
-                            q,
-                        ) + crate::history::at_piece_to(
-                            self.histories.pawn_slot(self.board.pawn_key()),
-                            q,
-                        )
-                    };
-                    #[cfg(not(feature = "bccont55"))]
                     let cont_history =
                         self.histories.cont_ref(self.stack[cur - 1].cont_hist)[pci][to].get()
                             + self.histories.cont_ref(self.stack[cur - 2].cont_hist)[pci][to].get()
                             + self.histories.pawn_slot(self.board.pawn_key())[pci][to].get();
                     if continuation_history_prunes(cont_history, depth) {
+                        self.stats.gate(Gate::ChistPrune);
                         continue;
                     }
 
@@ -3814,6 +3673,7 @@ impl Worker {
                         {
                             best_value = futility_value;
                         }
+                        self.stats.gate(Gate::PfutPrune);
                         continue;
                     }
 
@@ -3827,21 +3687,11 @@ impl Worker {
                         .board
                         .see_ge(m, -params::QSEE_MULT() * lmr_depth * lmr_depth)
                     {
+                        self.stats.gate(Gate::QseePrune);
                         continue;
                     }
                 }
             }
-
-            // Perf study 42 arm 2: the speculative TT prefetch moved BELOW the
-            // §3.5 pruning cascade. Arm 1 (`ttspec42`, above the cascade) buys
-            // the most overlap and pays for it on every move that is then
-            // pruned -- +95.6 instructions/node for ~1.07 probes/node, i.e.
-            // roughly three quarters of its hints thrown away. From here the
-            // move is committed, so the hint count collapses to the probe
-            // count, and the overlap on offer is still the whole singular
-            // verification search plus the reduction stack below it.
-            #[cfg(feature = "ttspec2_42")]
-            tt.prefetch(self.board.prefetch_key(m));
 
             // §3.6 — singular extensions and multicut (Wave-D items 13/14).
             // Only the ttMove is a candidate: an exclusion search below the
@@ -3869,6 +3719,9 @@ impl Worker {
                 let singular_depth =
                     new_depth * params::SE_VERIFY_DEPTH_NUM() / params::SE_VERIFY_DEPTH_DEN();
                 self.stack[cur].excluded_move = m;
+                #[cfg(feature = "census70")]
+                let c70_sing_before = self.nodes;
+                self.stats.gate(Gate::SeTry);
                 let value = self.search::<NonPv>(
                     tt,
                     stop,
@@ -3878,9 +3731,16 @@ impl Worker {
                     cut_node,
                     ply,
                 );
+                #[cfg(feature = "census70")]
+                {
+                    use std::sync::atomic::Ordering::Relaxed;
+                    crate::census70::SING_TRY.fetch_add(1, Relaxed);
+                    crate::census70::SING_NODES.fetch_add(self.nodes - c70_sing_before, Relaxed);
+                }
                 self.stack[cur].excluded_move = Move::NULL;
 
                 if value < singular_beta {
+                    self.stats.gate(Gate::SeSingular);
                     // Singular: extend. `corr_adj` (Wave-F item 21, now live)
                     // tightens the double/triple margins under eval
                     // uncertainty — a large |correction_value| makes the extra
@@ -3900,9 +3760,16 @@ impl Worker {
                     extension = params::SE_EXT_BASE()
                         + Depth::from(value < singular_beta - double_margin)
                         + Depth::from(value < singular_beta - triple_margin);
+                    if value < singular_beta - double_margin {
+                        self.stats.gate(Gate::SeDouble);
+                    }
+                    if value < singular_beta - triple_margin {
+                        self.stats.gate(Gate::SeTriple);
+                    }
                     // The WHOLE node deepens, not just the ttMove.
                     depth += params::SE_NODE_DEEPEN();
                 } else if value >= beta && !is_decisive(value) {
+                    self.stats.gate(Gate::SeMulticut);
                     // Multicut: multiple moves beat beta without the ttMove —
                     // the node is not singular; prune the whole subtree.
                     self.histories
@@ -3913,8 +3780,10 @@ impl Worker {
                     // The ttMove is expected to fail high anyway — search it
                     // shallower in favor of alternatives.
                     extension = params::SE_NEG_EXT_TT_FAILHIGH();
+                    self.stats.gate(Gate::SeNegExt);
                 } else if cut_node {
                     extension = params::SE_NEG_EXT_CUTNODE();
+                    self.stats.gate(Gate::SeNegExt);
                 }
             }
             new_depth += extension;
@@ -3990,36 +3859,29 @@ impl Worker {
             // term demands a REAL value: VALUE_NONE (32002) would spuriously
             // pass `> alpha` on a TT miss (same guard idiom as ProbCut).
             if self.stack[cur].tt_pv {
-                // RED_TTPV_TTMISS_REBATE=1 restores SF parity: SF's miss
+                // Deliberate SF divergence on the ttValue term: SF's miss
                 // sentinel VALUE_NONE passes `ttData.value > alpha`
-                // unconditionally (search.cpp:1292), so SF grants this term
-                // at every PV-flagged TT-miss node; our `is_valid` guard
-                // (ProbCut idiom) withholds it there.
+                // unconditionally (search.cpp:1292), so SF grants it at every
+                // PV-flagged TT-miss node. Restoring that parity was measured
+                // WORSE here (+0.44/+0.30/+0.34 cp at +5.3% nodes — the old
+                // RED_TTPV_TTMISS_REBATE toggle, deleted 2026-08-01), so the
+                // `is_valid` guard (ProbCut idiom) withholds it on a miss.
                 r -= params::RED_TTPV_BASE()
                     + params::RED_TTPV_PV() * i32::from(NT::PV)
                     + params::RED_TTPV_TTVALUE()
-                        * i32::from(if is_valid(tt_value) {
-                            tt_value > alpha
-                        } else {
-                            params::RED_TTPV_TTMISS_REBATE() != 0
-                        })
+                        * i32::from(is_valid(tt_value) && tt_value > alpha)
                     + i32::from(tt_data.depth >= depth)
                         * (params::RED_TTPV_TTDEPTH_BASE()
                             + params::RED_TTPV_TTDEPTH_CUT() * i32::from(cut_node));
             }
             r += params::RED_FLAT();
-            // Checking-move reduction rebate — ARCHON experiment, SF has no
-            // such term. DEFAULT 0 ⇒ bit-identical; only a tune build moves it.
-            // UNVALIDATED: the mechanism originally claimed for it was refuted
-            // (see the doc comment on params::RED_GIVES_CHECK).
-            r -= params::RED_GIVES_CHECK() * i32::from(gives_check);
             r -= params::RED_MOVECOUNT() * move_count;
             // Correction slackening (design/10 §3.7, Wave-F item 21): an
             // uncertain eval (large |correction_value|) reduces a touch LESS.
             r -= correction_value.abs() / params::RED_CORR_DIV();
             if cut_node {
                 r += params::RED_CUTNODE()
-                    + params::RED_CUTNODE_NO_TTMOVE() * i32::from(tt_data.mv == Move::NULL);
+                    + params::RED_CUTNODE_NO_TTMOVE() * i32::from(pruning_tt_move(4) == Move::NULL);
             }
             // tt_capture surcharge (design/10 §3.7): a capturing ttMove
             // means the position is tactical — quiet siblings are searched
@@ -4123,7 +3985,17 @@ impl Worker {
                 self.stack[cur].reduction = new_depth - d;
                 #[cfg(feature = "search-control")]
                 let trace_nodes_before_scout = self.nodes;
+                // Study 70: the scout/re-search split is the price of putting
+                // a good move late, so both halves are node-accounted.
+                #[cfg(feature = "census70")]
+                let c70_scout_before = self.nodes;
+                #[cfg(feature = "census70")]
+                let mut c70_research_nodes = 0u64;
+                #[cfg(feature = "census70")]
+                let mut c70_researched = false;
                 value = -self.search::<NonPv>(tt, stop, -(alpha + 1), -alpha, d, true, ply + 1);
+                #[cfg(feature = "census70")]
+                let c70_scout_nodes = self.nodes - c70_scout_before;
                 #[cfg(feature = "search-control")]
                 {
                     trace_scout_depth = d;
@@ -4151,6 +4023,8 @@ impl Worker {
                     if new_depth > d {
                         #[cfg(feature = "search-control")]
                         let trace_nodes_before_research = self.nodes;
+                        #[cfg(feature = "census70")]
+                        let c70_re_before = self.nodes;
                         value = -self.search::<NonPv>(
                             tt,
                             stop,
@@ -4160,6 +4034,11 @@ impl Worker {
                             !cut_node,
                             ply + 1,
                         );
+                        #[cfg(feature = "census70")]
+                        {
+                            c70_researched = true;
+                            c70_research_nodes = self.nodes - c70_re_before;
+                        }
                         #[cfg(feature = "search-control")]
                         {
                             trace_lmr_research = true;
@@ -4178,13 +4057,21 @@ impl Worker {
                         params::LMR_CONTHIST_BONUS(),
                     );
                 }
+                #[cfg(feature = "census70")]
+                crate::census70::lmr(
+                    c70_kind,
+                    move_count,
+                    c70_researched,
+                    c70_scout_nodes,
+                    c70_research_nodes,
+                );
             } else if !NT::PV || move_count > 1 {
                 // Non-LMR zero-window path (§3.8): depth 1, or a NonPV node's
                 // first move (where `(-(alpha+1), -alpha)` IS the node's own
                 // zero-width window). A node with no TT move reduces a little
                 // more, and a very high nominal `r` still docks 1–2 plies even
                 // without LMR proper.
-                if tt_data.mv == Move::NULL {
+                if pruning_tt_move(8) == Move::NULL {
                     r += params::RED_FULLDEPTH_NO_TTMOVE();
                 }
                 let d = new_depth
@@ -4195,8 +4082,15 @@ impl Worker {
                             r > params::RED_FULLDEPTH_DOCK2()
                                 && new_depth > params::LMR_DOCK2_MIN_DEPTH(),
                         );
+                #[cfg(feature = "census70")]
+                let c70_zw_before = self.nodes;
                 value =
                     -self.search::<NonPv>(tt, stop, -(alpha + 1), -alpha, d, !cut_node, ply + 1);
+                #[cfg(feature = "census70")]
+                crate::census70::ZW_NODES[c70_kind].fetch_add(
+                    self.nodes - c70_zw_before,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
             }
 
             // ttMove min-depth clamp (design/10 §3.8, Wave-D item 15): a
@@ -4219,7 +4113,14 @@ impl Worker {
             if NT::PV && (move_count == 1 || value > alpha) {
                 #[cfg(feature = "search-control")]
                 let trace_nodes_before_pv = self.nodes;
+                #[cfg(feature = "census70")]
+                let c70_pv_before = self.nodes;
                 value = -self.search::<Pv>(tt, stop, -beta, -alpha, new_depth, false, ply + 1);
+                #[cfg(feature = "census70")]
+                crate::census70::PVRE_NODES[c70_kind].fetch_add(
+                    self.nodes - c70_pv_before,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
                 #[cfg(feature = "search-control")]
                 {
                     trace_pv_research = true;
@@ -4362,12 +4263,22 @@ impl Worker {
                     && (self.nodes & params::DITHER_NODE_MASK()) == 0
                     && !is_win(value.abs() + 1),
             );
+            if inc != 0 {
+                self.stats.gate(Gate::Dither);
+            }
 
             // Step 13 — best/alpha/beta updates (dither-biased compares).
             if value + inc > best_value {
                 best_value = value;
+                if fl_mode != 0 {
+                    fl_move = m;
+                }
                 if value + inc > alpha {
                     best_move = m;
+                    #[cfg(feature = "census70")]
+                    {
+                        c70_best_idx = move_count;
+                    }
                     if NT::PV {
                         // §3.3 freshness: the equal-value dither can
                         // promote a move whose LAST child call was a
@@ -4385,15 +4296,19 @@ impl Worker {
                     }
                     if value >= beta {
                         self.stats.fail_high(move_count);
-                        // Perf study 34: the ordering-quality instrument — the
-                        // index of the move that actually caused the cutoff.
-                        #[cfg(feature = "census34")]
-                        {
-                            use crate::census34 as cx;
-                            cx::bump(&cx::FH_NODES, 1);
-                            cx::bump(&cx::FH_MOVES, move_count as u64);
-                            cx::hist(&cx::HIST_FH, move_count as usize);
-                        }
+                        // Perf study 70: the same event, split by node kind,
+                        // remaining depth, and the picker stage that emitted
+                        // the cutting move.
+                        #[cfg(feature = "census70")]
+                        crate::census70::cutoff(
+                            c70_kind,
+                            depth,
+                            move_count,
+                            mp.stage_id(),
+                            c70_had_tt,
+                            c70_caps_before,
+                            if is_capture { 0 } else { c70_quiet_rank },
+                        );
                         // A cutoff by a heavily-extended move is weaker evidence
                         // of a fail-high-prone child, so it does not bump the
                         // count (design/10 §3.9, Wave-D item 15).
@@ -4455,12 +4370,9 @@ impl Worker {
                 / (depth + params::FH_SOFTEN_BETA_W());
         }
 
-        // Perf study 34: the move loop exits either by the fail-high `break`
-        // (counted at the cutoff site) or by exhausting the picker; the two
-        // together are the denominator of the ordering-quality rate.
-        #[cfg(feature = "census34")]
+        #[cfg(feature = "census70")]
         if best_value < beta {
-            crate::census34::bump(&crate::census34::NOFH_NODES, 1);
+            crate::census70::allnode(c70_kind, depth, move_count, c70_best_idx, c70_had_tt);
         }
 
         // Step 14 — node result: ply-relative mate/stalemate terminals
@@ -4519,6 +4431,7 @@ impl Worker {
         // `move_count != 0` here is implied — this is the fail-low case.
         else if let Some(sq) = prev_sq {
             if !prior_capture {
+                self.stats.gate(Gate::FlQuiet);
                 let bonus_scale = (params::FL_SCALE_BASE()
                     - self.stack[cur - 1].stat_score / params::FL_STATSCORE_DIV()
                     + (params::FL_DEPTH_MULT() * depth).min(params::FL_DEPTH_CAP())
@@ -4558,6 +4471,7 @@ impl Worker {
                     }
                 }
             } else if let Some(moved) = self.board.piece_on(sq) {
+                self.stats.gate(Gate::FlCapture);
                 // The victim slot mirrors the in-search capture convention:
                 // en passant uses NO_VICTIM (None), every other capture its
                 // captured piece type.
@@ -4603,13 +4517,22 @@ impl Worker {
                 // slack; this makes the ceiling explicit rather than incidental.
                 (depth + params::TT_NO_MOVES_DEPTH_BONUS()).min(MAX_PLY as Depth - 1)
             };
+            // Perf study 71: on a fail low `best_move` is NULL and the move
+            // that actually scored highest is thrown away. Store it. The
+            // BOUND is untouched — this is an ordering hint attached to an
+            // UPPER entry, not a claim that the move is good.
+            let store_move = if best_move != Move::NULL {
+                best_move
+            } else {
+                fl_move
+            };
             probe.writer.write(
                 key,
                 value_to_tt(best_value, ply as i32),
                 self.stack[cur].tt_pv,
                 bound,
                 store_depth,
-                best_move,
+                store_move,
                 raw_eval,
                 generation,
             );
@@ -4631,6 +4554,7 @@ impl Worker {
                 depth,
             )
         {
+            self.stats.gate(Gate::CorrUpd);
             self.histories
                 .update_correction_history(&self.board, &self.stack[..], cur, bonus);
         }
@@ -4925,27 +4849,17 @@ impl Worker {
         debug_assert!(NT::PV || alpha == beta - 1, "NonPV requires a zero window");
         debug_assert!(-VALUE_INFINITE <= alpha && alpha < beta && beta <= VALUE_INFINITE);
 
-        // Upcoming repetition (SF search.cpp:1605-1611, toggled by QS_UPREP):
-        // SF runs the same alpha-raise that opens search() as the FIRST
-        // statement of qsearch too; ours historically covered only the entry
-        // node above the dive, so recursive qsearch nodes below the horizon
-        // forfeited the cutoff. Same `rule50 >= 3` short-circuit as the
-        // search() copy (a cycle needs at least 3 reversible plies).
-        if params::QS_UPREP() != 0
-            && alpha < VALUE_DRAW
-            && self.board.rule50_count() >= 3
-            && self.board.upcoming_repetition(ply as i32)
-        {
-            alpha = value_draw_contempt(self.nodes, ply);
-            if alpha >= beta {
-                return alpha;
-            }
-        }
+        // Deliberate SF divergence: SF re-runs the upcoming-repetition
+        // alpha-raise as the FIRST statement of qsearch too (search.cpp:
+        // 1605-1611); running it here was measured WORSE (+0.47/+0.20/+0.23 cp
+        // by tier at +0.6% nodes — the old QS_UPREP toggle, deleted
+        // 2026-08-01). The entry node above the dive still runs it in search().
 
         // Step 2 — init.
         let cur = ss(ply);
         let in_check = !self.board.checkers().is_empty();
         self.stack[cur].in_check = in_check;
+        self.stats.gate(Gate::QsEntry);
         if NT::PV {
             self.pv_table[ply].clear();
             self.sel_depth = self.sel_depth.max(ply as i32 + 1);
@@ -5011,6 +4925,7 @@ impl Worker {
         {
             #[cfg(feature = "foldcount")]
             crate::eval::nnue::foldcount::note_search(crate::eval::nnue::foldcount::Sc::QsTtCut);
+            self.stats.gate(Gate::QsTtcut);
             return tt_value;
         }
 
@@ -5135,9 +5050,11 @@ impl Worker {
                 // non-decisive stand-pat cutoff partway back toward beta.
                 // Decisive scores are never blended (§8.11).
                 if !is_decisive(best_value) {
-                    best_value = (params::QS_STANDPAT_BEST_W() * best_value
+                    // One degree of freedom (D50 blend fold): the best-value
+                    // weight is the beta weight's complement to 1024.
+                    best_value = ((1024 - params::QS_STANDPAT_BETA_W()) * best_value
                         + params::QS_STANDPAT_BETA_W() * beta)
-                        / params::QS_STANDPAT_DEN();
+                        / 1024;
                 }
                 // A stand-pat fail high on a TT miss caches the raw eval
                 // as a Bound::Lower eval-only entry (§3.11).
@@ -5159,6 +5076,7 @@ impl Worker {
                         crate::eval::nnue::foldcount::Sc::QsFreshStandPat,
                     );
                 }
+                self.stats.gate(Gate::QsStandpat);
                 return best_value;
             }
             alpha = alpha.max(best_value);
@@ -5200,7 +5118,45 @@ impl Worker {
         let prev_sq = (prev_move != Move::NULL).then(|| prev_move.to());
 
         qtrace(ply, alpha, beta, best_value, Move::NULL, "LOOP_ENTERED");
+        #[cfg(feature = "census70")]
+        let c70_kind = if in_check {
+            crate::census70::KIND_QS_CHK
+        } else {
+            crate::census70::KIND_QS
+        };
+        #[cfg(feature = "census70")]
+        let c70_had_tt = matches!(mp.stage_id(), 7 | 13);
+        #[cfg(feature = "census70")]
+        crate::census70::node_entry(
+            c70_kind,
+            0,
+            c70_had_tt,
+            {
+                if !tt_hit {
+                    crate::census70::WHY_MISS
+                } else if tt_data.mv == Move::NULL {
+                    crate::census70::WHY_MOVELESS
+                } else {
+                    crate::census70::WHY_UNUSABLE
+                }
+            },
+            tt_data.depth,
+        );
+        #[cfg(feature = "census70")]
+        let mut c70_best_idx = 0i32;
+
         let mut best_move = Move::NULL;
+        // Perf study 71's quiescence twin (see `search`). 54.6 % of the
+        // moveless entries a qsearch node reads were written by a qsearch
+        // fail low.
+        #[cfg(not(feature = "arm70"))]
+        let qfl_mode = params::TT_FAILLOW_MOVE();
+        #[cfg(feature = "arm70")]
+        let qfl_mode = match crate::arm70::arm().qfl_move {
+            -1 => params::TT_FAILLOW_MOVE(),
+            v => v,
+        };
+        let mut fl_move = Move::NULL;
         let mut move_count = 0;
         while let Some(m) = mp.next_move(&self.board, &self.histories) {
             if !self.board.legal(m) {
@@ -5227,6 +5183,7 @@ impl Worker {
                     // all (§3.8 step 7).
                     if move_count > params::QS_LATE_MOVE_LIMIT() {
                         qtrace(ply, alpha, beta, best_value, m, "prune:latemove");
+                        self.stats.gate(Gate::QsLatemove);
                         continue;
                     }
 
@@ -5235,31 +5192,23 @@ impl Worker {
                     // move's optimistic value still raises best_value
                     // (D11 SEE-scale piece values; empty destination —
                     // en passant — counts 0, SF parity).
-                    // Class 4: `piece_type.value()` is MATERIAL, `futility_base`
-                    // is EVAL, and the two frames differ by a different factor
-                    // here than in Stockfish. Identity at 1024.
                     let futility_value = futility_base
-                        + params::scale_1024(
-                            self.board
-                                .piece_on(m.to())
-                                .map_or(0, |victim| victim.piece_type.value()),
-                            params::QS_PIECE_MULT(),
-                        );
+                        + self
+                            .board
+                            .piece_on(m.to())
+                            .map_or(0, |victim| victim.piece_type.value());
                     if futility_value <= alpha {
                         qtrace(ply, alpha, beta, best_value, m, "prune:futility");
                         best_value = best_value.max(futility_value);
+                        self.stats.gate(Gate::QsFut);
                         continue;
                     }
 
                     // SEE vs the window: the exchange cannot recover the
                     // gap between futility_base and alpha.
-                    // Class 4, as at the ProbCut filter: an eval-frame gap
-                    // used as a material threshold. Identity at 1024.
-                    if !self.board.see_ge(
-                        m,
-                        params::scale_1024(alpha - futility_base, params::SEE_THRESH_MULT()),
-                    ) {
+                    if !self.board.see_ge(m, alpha - futility_base) {
                         best_value = best_value.max(alpha.min(futility_base));
+                        self.stats.gate(Gate::QsSeeWindow);
                         continue;
                     }
                 }
@@ -5274,6 +5223,7 @@ impl Worker {
                 // The hard SEE floor for everything left (§3.8 step 7).
                 if !self.board.see_ge(m, params::QS_SEE_FLOOR()) {
                     qtrace(ply, alpha, beta, best_value, m, "prune:seefloor");
+                    self.stats.gate(Gate::QsSeeFloor);
                     continue;
                 }
             }
@@ -5293,17 +5243,38 @@ impl Worker {
             // Step 9 — updates.
             if value > best_value {
                 best_value = value;
+                if qfl_mode != 0 {
+                    fl_move = m;
+                }
                 if value > alpha {
                     best_move = m;
+                    #[cfg(feature = "census70")]
+                    {
+                        c70_best_idx = move_count;
+                    }
                     if NT::PV {
                         update_pv(&mut self.pv_table[..], ply, m);
                     }
                     if value >= beta {
+                        #[cfg(feature = "census70")]
+                        crate::census70::cutoff(
+                            c70_kind,
+                            0,
+                            move_count,
+                            mp.stage_id(),
+                            c70_had_tt,
+                            0,
+                            0,
+                        );
                         break; // fail high
                     }
                     alpha = value;
                 }
             }
+        }
+        #[cfg(feature = "census70")]
+        if best_value < beta {
+            crate::census70::allnode(c70_kind, 0, move_count, c70_best_idx, c70_had_tt);
         }
 
         // Step 10 — mate and the narrow stalemate test. Every evasion was
@@ -5330,6 +5301,7 @@ impl Worker {
                     .captured_piece()
                     .is_some_and(|victim| victim.piece_type != PieceType::Pawn)
             {
+                self.stats.gate(Gate::QsStaleScan);
                 let mut legal = MoveList::new();
                 generate_legal(&self.board, &mut legal);
                 if legal.is_empty() {
@@ -5343,14 +5315,20 @@ impl Worker {
         // damping; the blended value is what gets stored below). Decisive
         // scores are never blended (§8.11).
         if !is_decisive(best_value) && best_value > beta {
-            best_value = (params::QS_FAILHIGH_BEST_W() * best_value
+            // One degree of freedom (D50 blend fold), as at the stand-pat site.
+            best_value = ((1024 - params::QS_FAILHIGH_BETA_W()) * best_value
                 + params::QS_FAILHIGH_BETA_W() * beta)
-                / params::QS_FAILHIGH_DEN();
+                / 1024;
         }
 
         // Step 12 — TT store at DEPTH_QS: LOWER on a fail high, else
         // UPPER — NEVER Exact in qsearch — value through `value_to_tt`,
         // the RAW eval, and the probed PV flag only.
+        let store_move = if best_move != Move::NULL {
+            best_move
+        } else {
+            fl_move
+        };
         probe.writer.write(
             key,
             value_to_tt(best_value, ply as i32),
@@ -5361,7 +5339,7 @@ impl Worker {
                 Bound::Upper
             },
             DEPTH_QS,
-            best_move,
+            store_move,
             raw_eval,
             generation,
         );
@@ -5730,22 +5708,11 @@ impl Worker {
 
         let mut total_time =
             self.tm.optimum() as f64 * falling_eval * reduction * instability * effort;
-        // Head-free decisiveness scale (searchopt 2026-07-28). Unlike the two
-        // factors below it needs no net head, so it is NOT `sota`-gated and is
-        // live on every build. Exactly 1.0 at the default `TM_SCORE_C = 0`, so
-        // `total_time` is bit-identical and the four-factor golden tests hold.
-        total_time *= score_tm_factor(best_value, params::TM_SCORE_C(), params::TM_SCORE_KNEE());
-        // EXP-UNC-1 consumer 2: position-condition the time budget by the root
-        // value uncertainty. unc_tm_factor is exactly 1.0 when disabled or before
-        // a root σ̂ exists, so total_time is unchanged and the four-factor golden
-        // tests hold; it only bites with a variance net + a nonzero coeff.
-        #[cfg(feature = "sota")]
-        {
-            total_time *= unc_tm_factor(self.root_sigma, self.sigma_bar, self.unc_tm_c2);
-            // Multi-head WDL consumer: bank clock on roots the WDL head calls
-            // decided. Exactly 1.0 when disabled / headless — golden tests hold.
-            total_time *= wdl_tm_factor(self.root_wdl_d, self.wdl_tm_c3);
-        }
+        // The soft-stop factor product is multiplicative, so a future
+        // head-driven TM factor (σ̂ / WDL / score-contestedness) is a one-line
+        // re-insertion here. The speculative versions were deleted 2026-08-01
+        // (simplification tier 0, items 0.7/0.8): all were measurably inert on
+        // a headless net, and TM back-loading was refuted at real TC.
         if self.root_moves.len() == 1 {
             total_time = total_time.min(params::ONE_REPLY_TOTAL_TIME_CAP());
         }

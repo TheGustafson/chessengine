@@ -338,7 +338,7 @@ impl EvalContext {
     /// Classic v1 accumulator pair for a frozen policy head. `None` when the
     /// active evaluator is PSQT or D40 rather than the bit-identical CENN-v1
     /// sister expected by this experiment.
-    #[cfg(any(feature = "policy", feature = "search-control"))]
+    #[cfg(feature = "search-control")]
     pub fn classic_policy_accumulators(
         &mut self,
         board: &Board,
