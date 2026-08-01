@@ -15509,3 +15509,49 @@ as the stale handoff copy earlier tonight, and the same shape as the
 `tools/nnue/train.py` path error: **a missing file in one worktree is not
 evidence the file is missing.** Check `git log --all --diff-filter=D` and the
 other checkout before believing a deletion.
+
+---
+
+## 2026-08-01 07:02 — the wall-clock panel is VOID, by its own guards. Not quoted.
+
+**D49:** sb1491, heldout ema **0.010436** — another run low.
+
+**`wc69` result, and why it does NOT go in the ledger:**
+
+```
+NULL (byte-identical): median  -1.014%  sd 11.913  sign 26/40 neg  p=0.0807
+ARM                  : median -13.120%  sd 11.395  sign 39/40 neg  p=0.0000
+LICENSED (pre-registered median-only)
+  wall-clock : -13.120%   speed 1.1510x   DERIVED Elo +24.35
+```
+
+**The panel voided itself TWICE:**
+```
+*** REGIME SHIFT mid-run: load arrived or left. Treat this panel as VOID. ***
+*** NOT QUIET: exceeds 15%. VOID and re-run on an idle box, not salvaged. ***
+```
+Box CPU busy 30.7 % -> 42.4 % during the run; base-binary drift -6.06 % between
+halves.
+
+**Three independent reasons to discard it, not one:**
+1. **The instrument disowned it.** Those guards exist because a loaded-box panel
+   cannot be salvaged; honouring them only when the number is unwelcome would
+   make them decoration.
+2. **The magnitude is not believable on mechanism.** The two landed wins are
+   **−0.559 % instructions** and **−2.33 % of SEARCH time**. −13.12 % wall-clock
+   from deleting a `to_string` and eleven counters is not a causal story — and
+   [[null-first-games-arbitrate]] rule 6 says a beautiful number is the warning,
+   not the reward.
+3. **Per-round variance is enormous**: null sd 11.9 %, arm sd 11.4 %. The
+   median-only licence was designed for a QUIET box; it is not a load-immunity
+   claim.
+
+**So tonight's two landed speed wins remain UNMEASURED in wall-clock.** That is
+the honest state. The box has carried a GPU trainer, a continuous 1500-game
+matcher and a study agent all night, and it will until D49 finishes (~8.5 h).
+**This measurement is BLOCKED on an idle box, and the right move is to wait
+rather than publish a number my own tool refused to stand behind.**
+
+Note the shape: this is the FOURTH fast instrument tonight to point somewhere
+games or mechanism would not follow — after `Bench:` −17.2 %, bench-nps +5.6 %,
+and the contaminated depth regex. The difference is that this one caught itself.
