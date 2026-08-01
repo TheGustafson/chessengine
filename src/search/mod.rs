@@ -2422,6 +2422,19 @@ impl Worker {
             }
         }
 
+        // Perf study 64 — the search-side work census (instrument only).
+        #[cfg(feature = "foldcount")]
+        {
+            use crate::eval::nnue::foldcount::{Sc, note_search};
+            note_search(Sc::MainNodes);
+            if in_check {
+                note_search(Sc::MainInCheck);
+            }
+            if self.stack[cur].excluded_move != Move::NULL {
+                note_search(Sc::MainExcluded);
+            }
+        }
+
         // Step 5 — TT probe (doc 08 §3.5 API). The single read-side
         // conversion boundary: a hit's value goes through `value_from_tt`
         // (§3.12) — with the 50-move downgrade — before any use; a
@@ -2455,6 +2468,9 @@ impl Worker {
         // skipped: the node borrows the grandparent's eval and jumps
         // straight to the move loop — no pruning happens in check.
         let raw_eval;
+        // Perf study 64 census: did THIS node pay for a real forward pass?
+        #[cfg(feature = "foldcount")]
+        let mut fresh_eval = false;
         // EXP-UNC-1: this node's value uncertainty σ̂ (0.0 = none this node);
         // set on a fresh sota eval, read at the RFP margin below.
         #[cfg(feature = "sota")]
@@ -2485,7 +2501,18 @@ impl Worker {
                 // eval field (D33 review round 1, personas A + C).
                 raw_eval = VALUE_NONE;
             } else {
-                raw_eval = if tt_hit && is_valid(tt_data.eval) {
+                let tt_served = tt_hit && is_valid(tt_data.eval);
+                #[cfg(feature = "foldcount")]
+                crate::eval::nnue::foldcount::note_search(if tt_served {
+                    crate::eval::nnue::foldcount::Sc::MainEvalTtServed
+                } else {
+                    crate::eval::nnue::foldcount::Sc::MainEvalFresh
+                });
+                #[cfg(feature = "foldcount")]
+                {
+                    fresh_eval = !tt_served;
+                }
+                raw_eval = if tt_served {
                     tt_data.eval
                 } else {
                     evaluate(
@@ -2700,10 +2727,26 @@ impl Worker {
                         self.board.unmake_move(m);
                         if !is_valid(child_value) || (tt_value >= beta) == (-child_value >= beta) {
                             self.st_ttcut += 1;
+                            #[cfg(feature = "foldcount")]
+                            {
+                                use crate::eval::nnue::foldcount::{Sc, note_search};
+                                note_search(Sc::MainTtCut);
+                                if fresh_eval {
+                                    note_search(Sc::MainFreshThenTtCut);
+                                }
+                            }
                             return tt_value;
                         }
                     } else {
                         self.st_ttcut += 1;
+                        #[cfg(feature = "foldcount")]
+                        {
+                            use crate::eval::nnue::foldcount::{Sc, note_search};
+                            note_search(Sc::MainTtCut);
+                            if fresh_eval {
+                                note_search(Sc::MainFreshThenTtCut);
+                            }
+                        }
                         return tt_value;
                     }
                 }
@@ -2802,6 +2845,12 @@ impl Worker {
                         // Widen where our eval has historically been wrong.
                         - correction_value.abs() / params::RAZOR_CORR_DIV()
             {
+                #[cfg(feature = "foldcount")]
+                if fresh_eval {
+                    crate::eval::nnue::foldcount::note_search(
+                        crate::eval::nnue::foldcount::Sc::MainFreshRazor,
+                    );
+                }
                 return self.qsearch::<NonPv>(tt, stop, alpha, beta, ply);
             }
 
@@ -2895,6 +2944,12 @@ impl Worker {
                         (self.board.all_threats() & self.board.occupancy(us)).is_empty()
                     });
                 if prune {
+                    #[cfg(feature = "foldcount")]
+                    if fresh_eval {
+                        crate::eval::nnue::foldcount::note_search(
+                            crate::eval::nnue::foldcount::Sc::MainFreshRfp,
+                        );
+                    }
                     return (params::RFP_RET_BETA_W() * beta + params::RFP_RET_EVAL_W() * eval)
                         / params::RFP_RET_DEN();
                 }
@@ -3169,6 +3224,12 @@ impl Worker {
         };
         #[cfg(not(feature = "sota"))]
         let picker_tt_move = tt_data.mv;
+        #[cfg(feature = "foldcount")]
+        if fresh_eval {
+            crate::eval::nnue::foldcount::note_search(
+                crate::eval::nnue::foldcount::Sc::MainFreshMoveLoop,
+            );
+        }
         let mut mp = MovePicker::new(&self.board, picker_tt_move, depth, ply, cont_hist);
         // P-ORD: attach the trained head's quiet-move prior. The activation is
         // copied NOW — the Zobrist-stamped stash dies at the first child eval,
@@ -4667,6 +4728,16 @@ impl Worker {
             };
         }
 
+        // Perf study 64 — the search-side work census (instrument only).
+        #[cfg(feature = "foldcount")]
+        {
+            use crate::eval::nnue::foldcount::{Sc, note_search};
+            note_search(Sc::QsNodes);
+            if in_check {
+                note_search(Sc::QsInCheck);
+            }
+        }
+
         // Step 4 — TT probe: everything probes and stores at DEPTH_QS.
         // Same read-side conversion boundary as the main search (§3.12).
         let key = self.board.key();
@@ -4696,6 +4767,8 @@ impl Worker {
                 tt_data.bound.includes_upper()
             })
         {
+            #[cfg(feature = "foldcount")]
+            crate::eval::nnue::foldcount::note_search(crate::eval::nnue::foldcount::Sc::QsTtCut);
             return tt_value;
         }
 
@@ -4709,8 +4782,21 @@ impl Worker {
         let mut best_value = -VALUE_INFINITE;
         let mut futility_base = -VALUE_INFINITE;
         let mut raw_eval = VALUE_NONE;
+        #[cfg(feature = "foldcount")]
+        let mut fresh_eval = false;
         if !in_check {
-            raw_eval = if tt_hit && is_valid(tt_data.eval) {
+            let tt_served = tt_hit && is_valid(tt_data.eval);
+            #[cfg(feature = "foldcount")]
+            crate::eval::nnue::foldcount::note_search(if tt_served {
+                crate::eval::nnue::foldcount::Sc::QsEvalTtServed
+            } else {
+                crate::eval::nnue::foldcount::Sc::QsEvalFresh
+            });
+            #[cfg(feature = "foldcount")]
+            {
+                fresh_eval = !tt_served;
+            }
+            raw_eval = if tt_served {
                 tt_data.eval
             } else {
                 evaluate(
@@ -4769,6 +4855,12 @@ impl Worker {
                         generation,
                     );
                 }
+                #[cfg(feature = "foldcount")]
+                if fresh_eval {
+                    crate::eval::nnue::foldcount::note_search(
+                        crate::eval::nnue::foldcount::Sc::QsFreshStandPat,
+                    );
+                }
                 return best_value;
             }
             alpha = alpha.max(best_value);
@@ -4795,6 +4887,12 @@ impl Worker {
             self.stack[cur - 5].cont_hist,
             self.stack[cur - 6].cont_hist,
         ];
+        #[cfg(feature = "foldcount")]
+        if fresh_eval {
+            crate::eval::nnue::foldcount::note_search(
+                crate::eval::nnue::foldcount::Sc::QsFreshMoveLoop,
+            );
+        }
         let mut mp = MovePicker::new(&self.board, tt_data.mv, DEPTH_QS, ply, cont_hist);
 
         // The previous move's destination (§3.8 step 6): recaptures on
