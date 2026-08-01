@@ -18192,3 +18192,36 @@ banner, GPU 7680 MiB. Loss = 1 superbatch.
 Like-for-like reference: PLAIN D49 at the same 756 scale measured
 **-1.39 +/- 10.43** vs canonical, so any margin above that is what the teacher
 bought against the net we would actually replace.
+
+## 2026-08-01 18:00 tick — ★★ DISTILLED sb1648 BEATS CANONICAL D48X: +30.42 +/- 11.02, LOS 100.00 %
+
+```
+Elo: +30.42 +/- 11.02   nElo: +48.79 +/- 17.58   LOS 100.00 %   1500 games @25k
+W517 L386 D597 (54.37 %)   Ptnml [21,129,342,214,44]   PairsRatio 1.72
+```
+
+**Like-for-like reference: PLAIN D49 at the SAME 756 pack scale was
+`-1.39 +/- 10.43` vs canonical.** So 18 superbatches of 60/40 SF-teacher blend
+moved us **-1.39 -> +30.42, a swing of ~+32 Elo.**
+
+**The promotion gate is now SATISFIED at sb1648** — 1500 games, above the
+383/sqrt(n) bar, LOS 100 %. The owner's plan (finish -> promote) is on track with
+482 sb still to run; this is the trajectory read, not the endpoint.
+
+**THE ANTI-CORRELATION IS NOW OVERWHELMING.** Label-heldout keeps climbing —
+sb1650 `0.010643`, the highest yet, EMA monotone 473 -> 549 — while the net gains
+**+30 Elo on canonical** and **+17 on its own warm point**. Two independent
+matches, 3,000 games total, both in the same direction as the loss deteriorates.
+**Moving AWAY from our labels is worth tens of Elo.** [[loss-is-not-elo]] no longer
+needs the hedge "loss is a weak proxy" — here it has the WRONG SIGN.
+
+**Scoreboard against the ceiling:** SF's net in OUR search at equal nodes is
+**+90.7** ([[deficit-is-the-weights]]). Distillation has now converted **~32** of
+that against canonical, with no data work at all.
+
+**OOM #5 and #6 (17:19:32): `npm run build` AGAIN**, same global_oom signature,
+same victim ordering (npm adj 1000 dies first, trainer adj 200 dies second).
+Restart hit `CUDA_ERROR_OUT_OF_MEMORY` because the dead process still held
+7.6 GB of GPU; the launcher's 120 s retry cleared it. **Recovered to sb1651, no
+OOM since 17:20.** Recommended to the owner: run npm under
+`systemd-run --user --scope -p MemoryMax=2G -p MemorySwapMax=0` so it dies alone.
