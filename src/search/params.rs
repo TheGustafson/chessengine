@@ -179,6 +179,32 @@ crate::tunables! {
     /// term — SEE handles attacker risk at the good/bad split gate.
     pub CAPTURE_MVV_FACTOR: Value = 7;
 
+    /// Recapture discount in the QUIESCENCE/ProbCut capture score, in 16ths
+    /// of the attacker's value (perf study 70). When the destination square is
+    /// defended, subtract `QS_CAPTURE_DEFENDED_NUM * attacker_value / 16`, so
+    /// a defended capture is ordered by roughly `7·victim − 3.5·attacker`
+    /// instead of `7·victim`.
+    ///
+    /// It applies ONLY where `depth <= DEPTH_QS`, i.e. only to the pipelines
+    /// that have no good/bad SEE split to price attacker risk with — the main
+    /// pipeline's `see_ge(m, -score/GOOD_CAPTURE_SEE_DIVISOR)` already does
+    /// that job, and study 70 measured the same term there as inert
+    /// (first-move cutoff rate −0.01 pp against a ±0.15 pp null).
+    ///
+    /// **56, not 112 — and the difference is the study's own Goodhart
+    /// warning.** 112/16 = 7 is the *principled* value: it prices the full
+    /// recapture in the same frame as `CAPTURE_MVV_FACTOR`, and it maximises
+    /// the statistic this term was built to move (quiescence first-move cutoff
+    /// rate: +4.63 pp at 112 against +3.63 at 56, both against a ±0.22 pp
+    /// null). It also makes the search WORSE: paired over 1000 positions, 112
+    /// reads +1.19 % nodes and 493/507 better/worse, while 56 reads −0.50 %
+    /// and 519/481. A full-recapture discount pushes defended captures past
+    /// `QS_LATE_MOVE_LIMIT`, which skips every non-checking non-recapture
+    /// capture after the second — so the ones whose defender is pinned or
+    /// overloaded are never searched at all. Half a recapture keeps the
+    /// ordering signal and leaves them in the window.
+    pub QS_CAPTURE_DEFENDED_NUM: Value = 56;
+
     // --- Move ordering: good/bad capture split (design/09 §3.6 stage 3) ---
 
     /// Divisor of the score-dependent SEE gate `see_ge(m, -score / 18)` that

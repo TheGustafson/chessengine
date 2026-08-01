@@ -36,9 +36,7 @@ pub const KIND_NONPV_CHK: usize = 4;
 pub const KIND_QS: usize = 5;
 pub const KIND_QS_CHK: usize = 6;
 pub const KINDS: usize = 7;
-pub const KIND_NAMES: [&str; KINDS] = [
-    "ROOT", "PV", "PVCHK", "NONPV", "NONPVCHK", "QS", "QSCHK",
-];
+pub const KIND_NAMES: [&str; KINDS] = ["ROOT", "PV", "PVCHK", "NONPV", "NONPVCHK", "QS", "QSCHK"];
 
 /// Depth buckets: 0 = qsearch/`<= 0`, 1..=23 verbatim, 24 = "24 or deeper".
 pub const DEPTHS: usize = 25;
@@ -245,7 +243,9 @@ pub fn report(nodes: u64) {
                 .iter()
                 .enumerate()
                 .filter(|&(_, &c)| c != 0)
-                .map(|(i, &c)| format!("{}={c}({:.2}%)", SRC_NAMES[i], 100.0 * c as f64 / st as f64))
+                .map(|(i, &c)| {
+                    format!("{}={c}({:.2}%)", SRC_NAMES[i], 100.0 * c as f64 / st as f64)
+                })
                 .collect();
             eprintln!("C70 src kind={kname} {}", named.join(" "));
         }

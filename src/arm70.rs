@@ -71,9 +71,14 @@ pub struct Arm {
     /// (`all_threats`, already filled for every evaluated node) says whether a
     /// recapture is coming.
     pub def_cap: i32,
-    /// The same penalty applied ONLY in the qsearch/ProbCut pipelines
-    /// (`depth <= DEPTH_QS`), where the good/bad SEE split does not run.
-    pub def_cap_qs: i32,
+    /// **Override for the SHIPPED `QS_CAPTURE_DEFENDED_NUM`** (perf study 70's
+    /// landed quiescence recapture discount). `-1` keeps the shipped 56; `0`
+    /// turns it off, which is how the landed change is A/B'd against its own
+    /// predecessor inside one binary.
+    pub qs_def: i32,
+    /// Restore the pre-study evasion capture score: the raw victim value with
+    /// no capture history. The OFF switch for the other landed change.
+    pub evasion_mvv: bool,
     /// Give the tried-but-not-best CAPTURES a malus even when the best move
     /// was a QUIET, and the tried quiets a malus when the best was a capture.
     /// Shipped: each kind is only punished when the best move shares its kind,
@@ -98,7 +103,8 @@ pub const SHIPPED: Arm = Arm {
     best_bonus: 0,
     tt_bonus: -1,
     def_cap: 0,
-    def_cap_qs: 0,
+    qs_def: -1,
+    evasion_mvv: false,
     cross_malus: 0,
 };
 
@@ -127,7 +133,8 @@ fn parse(spec: &str) -> Arm {
             "ttbonus" => a.tt_bonus = n,
             "crossmalus" => a.cross_malus = n,
             "defcap" => a.def_cap = n,
-            "defcapqs" => a.def_cap_qs = n,
+            "qsdef" => a.qs_def = n,
+            "evmvv" => a.evasion_mvv = n != 0,
             other => panic!("arm70: unknown knob {other:?}"),
         }
     }

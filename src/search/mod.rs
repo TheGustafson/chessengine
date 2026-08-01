@@ -3903,8 +3903,7 @@ impl Worker {
                 {
                     use std::sync::atomic::Ordering::Relaxed;
                     crate::census70::SING_TRY.fetch_add(1, Relaxed);
-                    crate::census70::SING_NODES
-                        .fetch_add(self.nodes - c70_sing_before, Relaxed);
+                    crate::census70::SING_NODES.fetch_add(self.nodes - c70_sing_before, Relaxed);
                 }
                 self.stack[cur].excluded_move = Move::NULL;
 

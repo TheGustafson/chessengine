@@ -41,8 +41,9 @@ use crate::movegen::{generate_captures, generate_evasions, generate_quiets};
 use crate::moves::{MAX_MOVES, Move, MoveList};
 use crate::search::params::{
     CAPTURE_MVV_FACTOR, EVASION_CAPTURE_BONUS, GOOD_CAPTURE_SEE_DIVISOR, GOOD_QUIET_THRESHOLD,
-    QUIET_CHECK_BONUS, QUIET_CHECK_SEE_MARGIN, QUIET_LOW_PLY_WEIGHT, QUIET_MAIN_HISTORY_WEIGHT,
-    QUIET_OFFENSE_FACTOR, QUIET_PAWN_HISTORY_WEIGHT, QUIET_SORT_DEPTH_FACTOR, QUIET_THREAT_FACTOR,
+    QS_CAPTURE_DEFENDED_NUM, QUIET_CHECK_BONUS, QUIET_CHECK_SEE_MARGIN, QUIET_LOW_PLY_WEIGHT,
+    QUIET_MAIN_HISTORY_WEIGHT, QUIET_OFFENSE_FACTOR, QUIET_PAWN_HISTORY_WEIGHT,
+    QUIET_SORT_DEPTH_FACTOR, QUIET_THREAT_FACTOR,
 };
 use crate::types::{DEPTH_QS, Depth, PieceType, VALUE_ZERO, Value};
 
@@ -340,14 +341,12 @@ const NO_VICTIM: usize = 6;
 /// `see_ge` gate (doc 09 §3.6, step 7/8) accounts for attacker risk. En
 /// passant and quiet queen promotions have no piece on `to`, so they score a
 /// victim of 0 and use the [`NO_VICTIM`] slot.
-fn score_capture(board: &Board, hist: &Histories, m: Move) -> i32 {
-    score_capture_at(board, hist, m, 1)
-}
-
-/// `depth` only reaches the study-70 arm bench (qsearch/ProbCut are `<= 0`).
+/// `defended` is the recapture map: the squares on which a capture will be
+/// answered. It is [`Bitboard::EMPTY`] for the main pipeline (see
+/// [`recapture_map`]) so the term folds away to one `and`/`test`.
 #[cfg_attr(not(feature = "arm70"), allow(unused_variables))]
 #[inline]
-fn score_capture_at(board: &Board, hist: &Histories, m: Move, depth: Depth) -> i32 {
+fn score_capture(board: &Board, hist: &Histories, m: Move, defended: Bitboard) -> i32 {
     let pc = board
         .piece_on(m.from())
         .expect("a capture move starts on a piece of the side to move");
@@ -355,8 +354,25 @@ fn score_capture_at(board: &Board, hist: &Histories, m: Move, depth: Depth) -> i
     let victim_value = victim.map_or(0, |p| p.piece_type.value());
     let victim_slot = victim.map_or(NO_VICTIM, |p| p.piece_type as usize);
     let cap_hist = hist.capture[pc.index()][m.to().idx()][victim_slot].get();
+    // MVV plus capture history, minus the recapture the victim's defender is
+    // about to make (perf study 70, quiescence only — see `recapture_map`).
+    // Pure MVV cannot tell RxN-for-free from RxN-and-lose-the-rook, and the
+    // quiescence pipeline has no SEE gate to find out: it emits every capture
+    // in this order, and `QS_LATE_MOVE_LIMIT` then skips everything past the
+    // second non-checking, non-recapture one. Mis-order the list and the
+    // winning capture is never searched at all.
+    #[cfg(not(feature = "arm70"))]
+    let qs_def = QS_CAPTURE_DEFENDED_NUM();
+    #[cfg(feature = "arm70")]
+    let qs_def = match crate::arm70::arm().qs_def {
+        -1 => QS_CAPTURE_DEFENDED_NUM(),
+        v => v,
+    };
+    // `mut` only for the study-70 arm bench below; the shipped build never
+    // reassigns it.
     #[allow(unused_mut)]
-    let mut v = CAPTURE_MVV_FACTOR() * victim_value + cap_hist;
+    let mut v = CAPTURE_MVV_FACTOR() * victim_value + cap_hist
+        - qs_def * pc.piece_type.value() * i32::from(defended.contains(m.to())) / 16;
     #[cfg(feature = "arm70")]
     {
         let a = crate::arm70::arm();
@@ -365,15 +381,33 @@ fn score_capture_at(board: &Board, hist: &Histories, m: Move, depth: Depth) -> i
         if a.lva != 0 {
             v -= pc.piece_type.value() / a.lva;
         }
-        // Defended-destination penalty: MVV alone cannot tell RxN (free) from
-        // RxN (recaptured). `all_threats` is the enemy attack map, already
-        // filled and cached for the node by the eval.
-        let dc = a.def_cap + if depth <= 0 { a.def_cap_qs } else { 0 };
-        if dc != 0 && board.all_threats().contains(m.to()) {
-            v -= pc.piece_type.value() * dc / 16;
+        if a.def_cap != 0 && board.all_threats().contains(m.to()) {
+            v -= pc.piece_type.value() * a.def_cap / 16;
         }
     }
     v
+}
+
+/// The recapture map for a picker at `depth`: the enemy attack map in the
+/// quiescence/ProbCut pipelines, and EMPTY in the main one.
+///
+/// The main pipeline already prices attacker risk exactly, at the good/bad
+/// split's `see_ge(m, -score / GOOD_CAPTURE_SEE_DIVISOR)` gate; study 70
+/// measured this cheaper approximation as inert there (−0.01 pp of first-move
+/// cutoff rate against a ±0.15 pp null) and it is not paid for. Returning
+/// EMPTY rather than branching per move keeps the scoring loop straight-line:
+/// `Bitboard::contains` on EMPTY is one `and` and one `setcc`.
+///
+/// `Board::all_threats` is filled once per position and cached, and every node
+/// that reaches capture scoring has already been evaluated — which under
+/// `sota` has already filled it.
+#[inline]
+fn recapture_map(board: &Board, depth: Depth) -> Bitboard {
+    if depth <= DEPTH_QS {
+        board.all_threats()
+    } else {
+        Bitboard::EMPTY
+    }
 }
 
 /// The picker's explicit state machine (design/09 §3.5). Each pipeline is a
@@ -1028,8 +1062,9 @@ impl MovePicker {
         }
         #[cfg(feature = "policy")]
         let policy_weight = crate::policy::capture_weight();
+        let recapture = recapture_map(board, self.depth);
         for (i, &m) in list.iter().enumerate() {
-            let value = score_capture_at(board, hist, m, self.depth);
+            let value = score_capture(board, hist, m, recapture);
             // Borrow `policy_scores` INSIDE the loop, not before it: binding it
             // outside holds an immutable borrow of `*self` across the whole
             // body, which collides with the `set_slot` below. Scoped here, NLL
@@ -1488,26 +1523,43 @@ impl MovePicker {
         let main_plane = &hist.main[us as usize];
         let c1 = hist.cont_ref(self.cont_hist[0]);
 
+        // Deliberately NO recapture discount here, unlike the capture
+        // pipeline: measured, not assumed. Applying it to evasions cuts the
+        // in-check first-move cutoff gain this function's other change buys
+        // from +0.76 pp to +0.41 pp (perf study 70, ±0.11 pp null). The
+        // mechanism is that an evasion list is short and forced — "will I be
+        // recaptured" competes with "or I could just move the king", and the
+        // capture is often right anyway.
+        let recapture = Bitboard::EMPTY;
         for (i, &m) in list.iter().enumerate() {
             let value = if board.capture_stage(m) {
-                let victim_value = board.piece_on(m.to()).map_or(0, |p| p.piece_type.value());
-                #[cfg(feature = "arm70")]
-                if crate::arm70::arm().evasion_caphist {
-                    // Same capture score the main pipeline uses, lifted above
-                    // every quiet evasion: MVV *and* capture history.
-                    self.set_slot(
-                        i,
-                        ExtMove::new(m, score_capture(board, hist, m) + EVASION_CAPTURE_BONUS()),
-                    );
-                    continue;
+                // The SAME capture score the main pipeline uses — MVV *and*
+                // capture history — lifted above every quiet evasion by the
+                // bonus (perf study 70). This used to be the raw victim value
+                // alone, i.e. capture history was consulted for every capture
+                // in the engine EXCEPT the ones played while in check, which
+                // are 27% of all NonPV cutoffs. Measured: +0.76 pp of
+                // in-check first-move cutoff rate against a ±0.20 pp null.
+                //
+                // The bonus is 2^28 and the score is bounded by
+                // `7·2538 + CAPT_D` in magnitude, so no capture can ever fall
+                // below a quiet evasion.
+                {
+                    #[cfg(feature = "arm70")]
+                    if crate::arm70::arm().evasion_mvv {
+                        let victim = board.piece_on(m.to()).map_or(0, |p| p.piece_type.value());
+                        self.set_slot(i, ExtMove::new(m, victim + EVASION_CAPTURE_BONUS()));
+                        continue;
+                    }
+                    score_capture(board, hist, m, recapture) + EVASION_CAPTURE_BONUS()
                 }
-                victim_value + EVASION_CAPTURE_BONUS()
             } else {
                 let pc = board
                     .piece_on(m.from())
                     .expect("an evasion starts on a piece of the side to move");
                 #[allow(unused_mut)]
-                let mut v = main_plane[m.raw16() as usize].get() + c1[pc.index()][m.to().idx()].get();
+                let mut v =
+                    main_plane[m.raw16() as usize].get() + c1[pc.index()][m.to().idx()].get();
                 // Study 70: give quiet evasions the SAME history stack the
                 // main pipeline gives quiets (pawn history + the deeper
                 // continuation planes), instead of main + cont1 only.
@@ -2455,8 +2507,33 @@ mod tests {
         let exd5 = Move::normal(Square::E4, Square::D5);
         assert!(b.is_capture(exd5));
         let expect = CAPTURE_MVV_FACTOR() * PieceType::Knight.value() - 699;
-        assert_eq!(score_capture(&b, &Histories::new(), exd5), expect);
+        // Main pipeline: `recapture_map` is EMPTY, so the study-70 recapture
+        // discount cannot fire whatever the position looks like.
+        assert_eq!(
+            score_capture(&b, &Histories::new(), exd5, Bitboard::EMPTY),
+            expect
+        );
         assert_eq!(expect, 4768); // 7·781 − 699
+
+        // Quiescence: the same capture with d5 defended loses
+        // `QS_CAPTURE_DEFENDED_NUM/16` of the ATTACKER's value — the pawn's,
+        // not the knight's (perf study 70).
+        let defended = board("4k3/8/2b5/3n4/4P3/8/8/4K3 w - - 0 1");
+        assert!(
+            recapture_map(&defended, DEPTH_QS).contains(Square::D5),
+            "the bishop on c6 must defend d5 for the discount to arm"
+        );
+        assert_eq!(
+            score_capture(
+                &defended,
+                &Histories::new(),
+                exd5,
+                recapture_map(&defended, DEPTH_QS)
+            ),
+            expect - QS_CAPTURE_DEFENDED_NUM() * PieceType::Pawn.value() / 16,
+        );
+        // ... and the main pipeline's map is empty even in that position.
+        assert!(recapture_map(&defended, 1).is_empty());
     }
 
     #[test]

@@ -26,6 +26,10 @@ SETS = os.environ.get(
     "SETS", "tools/perf70/uho1000.fens:10,tools/nnue/calib/wl50.fens:13"
 ).split(",")
 NULLS = int(os.environ.get("NULLS", "4"))
+# The baseline arm. Defaults to the shipped configuration; set BASE to an
+# arm spec to compare a LANDED change against its own predecessor inside one
+# binary (e.g. BASE="qsdef=0,evmvv=1").
+BASE = os.environ.get("BASE", "")
 
 
 def main():
@@ -34,15 +38,15 @@ def main():
         fens, depth = spec.rsplit(":", 1)
         name = os.path.basename(fens).split(".")[0] + "@d" + depth
         print(f"\n=== {name}  ({BIN}) ===")
-        base = collect(BIN, depth, fens, NET, env={"ARCHON_A70": ""})
+        base = collect(BIN, depth, fens, NET, env={"ARCHON_A70": BASE})
         print(f"{'(baseline)':<30} n={len(base):<5} sum={sum(base)}")
         # The null panel FIRST, always: an inert +/-1 jitter can only re-break
         # exact ties, so whatever it moves is this instrument's chaos floor.
         for seed in range(1, NULLS + 1):
-            a = collect(BIN, depth, fens, NET, env={"ARCHON_A70": f"jitter=1,jseed={seed}"})
+            a = collect(BIN, depth, fens, NET, env={"ARCHON_A70": (f"{BASE},jitter=1,jseed={seed}" if BASE else f"jitter=1,jseed={seed}")})
             print(fmt(compare(base, a, f"NULL jitter=1 seed={seed}")))
         for arm in arms:
-            a = collect(BIN, depth, fens, NET, env={"ARCHON_A70": arm})
+            a = collect(BIN, depth, fens, NET, env={"ARCHON_A70": (f"{BASE},{arm}" if BASE and arm else (arm or BASE))})
             print(fmt(compare(base, a, arm)))
 
 

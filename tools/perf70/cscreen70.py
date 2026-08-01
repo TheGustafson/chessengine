@@ -30,6 +30,10 @@ NET = os.environ.get("NET", "engines/canonical/net.cenn")
 FENS = os.environ.get("FENS", "tools/perf70/uho1000.fens")
 DEPTH = os.environ.get("DEPTH", "10")
 NULLS = int(os.environ.get("NULLS", "4"))
+# The baseline arm. Defaults to the shipped configuration; set BASE to an
+# arm spec to compare a LANDED change against its own predecessor inside one
+# binary (e.g. BASE="qsdef=0,evmvv=1").
+BASE = os.environ.get("BASE", "")
 
 
 def run(spec):
@@ -81,13 +85,13 @@ def fmt(spec, r, b=None):
 
 
 def main():
-    base = run("")
+    base = run(BASE)
     print(f"# {FENS} @ d{DEPTH}   (first row absolute %, the rest deltas in pp)")
     print(fmt("(baseline)", base))
     for seed in range(1, NULLS + 1):
-        print(fmt(f"NULL jitter=1 seed={seed}", run(f"jitter=1,jseed={seed}"), base))
+        print(fmt(f"NULL jitter=1 seed={seed}", run(f"{BASE},jitter=1,jseed={seed}" if BASE else f"jitter=1,jseed={seed}"), base))
     for spec in sys.argv[1:]:
-        print(fmt(spec, run(spec), base))
+        print(fmt(spec, run(f"{BASE},{spec}" if BASE and spec else (spec or BASE)), base))
 
 
 if __name__ == "__main__":
