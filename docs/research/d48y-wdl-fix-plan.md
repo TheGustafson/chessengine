@@ -13487,3 +13487,38 @@ something to start unilaterally mid-D49.
 
 **D49:** sb1258, heldout ema **0.010492**, four services active, 143 GB disk.
 **Study 64** working on traffic-reduction.
+
+## Tick — 2026-08-01 00:2x, auto-match armed on the next export (owner request)
+
+**"Next model export run a short equal nodes match vs canonical."**
+
+Armed `xmatch`, a one-shot watcher that polls for the next `*-ema-raw.bin` newer
+than the current sb1260, then packs and screens it automatically. Training is at
+**sb1262**, so it fires at **sb1270**, ~17 min out.
+
+What it does on trigger, all logged into `cyc.log` so the result is in the run's
+own record rather than only in a scratch file:
+
+1. requant the EMA checkpoint (`--scale 256`) and pack at **network_scale 756** —
+   D49's own measured optimum, re-confirmed stable at sb1060 (stdev 426.1 against
+   415–422 through sb270).
+2. print the packed net's eval stdev, so a frame shift would be visible before the
+   games rather than after.
+3. **`screen.sh` at 1500 games / 25,000 nodes** vs `engines/canonical/net.cenn`.
+
+**On "short":** 1500 games is ~14 min and gives **±10 Elo** — which is exactly the
+project's standing floor (*no net verdict under ~1500 games*). So it is short
+against the 5880-game full screen (56 min, ±5) while still clearing the bar to be
+quotable. Anything genuinely shorter would produce a number this log is not
+allowed to use.
+
+**Durability:** the script lives in `/home/nick/.local/share/archon-d49` (ext4),
+alongside the launcher and watchdog moved off tmpfs earlier — so a `/tmp` wipe
+cannot strand it mid-wait.
+
+**One interaction noted rather than hidden:** the match adds ~10 engine processes
+for 14 minutes while **study 64** is running. Fixed-node matches are
+contention-immune *in their result*, but study 64 may be timing binaries, and its
+brief already requires it to void anything that loses quiet. That is its call.
+
+**D49:** sb1262, four services active + `xmatch` waiting.
