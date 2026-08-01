@@ -843,6 +843,163 @@ impl Default for SearchManager {
     }
 }
 
+/// Search-anatomy diagnostics — the `ARCHON_SEARCH_STATS` report's counters.
+///
+/// **This type is ZERO-SIZED unless `cfg(test)` or `--features search-stats`
+/// asks for it, and every bump method is then an empty body** (perf study 68
+/// §3). The counters used to be eleven `pub` fields on [`Worker`] with the
+/// doc comment *"plain adds on paths that already write stack state —
+/// bench-neutral"*. They were not: `self` is a `&mut Worker` live across the
+/// recursive `search::<NT>` call, so each `+=` is a real load/add/store to
+/// memory, and the only reader is an `std::env::var_os` test **at run time**,
+/// which no compiler may fold. Fifteen of those read-modify-writes sit on
+/// per-node and per-move paths.
+///
+/// This is study 67's `qtrace` defect in its second form. There the sink was
+/// `cfg`'d to `{}` and the *argument* still did the work; here the sink is a
+/// runtime `if` and the *state* still does the work. The rule that covers both:
+/// **a diagnostic that ships must be zero-sized when it is off, not merely
+/// unread** — an empty body deletes a store only if there is no place to store.
+///
+/// The methods take `Copy` scalars already live in registers, so the disabled
+/// arm has nothing to construct either (the other half of the `qtrace` lesson).
+#[cfg(any(test, feature = "search-stats"))]
+pub struct SearchStats {
+    /// Qsearch slice of `nodes` (bumped at the qsearch `do_move` site only).
+    pub qnodes: u64,
+    /// Main-search beta cutoffs; cutoffs on the FIRST move tried; total moves
+    /// tried at cutoff nodes.
+    pub fh: u64,
+    pub fh_first: u64,
+    pub fh_moves: u64,
+    /// Main-search TT-cutoff returns.
+    pub ttcut: u64,
+    /// Net extension plies granted.
+    pub ext: i64,
+    /// Aspiration re-searches.
+    pub research: u64,
+    /// LMR-reduced moves, and the plies of reduction they were given.
+    pub lmr_n: u64,
+    pub lmr_plies: i64,
+    /// Null-move-pruning attempts and cutoffs.
+    pub nmp_try: u64,
+    pub nmp_cut: u64,
+}
+
+/// The shipped shape: no fields, therefore no stores. See the enabled twin.
+#[cfg(not(any(test, feature = "search-stats")))]
+pub struct SearchStats;
+
+/// The zeroed value, spelled once per shape. **Not `Default`:** the disabled
+/// shape is a unit struct, and `SearchStats::default()` on a unit struct is
+/// `clippy::default_constructed_unit_structs`, which this crate denies. A
+/// `const` also makes the per-`go` reset a compile-time constant rather than a
+/// call.
+#[cfg(any(test, feature = "search-stats"))]
+impl SearchStats {
+    pub const NEW: Self = Self {
+        qnodes: 0,
+        fh: 0,
+        fh_first: 0,
+        fh_moves: 0,
+        ttcut: 0,
+        ext: 0,
+        research: 0,
+        lmr_n: 0,
+        lmr_plies: 0,
+        nmp_try: 0,
+        nmp_cut: 0,
+    };
+}
+
+#[cfg(not(any(test, feature = "search-stats")))]
+impl SearchStats {
+    pub const NEW: Self = Self;
+}
+
+impl SearchStats {
+    /// One qsearch node.
+    #[inline(always)]
+    pub fn qnode(&mut self) {
+        #[cfg(any(test, feature = "search-stats"))]
+        {
+            self.qnodes += 1;
+        }
+    }
+
+    /// A beta cutoff after `move_count` moves.
+    #[inline(always)]
+    pub fn fail_high(&mut self, move_count: i32) {
+        #[cfg(any(test, feature = "search-stats"))]
+        {
+            self.fh += 1;
+            self.fh_first += u64::from(move_count == 1);
+            self.fh_moves += move_count as u64;
+        }
+        #[cfg(not(any(test, feature = "search-stats")))]
+        let _ = move_count;
+    }
+
+    /// A TT cutoff return from the main search.
+    #[inline(always)]
+    pub fn tt_cut(&mut self) {
+        #[cfg(any(test, feature = "search-stats"))]
+        {
+            self.ttcut += 1;
+        }
+    }
+
+    /// `plies` of extension granted to one move (may be negative).
+    #[inline(always)]
+    pub fn extension(&mut self, plies: i32) {
+        #[cfg(any(test, feature = "search-stats"))]
+        {
+            self.ext += i64::from(plies);
+        }
+        #[cfg(not(any(test, feature = "search-stats")))]
+        let _ = plies;
+    }
+
+    /// One aspiration re-search.
+    #[inline(always)]
+    pub fn research(&mut self) {
+        #[cfg(any(test, feature = "search-stats"))]
+        {
+            self.research += 1;
+        }
+    }
+
+    /// One LMR-reduced move, reduced by `plies`.
+    #[inline(always)]
+    pub fn lmr(&mut self, plies: i32) {
+        #[cfg(any(test, feature = "search-stats"))]
+        {
+            self.lmr_n += 1;
+            self.lmr_plies += i64::from(plies);
+        }
+        #[cfg(not(any(test, feature = "search-stats")))]
+        let _ = plies;
+    }
+
+    /// One null-move-pruning attempt.
+    #[inline(always)]
+    pub fn nmp_attempt(&mut self) {
+        #[cfg(any(test, feature = "search-stats"))]
+        {
+            self.nmp_try += 1;
+        }
+    }
+
+    /// One null-move-pruning cutoff.
+    #[inline(always)]
+    pub fn nmp_cutoff(&mut self) {
+        #[cfg(any(test, feature = "search-stats"))]
+        {
+            self.nmp_cut += 1;
+        }
+    }
+}
+
 /// Per-thread search state (design/07 §3.10, design/13 §3.2): one worker owns
 /// its board copy (D8, D23), stack, PV table, histories and reduction table —
 /// none observable from another thread. The only cross-thread-visible handles
@@ -862,25 +1019,9 @@ pub struct Worker {
     /// SF and the `bench` fingerprint (D24). Plain `u64` until SMP lands
     /// (D23), same call sites.
     pub nodes: u64,
-    /// Qsearch slice of `nodes` (bumped at the qsearch `do_move` site only).
-    /// Diagnostic: read by the env-gated ARCHON_SEARCH_STATS report; a plain
-    /// add per qsearch node, no search decision reads it (bench-neutral).
-    pub qnodes: u64,
-    /// Search-anatomy diagnostics (ARCHON_SEARCH_STATS; plain adds on paths
-    /// that already write stack state — bench-neutral, no decision reads them):
-    /// main-search beta cutoffs, cutoffs on the FIRST move tried, total moves
-    /// tried at cutoff nodes, main-search TT-cutoff returns, net extension
-    /// plies granted, aspiration re-searches.
-    pub st_fh: u64,
-    pub st_fh_first: u64,
-    pub st_fh_moves: u64,
-    pub st_ttcut: u64,
-    pub st_ext: i64,
-    pub st_research: u64,
-    pub st_lmr_n: u64,
-    pub st_lmr_plies: i64,
-    pub st_nmp_try: u64,
-    pub st_nmp_cut: u64,
+    /// The `ARCHON_SEARCH_STATS` counters — see [`SearchStats`], which is a
+    /// zero-sized type (and every bump an empty body) in the shipped build.
+    pub stats: SearchStats,
     /// Max ply reached on the current PV line, counted from 1 (§3.9).
     pub sel_depth: i32,
     /// Depth of the current iteration (§3.5).
@@ -1036,6 +1177,22 @@ pub struct Worker {
     /// [`SotaContext`]: crate::eval::nnue::sota_context::SotaContext
     #[cfg(feature = "sota")]
     policy_head: Option<&'static crate::eval::nnue::policy_head::PolicyHead>,
+    /// Perf study 68 — the same snapshot, extended to the two knobs that
+    /// GUARD that handle. `ord_weight()` and `ord_min_depth()` are
+    /// `LazyLock`s over environment variables, i.e. process constants, and
+    /// `ord_weight() != 0.0` is the FIRST test at the P-ORD site — so the
+    /// shipped build performed a `Once`-state acquire load, a compare, a
+    /// branch and an `f32` load at **every interior main-search node** to
+    /// re-learn that `CPL_ORD_W` is unset. A `LazyLock` deref cannot be
+    /// hoisted out of a recursive function: it reads an atomic. Snapshotted
+    /// per `go`, the whole site is one `ucomiss` against a register.
+    #[cfg(feature = "sota")]
+    ord_weight: f32,
+    #[cfg(feature = "sota")]
+    ord_min_depth: i32,
+    /// Ditto for the `ARCHON_NMP_ALLNODE` A/B gate (a `OnceLock<bool>` read
+    /// at every node that reaches the null-move block).
+    nmp_allnode: bool,
     /// Poll-cadence bitmask for [`Worker::check_time`] (design/12 §3.8;
     /// Reckless bundle D31): the real clock/limit check runs when `nodes &
     /// mask == mask`. Recomputed per `go` — tighter (a smaller power of
@@ -1133,17 +1290,7 @@ impl Worker {
             stack: Box::new([Stack::default(); STACK_SIZE]),
             pv_table: Box::new([EMPTY_PV; MAX_PLY + 1]),
             nodes: 0,
-            qnodes: 0,
-            st_fh: 0,
-            st_fh_first: 0,
-            st_fh_moves: 0,
-            st_ttcut: 0,
-            st_ext: 0,
-            st_research: 0,
-            st_lmr_n: 0,
-            st_lmr_plies: 0,
-            st_nmp_try: 0,
-            st_nmp_cut: 0,
+            stats: SearchStats::NEW,
             sel_depth: 0,
             root_depth: 0,
             root_delta: 2 * VALUE_INFINITE,
@@ -1196,6 +1343,11 @@ impl Worker {
             histories: Histories::new(),
             #[cfg(feature = "sota")]
             policy_head: None,
+            #[cfg(feature = "sota")]
+            ord_weight: 0.0,
+            #[cfg(feature = "sota")]
+            ord_min_depth: 1,
+            nmp_allnode: false,
             check_time_mask: params::CHECK_TIME_CALLS as u64 - 1,
             thread_idx: 0,
             counters,
@@ -1258,17 +1410,7 @@ impl Worker {
         self.multi_pv = self.options.multipv().max(1) as usize;
         self.minimal = self.options.minimal();
         self.nodes = 0;
-        self.qnodes = 0;
-        self.st_fh = 0;
-        self.st_fh_first = 0;
-        self.st_fh_moves = 0;
-        self.st_ttcut = 0;
-        self.st_ext = 0;
-        self.st_research = 0;
-        self.st_lmr_n = 0;
-        self.st_lmr_plies = 0;
-        self.st_nmp_try = 0;
-        self.st_nmp_cut = 0;
+        self.stats = SearchStats::NEW;
         self.counters.reset();
         *self.pool.shells[self.thread_idx]
             .report
@@ -1751,17 +1893,7 @@ impl Worker {
         // Per-`go` reset (§3.2.4, §3.9): stack, counters, root moves.
         init_stack(&mut self.stack);
         self.nodes = 0;
-        self.qnodes = 0;
-        self.st_fh = 0;
-        self.st_fh_first = 0;
-        self.st_fh_moves = 0;
-        self.st_ttcut = 0;
-        self.st_ext = 0;
-        self.st_research = 0;
-        self.st_lmr_n = 0;
-        self.st_lmr_plies = 0;
-        self.st_nmp_try = 0;
-        self.st_nmp_cut = 0;
+        self.stats = SearchStats::NEW;
         self.sel_depth = 0;
         self.root_depth = 0;
         self.completed_depth = 0;
@@ -1775,6 +1907,16 @@ impl Worker {
         self.counters.nodes.store(0, Ordering::Relaxed);
         self.counters.best_move_changes.store(0, Ordering::Relaxed);
         self.nmp_min_ply = 0;
+        // Perf study 68: the process-constant env probes, read ONCE per `go`
+        // here rather than once per node at their use sites. `iterative_deepening`
+        // is the one entry both the pool path and the direct bench/test path go
+        // through, which is why the reset above lives here too.
+        #[cfg(feature = "sota")]
+        {
+            self.ord_weight = crate::eval::nnue::policy_head::ord_weight();
+            self.ord_min_depth = crate::eval::nnue::policy_head::ord_min_depth();
+        }
+        self.nmp_allnode = crate::search::nmp_allnode_probe();
         self.check_time_mask = self.compute_check_time_mask();
         self.last_best_move_pv.clear();
         self.last_best_move_score = -VALUE_INFINITE;
@@ -2056,32 +2198,43 @@ impl Worker {
         // factor block never ran) becomes next move's numerator.
         persist.previous_time_reduction = self.tm_time_reduction;
 
-        // Diagnostic node anatomy (env-gated, off by default => bench-neutral;
-        // 2026-07-26 search-gap investigation): one stderr line per completed
-        // search splitting `nodes` into main-search vs qsearch makes.
+        // Diagnostic node anatomy (2026-07-26 search-gap investigation): one
+        // stderr line per completed search splitting `nodes` into main-search
+        // vs qsearch makes.
+        //
+        // Perf study 68: gated at COMPILE time now, not only by the env var.
+        // The env test costs nothing here — it runs once per search — but the
+        // counters it prints cost a load/add/store on fifteen per-node and
+        // per-move paths, and a runtime `if` cannot delete them. Build with
+        // `--features search-stats` to get the report back; the shipped binary
+        // carries neither the fields nor the adds. (`archon-d47` already had no
+        // SSTATS and the research notes already say "use archon-sstats", so a
+        // dedicated build was the working practice before it was the rule.)
+        #[cfg(any(test, feature = "search-stats"))]
         if std::env::var_os("ARCHON_SEARCH_STATS").is_some() {
+            let st = &self.stats;
             eprintln!(
                 "SSTATS nodes={} qnodes={} qshare={:.3} depth={} fh={} fhf={} \
                  fhf_rate={:.3} avg_moves_at_cut={:.2} ttcut={} ext={} research={}",
                 self.nodes,
-                self.qnodes,
-                self.qnodes as f64 / self.nodes.max(1) as f64,
+                st.qnodes,
+                st.qnodes as f64 / self.nodes.max(1) as f64,
                 self.completed_depth,
-                self.st_fh,
-                self.st_fh_first,
-                self.st_fh_first as f64 / self.st_fh.max(1) as f64,
-                self.st_fh_moves as f64 / self.st_fh.max(1) as f64,
-                self.st_ttcut,
-                self.st_ext,
-                self.st_research
+                st.fh,
+                st.fh_first,
+                st.fh_first as f64 / st.fh.max(1) as f64,
+                st.fh_moves as f64 / st.fh.max(1) as f64,
+                st.ttcut,
+                st.ext,
+                st.research
             );
             eprintln!(
                 "SSTATS2 lmr_n={} lmr_avg_plies={:.3} nmp_try={} nmp_cut={} nmp_rate={:.3}",
-                self.st_lmr_n,
-                self.st_lmr_plies as f64 / self.st_lmr_n.max(1) as f64,
-                self.st_nmp_try,
-                self.st_nmp_cut,
-                self.st_nmp_cut as f64 / self.st_nmp_try.max(1) as f64
+                st.lmr_n,
+                st.lmr_plies as f64 / st.lmr_n.max(1) as f64,
+                st.nmp_try,
+                st.nmp_cut,
+                st.nmp_cut as f64 / st.nmp_try.max(1) as f64
             );
         }
     }
@@ -2263,7 +2416,7 @@ impl Worker {
                 beta = alpha;
                 alpha = (best - delta).max(-VALUE_INFINITE);
                 failed_high_cnt = 0;
-                self.st_research += 1;
+                self.stats.research();
                 // A root fail-low may mean the pondered move is refuted;
                 // burning past the soft budget to find a replacement is right,
                 // so revoke any pending ponderhit stop (design/12 step 9).
@@ -2275,7 +2428,7 @@ impl Worker {
                 alpha = (beta - delta).max(alpha);
                 beta = (best + delta).min(VALUE_INFINITE);
                 failed_high_cnt += 1;
-                self.st_research += 1;
+                self.stats.research();
             } else {
                 break; // inside the window: done
             }
@@ -2731,7 +2884,7 @@ impl Worker {
                         // **0.2 % of the symbol's dispatched ops**. See §3.
                         let child_value = self.tt_verify_child(tt, tt_data.mv, ply);
                         if !is_valid(child_value) || (tt_value >= beta) == (-child_value >= beta) {
-                            self.st_ttcut += 1;
+                            self.stats.tt_cut();
                             #[cfg(feature = "foldcount")]
                             {
                                 use crate::eval::nnue::foldcount::{Sc, note_search};
@@ -2743,7 +2896,7 @@ impl Worker {
                             return tt_value;
                         }
                     } else {
-                        self.st_ttcut += 1;
+                        self.stats.tt_cut();
                         #[cfg(feature = "foldcount")]
                         {
                             use crate::eval::nnue::foldcount::{Sc, note_search};
@@ -3068,11 +3221,7 @@ impl Worker {
             // hotter cutNode LMR) shrinks the trees that gate leaves behind,
             // and we did not port those. ARCHON_NMP_ALLNODE=1 tries the
             // SF16-style gate for measurement; landing is a post-D47 decision.
-            let nmp_node_ok = if crate::search::nmp_allnode_probe() {
-                !NT::PV
-            } else {
-                cut_node
-            };
+            let nmp_node_ok = if self.nmp_allnode { !NT::PV } else { cut_node };
             if nmp_node_ok
                 && self.stack[cur].static_eval
                     >= beta
@@ -3115,7 +3264,7 @@ impl Worker {
                 // pushed into BOTH stacks, whose fold was a 2560-byte copy per
                 // perspective per stack plus a `ThreatPosition` snapshot.
                 self.eval_ctx.push_null();
-                self.st_nmp_try += 1;
+                self.stats.nmp_attempt();
                 self.board.make_null_move();
                 let null_value =
                     -self.search::<NonPv>(tt, stop, -beta, -beta + 1, depth - r, false, ply + 1);
@@ -3125,7 +3274,7 @@ impl Worker {
                 // Do not return an unproven mate/TB score: a null-move
                 // "mate" is an artifact of the illegal pass, never real.
                 if null_value >= beta && !is_win(null_value) {
-                    self.st_nmp_cut += 1;
+                    self.stats.nmp_cutoff();
                     // Below the verification depth — or already inside a
                     // verification (`nmp_min_ply != 0`, where recursive
                     // verification is disallowed) — trust the null value.
@@ -3330,16 +3479,12 @@ impl Worker {
         // long before QuietInit. `CPL_ORD_W` unset/0 ⇒ never constructed ⇒
         // ordering bit-identical.
         #[cfg(feature = "sota")]
-        if crate::eval::nnue::policy_head::ord_weight() != 0.0
-            && depth >= crate::eval::nnue::policy_head::ord_min_depth()
+        if self.ord_weight != 0.0
+            && depth >= self.ord_min_depth
             && let Some(head) = self.policy_head
             && let Some(l2) = self.eval_ctx.last_l2_for(&self.board)
         {
-            mp.set_quiet_prior(head.quiet_prior(
-                &self.board,
-                l2,
-                crate::eval::nnue::policy_head::ord_weight(),
-            ));
+            mp.set_quiet_prior(head.quiet_prior(&self.board, l2, self.ord_weight));
         }
         #[cfg(feature = "policy")]
         {
@@ -3773,7 +3918,7 @@ impl Worker {
                 }
             }
             new_depth += extension;
-            self.st_ext += i64::from(extension);
+            self.stats.extension(extension);
 
             // §3.7 — the per-node combined history statistic `ss.stat_score`
             // (design/10 Wave-C item 10), computed from PRE-move facts:
@@ -3955,8 +4100,7 @@ impl Worker {
                     .min(new_depth + params::RED_MAX_DEEPER())
                     .max(params::LMR_MIN_SCOUT_DEPTH())
                     + params::LMR_PV_DEPTH_BONUS() * Depth::from(NT::PV);
-                self.st_lmr_n += 1;
-                self.st_lmr_plies += i64::from(new_depth - classical_d);
+                self.stats.lmr(new_depth - classical_d);
                 #[cfg(feature = "search-control")]
                 let d = {
                     intervention_classical_scout_depth = classical_d;
@@ -4240,9 +4384,7 @@ impl Worker {
                         update_pv(&mut self.pv_table[..], ply, m);
                     }
                     if value >= beta {
-                        self.st_fh += 1;
-                        self.st_fh_first += u64::from(move_count == 1);
-                        self.st_fh_moves += move_count as u64;
+                        self.stats.fail_high(move_count);
                         // Perf study 34: the ordering-quality instrument — the
                         // index of the move that actually caused the cutoff.
                         #[cfg(feature = "census34")]
@@ -5144,7 +5286,7 @@ impl Worker {
             let capture = self.board.capture_stage(m);
             let moved_piece = self.board.piece_on(m.from());
             self.do_move(tt, m, gives_check, capture, moved_piece, ply);
-            self.qnodes += 1;
+            self.stats.qnode();
             let value = -self.qsearch::<NT>(tt, stop, -beta, -alpha, ply + 1);
             self.undo_move(m);
 

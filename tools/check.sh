@@ -46,7 +46,8 @@ if [ "${CHECK_FEATURE_MATRIX:-1}" != "0" ]; then
         "sota,tune" \
         "datagen" \
         "policy" \
-        "search-control"
+        "search-control" \
+        "sota,arch-d48x,search-stats"
     do
         printf '  checking --features %s\n' "$feats"
         cargo check --quiet --all-targets --features "$feats" || {
