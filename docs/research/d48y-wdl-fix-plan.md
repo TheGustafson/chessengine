@@ -17447,3 +17447,40 @@ even when the pattern looks familiar.
 **State:** D49 continuation self-restarting under `x500watch`; study 71 testing;
 matcher down with an armed conditional restore; memory 4236 MB; zero kernel OOM
 kills since 13:00.
+
+---
+
+## 2026-08-01 14:17 — continuation heldout is ABOVE the base run's best; pre-registering the check
+
+**D49 continuation sb1679**, 184.8k pos/s. Study 71 building (2 `rustc`, no
+match). Matcher down, `xmlrestore` armed on build-completion + ≥4000 MB. Memory
+4557 MB, zero OOM since 13:00.
+
+**Heldout ema, continuation vs the base run's best:**
+
+| point | ema |
+|---|---:|
+| base run best (sb1510) | **0.010432** |
+| sb1640 | 0.010455 |
+| sb1650 | 0.010457 |
+| sb1660 | 0.010465 |
+| sb1670 | 0.010462 |
+
+**The continuation sits ~0.00003 ABOVE the base run's best and is flat over its
+first 30 superbatches.** Expected — it opened with a 5× LR jump (1.2492e-5) and
+has 470 superbatches of decay left. The LR cycles also left the net in a worse
+heldout basin than the base run reached.
+
+**PRE-REGISTERED CHECK, written now so it cannot be rationalised later:** the
+continuation is buying something only if **heldout ema drops below 0.010432 —
+the base run's best — by roughly sb1900** (i.e. within the first ~55 % of the
+decay, while the LR still has room to matter). If it is still above 0.010432 at
+sb1900, the 5× restart cost more than the extra training bought, and the honest
+move is to fall back to the sb1540 anchor or sb1630 and continue with a *monotone*
+low LR instead.
+
+**Caveat that keeps this honest in both directions:** heldout is not Elo
+([[loss-is-not-elo]]) — 44e-6 of loss once sat alongside ~30 Elo of games. This
+check is an **abort condition**, not a strength claim. The strength answer comes
+from pooling continuation checkpoints or a direct A/B against sb1630 once ~300 sb
+have accumulated.
