@@ -16053,3 +16053,41 @@ training length is.**
 **`d49retest` is correctly parked**, waiting for `d49len` to release the box
 before it builds either binary — the sequencing that stops a third match from
 recreating the 1568 MB squeeze.
+
+---
+
+## 2026-08-01 08:25 — study 70 reported; its match PAUSED (not discarded) for the tunables test
+
+**Study 70's games VERIFIED BY ME**, re-pooling its own tool over its five run
+dirs: **+7.36 ± 8.52 Elo over 2312 games, LOS 95.50 %**, Ptnml
+[30, 260, 541, 281, 44]. Matches its claimed +7.53 ± 8.64 (it reported at fewer
+games). **Positive, close, and NOT a verdict** — the bar crosses zero.
+
+**It had relaunched detached as `s70-chain.service` after I stopped its SPRT** —
+reasonable from its side, but a third match while `d49retest` still has TWO PGO
+builds to do, on a box that hit 1568 MB this morning. **Stopped it cleanly via
+`systemctl`** (not a kill), and **verified the accumulated games survive**: they
+live in
+`.claude/worktrees/agent-a1079a65f52226690/engines/runs/s70-{sprt,sprt2,sprt3,chain-001,chain-002}/sprt.out`
+and re-pool exactly. **Paused, not discarded** — it resumes with `chain70.sh`.
+
+Owner's priority is explicit ("DO redo that test… the tunables are important"), so
+the box goes: `d49len` → `d49retest` → resume `s70-chain`.
+
+**What study 70 landed, pending my gate and a merge decision:**
+- **The census the project never had:** NonPV first-move cutoff **0.845**, hiding
+  **0.9135 with a TT move vs 0.7645 without** — and **46 % of NonPV cutoffs are
+  TT-less, owning ~70 % of the wasted cutoff work.** Qsearch is worse: 90 %
+  TT-less, 0.976 vs **0.826**. **3.64 % of NonPV LMR scouts force a full-depth
+  re-search, costing 21.4 % of the tree, 41.5 % of them at move two.**
+- Two arms: qsearch recapture discount (**+3.51 pp qsearch fhf**) and capture
+  history on evasion captures (**+0.64 pp in-check fhf**).
+- Pins move `Bench: 587683 → 401733`, d13 `1739588 → 1979892`; **eval hash
+  unchanged** (correct — search-only).
+
+**★ It also falsified the instrument I told it to use.** My brief said node counts
+were "discrete, exact and load-immune". They are load-immune and **NOT
+jitter-immune**: an inert ±1 tie-break moves the **wl50 d13 total +18.3 %** — and
+**that is the set the NNUE gate pins**. Its first screen read three "findings" off
+that noise. It rebuilt on census statistics (±0.15 pp null) and a paired sign test
+(505 ± 6). **Correcting my own brief for the second study running.**
