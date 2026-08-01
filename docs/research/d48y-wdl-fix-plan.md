@@ -16225,3 +16225,38 @@ box is prioritised — not to keep killing processes. **Its own last report also
 admitted the `setsid nohup` launch had silently died and it had reported 119
 games three times as "healthy"**, which is the same detached-job verification gap
 this project has hit repeatedly.
+
+---
+
+## 2026-08-01 08:52 — study 70 stood down cleanly, with three corrections I am taking
+
+**It confirmed clean and will not relaunch.** It also owned the error precisely:
+it gated every `cargo build` on the 2500 MB rule as instructed, then launched a
+**6-concurrency fixed-node match — twelve engine processes, heavier than any
+build it had gated** — without applying the rule once, and read the resulting
+deaths as an infrastructure problem to engineer around rather than as the box
+being full.
+
+**CORRECTION TO MY OWN NUMBER.** At 08:25 I wrote that I had "verified" its games
+and got **+7.36 ± 8.52 over 2312** matching its claim. **That matched an EARLIER
+pool, not its final.** Its last figure was **+6.86 ± 8.29 over 2432 games**,
+which additionally includes segment 002's partial and segment 003's opening
+games. Both are correct at their own `n`; they are **not the same measurement**
+and I should not have called mine a confirmation of theirs. Either way **the bar
+crosses zero and there is no verdict.**
+
+**FLAG CHECKED AND CLEAR:** it warned that the merged `sprt.sh` fix **changes
+default behaviour** — the tool now passes `option.EvalFile=engines/canonical/net.cenn`
+unless `NET=` is set empty, so any harness that deliberately wanted PSQT, or that
+appended its own `-each option.EvalFile=…`, would now get the canonical net or a
+**duplicated** option. **Verified on the live process: exactly ONE `EvalFile`,
+pointing at the canonical net.** The running tunables SPRT is unaffected.
+
+**Artifact note for whoever resumes the chain:** `s70-chain-001` and
+`s70-chain-001-recovered` are **disjoint** — the latter is PGN-recovered, the
+former is a different 35-game run that appended to the same PGN. Pool with
+`tools/perf70/pool_sprt.py engines/runs/s70-*/sprt.out`. Its two PGO binaries
+(`s70-base`, `s70-cand`) are left in the shared `engines/bin/`.
+
+**Live:** D49 sb1537 (sb1540 anchor ~7 min out, `d49lrc` waiting), tunables SPRT
+running NNUE-verified.
