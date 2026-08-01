@@ -15921,3 +15921,40 @@ manual step, and it cannot re-create the squeeze it was stopped for.
 whose information is already collected, not the job that is running.** Three
 concurrent matches was one too many, and the failure would have been an OOM-killed
 trainer — the exact thing that cost 3 superbatches at 22:53 last night.
+
+---
+
+## 2026-08-01 08:10 — ★ STUDY 70 FOUND A TOOL BUG THAT VOIDS MY TUNABLE REVERT
+
+**`tools/sprt.sh` never passed `option.EvalFile`.** It set `option.Hash` and
+`option.Threads` and nothing else. EvalFile defaults to `<empty>`, and an empty
+EvalFile **silently evaluates PSQT** — the exact trap `tools/screen.sh:30-32`
+documents and guards against. So the project's designated **merge gate for
+functional search/eval changes** (design/14 §3.8, D25) has been running the wrong
+evaluator.
+
+**This voids the decision I made at 05:32.** I reverted the 154 SF `ebcea3ef`
+tunables (`d5f89245`) on a measured **−29.49 ± 14.88 over 1500 games**. That match
+went through this tool with no `NET=`, so **it compared two PSQT engines.** Search
+constants co-adapted to an NNUE eval frame, arbitrated by a PSQT eval, is not the
+experiment I believed I had run. **The revert rests on nothing.**
+
+Verified both ways before acting: `sprt.sh:118` on main had no EvalFile in its
+`-each` line, and the journal shows my invocation
+(`NODES=25000 ROUNDS=750 CONCURRENCY=3 BOOK=...`) passed no `NET=`.
+
+**Fix taken onto main as `991fbf43`** (study 70's): `NET=` defaults to
+`engines/canonical/net.cenn`, resolves to an absolute path, and errors if
+missing; set `NET=` empty to test PSQT deliberately.
+
+**What is now OWED:** a clean re-test of the tunables with the fixed tool.
+`archon-s68` (tunables, bench 486897) still exists. **But s68 vs s69 is NOT a
+clean pair either** — they differ by study 68's `SearchStats` fix as well as the
+tunables. A proper arm needs two binaries built from the same base differing ONLY
+in the tunable values. Not started; the box is running `d49len`.
+
+**The pattern this makes four of tonight:** `Bench:` −17.2 %, bench-nps +5.6 %,
+the contaminated depth regex, and now an entire strength harness measuring the
+wrong engine. **Every one was caught by checking the instrument rather than the
+result** — and this one was caught by a subagent I had pointed at something else
+entirely.
