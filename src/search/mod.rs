@@ -309,19 +309,37 @@ fn wdl_tm_factor(root_decisiveness: f32, c3: f32) -> f64 {
 /// expand ~1.75x Stockfish's qsearch on identical positions with identical
 /// windows and verified-identical code; only a per-decision trace can say
 /// which branch differs.
+/// **Perf study 67 — this used to take `mv: &str`, and every call site passed
+/// `&m.to_string()`.** Rust evaluates arguments before the call, so the shipped
+/// build — where the body below is `{}` — still ran the whole `Display` chain
+/// and its heap allocation and then dropped the `String`. Measured:
+/// **2,171 bytes of `to_string::<Move>` plus 112 of `drop_glue::<String>`
+/// inside `qsearch::<NonPv>` — 10.0 % of that symbol's code — collecting 4.3 %
+/// of its dispatched ops**, and the same again in `qsearch::<Pv>`; the engine's
+/// `malloc`, `<Square as Display>::fmt` and `<char as Display>::fmt` symbols
+/// have no other caller in the frame. Taking the `Move` by value (2 bytes,
+/// `Copy`) and formatting inside the ENABLED arm makes the disabled arm what
+/// this doc comment always claimed it was.
 #[cfg(feature = "search-control")]
 #[inline]
-fn qtrace(ply: usize, alpha: Value, beta: Value, stand: Value, mv: &str, verdict: &str) {
+fn qtrace(ply: usize, alpha: Value, beta: Value, stand: Value, mv: Move, verdict: &str) {
     use std::sync::OnceLock;
     static ON: OnceLock<bool> = OnceLock::new();
     if *ON.get_or_init(|| std::env::var_os("ARCHON_QTRACE").is_some()) {
+        // `Move::NULL` carries what the old `"-"` literal did: "no move at this
+        // decision point".
+        let mv = if mv == Move::NULL {
+            "-".to_string()
+        } else {
+            mv.to_string()
+        };
         eprintln!("QT ply={ply} a={alpha} b={beta} sp={stand} {mv:<6} {verdict}");
     }
 }
 
 #[cfg(not(feature = "search-control"))]
 #[inline(always)]
-fn qtrace(_: usize, _: Value, _: Value, _: Value, _: &str, _: &str) {}
+fn qtrace(_: usize, _: Value, _: Value, _: Value, _: Move, _: &str) {}
 
 /// The late-move-pruning move-count threshold (design/10 §3.5, the move
 /// loop's LMP): once the running `move_count` reaches
@@ -4973,7 +4991,7 @@ impl Worker {
             }
 
             if best_value >= beta {
-                qtrace(ply, alpha, beta, best_value, "-", "STANDPAT_CUT");
+                qtrace(ply, alpha, beta, best_value, Move::NULL, "STANDPAT_CUT");
                 // Search-instability damping (§3.8 step 5): pull a
                 // non-decisive stand-pat cutoff partway back toward beta.
                 // Decisive scores are never blended (§8.11).
@@ -5042,7 +5060,7 @@ impl Worker {
         let prev_move = self.stack[cur - 1].current_move;
         let prev_sq = (prev_move != Move::NULL).then(|| prev_move.to());
 
-        qtrace(ply, alpha, beta, best_value, "-", "LOOP_ENTERED");
+        qtrace(ply, alpha, beta, best_value, Move::NULL, "LOOP_ENTERED");
         let mut best_move = Move::NULL;
         let mut move_count = 0;
         while let Some(m) = mp.next_move(&self.board, &self.histories) {
@@ -5074,7 +5092,7 @@ impl Worker {
                             alpha,
                             beta,
                             best_value,
-                            &m.to_string(),
+                            m,
                             "prune:latemove",
                         );
                         continue;
@@ -5101,7 +5119,7 @@ impl Worker {
                             alpha,
                             beta,
                             best_value,
-                            &m.to_string(),
+                            m,
                             "prune:futility",
                         );
                         best_value = best_value.max(futility_value);
@@ -5135,7 +5153,7 @@ impl Worker {
                         alpha,
                         beta,
                         best_value,
-                        &m.to_string(),
+                        m,
                         "prune:seefloor",
                     );
                     continue;
@@ -5143,7 +5161,7 @@ impl Worker {
             }
 
             // Step 8 — recurse: full window, same node type.
-            qtrace(ply, alpha, beta, best_value, &m.to_string(), "SEARCH");
+            qtrace(ply, alpha, beta, best_value, m, "SEARCH");
             // Same facts `do_move` used to re-derive; qsearch has no earlier
             // use for either, so this is a move, not a saving (perf study 23
             // arm 6 keeps the main loop's win without taxing qsearch).
