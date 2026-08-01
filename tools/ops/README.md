@@ -43,32 +43,30 @@ depends on the caller's cwd.**
 
 | script | purpose |
 |---|---|
-| `d49_launch.sh` | Launch/resume the D49 SF-teacher run as a systemd **service**. Resumes from the newest checkpoint, holds when memory is low, retries after GPU-settle. |
-| `train_guard.sh` | Serialisation guard: refuses builds while a trainer is live. |
-| `ckpt_reaper.sh` | Prunes old checkpoints so the disk does not fill. |
+| `d49_launch.sh` | Launch/resume a training run as a systemd **service**. Resumes from the newest checkpoint, holds when memory is low, retries after GPU-settle, reads its finish line from the run spec. |
+| `ckpt_reaper.sh` | Bounds the checkpoint directory. Prefix-agnostic, never reaps symlinks. `DRY_RUN=1` to preview. |
 
 ### `match/`
 
 | script | purpose |
 |---|---|
-| `screen_vs_canonical.sh` | Pack the newest checkpoint and screen it against `engines/canonical/net.cenn`. 1500 games @ 25k nodes. |
-| `teacher_verdict.sh` | Screen a distilled checkpoint against **the exact checkpoint it warmed from** — isolates the teacher from ordinary training progress. |
-| `main_sprt.sh` | SPRT of a built engine vs the canonical engine at a real time control. |
+| `screen_vs_canonical.sh` | Pack the newest checkpoint and screen it against `engines/canonical/net.cenn`. 1500 games @ 25k fixed nodes. Reads eval stdev **before** the games. |
+| `warm_point_verdict.sh` | Screen a checkpoint against **the exact checkpoint it warmed from** — isolates a change from ordinary training progress. Requires `REF_SB`. |
+| `sprt.sh` | SPRT a built engine vs a reference at a **real time control** — the only instrument that can price a search change's time cost. |
 
 ### `guard/`
 
 | script | purpose |
 |---|---|
-| `oomguard.sh` | Watches `MemAvailable`, logs pressure, records the last OOM victim. |
-| `oomshield.sh` | Pre-emptively pauses non-critical work when memory falls below a floor. |
-| `d49_watchdog.sh` | Restarts the trainer if its payload dies (checks the payload, not `is-active`). |
+| `oom_priority.sh` | Raises `oom_score_adj` on everything disposable so the trainer is the last victim. Structural matching (repo + compilers + node/npm). **Kills nothing.** Merges three earlier scripts. |
+| `watchdog.sh` | Restarts a training unit when its **payload** dies — progress-gated, halts after `MAX_STALL` restarts with no advance. |
 
 ### `build/`
 
 | script | purpose |
 |---|---|
-| `pgo.sh` | Wrapper over `tools/build_pgo.sh`: memory-gated, capped, writes into the primary checkout regardless of the invoking tree. |
-| `merge_gate.sh` | `CHECK_NNUE_GATE=1 tools/check.sh` under a memory cap, with the pins echoed. |
+| `pgo.sh` | Memory-gated PGO build. Takes a **bare name**, always writes to `$ARCHON_ROOT/engines/bin/`, echoes the absolute path. |
+| `merge_gate.sh` | `CHECK_NNUE_GATE=1 tools/check.sh` under a cap, echoing which pins it checked. |
 
 ## Operating rules these scripts encode
 

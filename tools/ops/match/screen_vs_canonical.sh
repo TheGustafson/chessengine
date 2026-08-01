@@ -1,20 +1,89 @@
 #!/usr/bin/env bash
-# Distilled D49 vs CANONICAL (D48X) -- the promotion question, early read.
-# Plain D49 @756 measured -1.39 +/- 10.43 vs canonical, so this is like-for-like.
-set -uo pipefail
-D=/home/nick/projects/chessengine/data/nnue/experiments/d49-1280
-LOG=$D/cyc.log; cd /home/nick/projects/chessengine
-SB=$(ls -t "$D"/d49sfb-sb*-ema-raw.bin | head -1 | grep -oE 'sb[0-9]+' | tr -d 'sb')
-OUT=data/nnue/tmp/canon; mkdir -p "$OUT"
+# tools/ops/match/screen_vs_canonical.sh — pack the newest checkpoint and screen
+# it against the canonical net at equal nodes.
+#
+# PURPOSE
+#   The standing "is this run ahead of what we ship?" measurement. Packs the
+#   newest checkpoint of a run and plays it against `engines/canonical/net.cenn`
+#   at FIXED NODES — because the result must be immune to a busy box, and this
+#   machine usually carries a GPU trainer and often a build.
+#
+# USAGE
+#   systemd-run --user --unit=d49cs -p MemoryMax=3G -p MemorySwapMax=0 \
+#       /path/to/tools/ops/match/screen_vs_canonical.sh
+#
+#   Environment:
+#     EXP_DIR      checkpoint dir     (default data/nnue/experiments/d49-1280)
+#     CKPT_PREFIX  run prefix         (default d49sfb)
+#     SB           superbatch to pack (default: newest on disk)
+#     SCALE        network_scale used when packing (default 756)
+#     GAMES        default 1500     NODES default 25000     CONC default 3
+#     RUN_SPEC     spec supplying requant arch params (default d49_sfblend_500.json)
+#
+# PRODUCES
+#   $ARCHON_D49/cs-sb<SB>.out   full fastchess output
+#   the verdict block appended to the run's cyc.log
+#
+# WHY 1500 GAMES
+#   The error bar is 383/sqrt(n): 1500 games = +/-10 Elo. **No net verdict is
+#   read under ~1500 games.** Interim readings off this harness have twice been
+#   over-read and then contradicted by the final number (scale 1068 read as
+#   "identical, 0.03 Elo" at n=529 and finished -3.01; scale 756 read as -6.77
+#   at n=1027 and finished -1.39).
+#
+# WHY CONC=3 AND NOT HIGHER
+#   Screen concurrency is MEMORY-bound at roughly 2 x conc x 138 MB of nets, and
+#   this box has OOM-killed the trainer repeatedly. Because the games are fixed
+#   node, a lower concurrency costs wall-clock only — never correctness.
+#
+# WHY THE EVAL-STDEV LINE COMES BEFORE THE GAMES
+#   A large spread difference between candidate and reference means the two are
+#   in different eval FRAMES, which confounds the Elo with a scale effect. That
+#   is much cheaper to learn before spending 1500 games than after.
+
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
+EXP_DIR=${EXP_DIR:-$ARCHON_ROOT/data/nnue/experiments/d49-1280}
+CKPT_PREFIX=${CKPT_PREFIX:-d49sfb}
+SCALE=${SCALE:-756}
+GAMES=${GAMES:-1500}
+NODES=${NODES:-25000}
+CONC=${CONC:-3}
+RUN_SPEC=${RUN_SPEC:-d49_sfblend_500.json}
+OPS_LOG="$EXP_DIR/cyc.log"; export OPS_LOG
+
+SB=${SB:-$(ls "$EXP_DIR/$CKPT_PREFIX"-sb*-ema-raw.bin 2>/dev/null \
+           | sed -E 's/.*-sb([0-9]+)-ema-raw\.bin/\1/' | sort -n | tail -1)}
+[ -n "$SB" ] || { log "FATAL: no checkpoint for prefix '$CKPT_PREFIX' in $EXP_DIR"; exit 2; }
+
+CKPT="$EXP_DIR/$CKPT_PREFIX-sb${SB}-ema-raw.bin"
+[ -s "$CKPT" ] || { log "FATAL: checkpoint missing: $CKPT"; exit 2; }
+
+OUT="$ARCHON_ROOT/data/nnue/tmp/canon"; mkdir -p "$OUT"
+CAND="$OUT/$CKPT_PREFIX-sb${SB}-${SCALE}.cenn"
+BIN=./target-sota/release/chessengine
+
+log "packing sb${SB} at network_scale=${SCALE}"
 uv run --no-project --with numpy==2.5.1 python tools/nnue/requant_threats.py \
-    "$D/d49sfb-sb${SB}-ema-raw.bin" "$OUT/q${SB}.bin" --scale 256 \
-    --run-spec tools/nnue/runs/d49_sfblend_500.json >/dev/null 2>&1 || { echo "[cs] requant FAIL" >>"$LOG"; exit 1; }
+    "$CKPT" "$OUT/q${SB}.bin" --scale 256 \
+    --run-spec "tools/nnue/runs/$RUN_SPEC" >/dev/null 2>&1 \
+    || { log "FATAL: requant failed"; exit 3; }
 D40_ACC=1280 D40_L2=16 D40_L3=32 D40_POLICY=1 D40_POL_DIM=16 \
-D40_THREAT_QUANT=256 D40_NETWORK_SCALE=756 \
+D40_THREAT_QUANT=256 D40_NETWORK_SCALE="$SCALE" \
   uv run --no-project --with numpy==2.5.1 python tools/nnue/netpack.py \
-    "$OUT/q${SB}.bin" "$OUT/sfb-sb${SB}-756.cenn" d40 >/dev/null 2>&1 || { echo "[cs] pack FAIL" >>"$LOG"; exit 1; }
-echo "[cs] DISTILLED sb${SB} vs CANONICAL, 1500 games @25k $(date -Is)" >> "$LOG"
-CS=/home/nick/.local/share/archon-d49/cs-sb${SB}.out
-ENGINE=./target-sota/release/chessengine CONC=3 \
-  bash tools/screen.sh "$OUT/sfb-sb${SB}-756.cenn" engines/canonical/net.cenn 1500 25000 > "$CS" 2>&1
-{ echo "[cs] === DISTILLED sb${SB} vs CANONICAL ==="; grep -A5 'Results of' "$CS" | tail -5; } >> "$LOG"
+    "$OUT/q${SB}.bin" "$CAND" d40 >/dev/null 2>&1 \
+    || { log "FATAL: netpack failed"; exit 3; }
+
+if [ -x "$BIN" ]; then
+    sd=$("$BIN" nnue-eval "$(readlink -f "$CAND")" < tools/nnue/calib/wl50.fens 2>/dev/null \
+         | grep -oE '^-?[0-9]+' \
+         | python3 -c "import sys,statistics as st;v=[int(x) for x in sys.stdin];print(f'{st.pstdev(v):.1f}')" 2>/dev/null)
+    log "sb${SB} eval stdev=${sd:-unavailable}"
+fi
+
+log "SCREEN sb${SB} (scale $SCALE) vs CANONICAL — $GAMES games @ ${NODES}n conc=$CONC"
+CS="$ARCHON_D49/cs-sb${SB}.out"
+ENGINE="$BIN" CONC="$CONC" bash tools/screen.sh \
+    "$CAND" engines/canonical/net.cenn "$GAMES" "$NODES" > "$CS" 2>&1
+{ echo "=== SCREEN sb${SB} vs CANONICAL ==="; grep -A5 'Results of' "$CS" | tail -5; } >> "$OPS_LOG"
+log "done -> $CS"
