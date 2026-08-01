@@ -16951,3 +16951,47 @@ a script's contract; changing what the script does invalidates it.**
 
 Cycle results so far: anchor **+3.47**, cycle 1 **+9.27**, cycle 2 **+9.50** —
 non-compounding, pooled **+9.38 ± 7.78** vs anchor. The A/B resolves it.
+
+---
+
+## 2026-08-01 12:28 — D49 CONTINUATION LAUNCHED on top of the cycle-3 checkpoint
+
+**Owner's spec, ratified:** warm from **sb1630**, LR **5× the floor**, decaying
+**0.996/sb for 500 sb**.
+
+**Interpretation, confirmed by the owner before it mattered:** the cycles annealed
+to **exactly 0**, so "5× the floor of the cycle" cannot be 5×0. Read as 5× the
+**base decay schedule's** value at sb1630 — consistent with how "5× the LR" was
+used for the cycles themselves (5 × 3.5837e-6 at sb1540).
+
+| | |
+|---|---:|
+| base decay LR at sb1630 | 2.4985e-06 |
+| **start LR (5×)** | **1.2492e-05** |
+| decay | 0.996 / sb |
+| span | **sb1630 → sb2130** (500 sb) |
+| end LR | 1.6839e-06 |
+| ramp points | 126 |
+
+Config `tools/nnue/runs/d49_x500_1280.json`; `export_every` back to **10** (the
+bottom-only setting was specific to a 30-sb anneal — a 500-sb monotone decay has
+no interior peak to avoid, so the old cadence is right again and gives the
+matcher checkpoints to screen).
+
+**`d49x500` is SELF-RESTARTING** — it relaunches on any death, resuming from the
+newest checkpoint, and stops itself at sb2130. That closes the gap that cost 3
+superbatches at 22:53 and again this morning: previous launches needed an
+external watchdog, this one carries its own loop.
+
+**Verified training, not just started:** `[pump d49-1280] RESUME from sb1630
+(fresh Adam transient)` then `components sb 1631 | 172,132 pos/s`.
+
+**Also live:** `d49ab2` running the anchor A/B (3 cycles vs sb1540), `d49xml`
+screening. Memory 5972 MB.
+
+**Standing results for the next session:** undertraining **+30.31 ± 11.0** per
+1000 sb (recipe fixed); LR cycles **non-compounding** (anchor +3.47, c1 +9.27,
+c2 +9.50); tunables **neutral** (−1.39 ± 10.43, NNUE-verified); eval frame has an
+**interior optimum we are already on**; per-node microarch surface **closed** by
+studies 65–69; the SF-net teacher pipeline **works** (`sf-eval`, 96 % sign
+agreement, slope 0.7604 ours/teacher) and its calibration must be **per corpus**.
