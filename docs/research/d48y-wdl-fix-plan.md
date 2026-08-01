@@ -15117,3 +15117,17 @@ all three gate pins unmoved, so the tunables are the likely mover either way.
 regardless: that number is depth-6 PSQT, while the depth-13 NNUE total moved only
 +0.21 %. A tree change measured in a regime we do not play in is not evidence of
 strength in the regime we do.
+
+**LAUNCHED `sprt68.service`** — the owed strength test, both sides PGO:
+
+  candidate  archon-s68  bench 486897  4,773,500 nps  (main fa530897: 154
+             ebcea3ef tunables + study 67's qtrace fix)
+  baseline   archon-s25  bench 587683  4,520,638 nps  (canonical PGO engine)
+
+`NODES=25000 ROUNDS=750 CONCURRENCY=3 BOOK=UHO_Lichess_4852_v1.epd` — fixed
+nodes, so the result is contention-immune while `d49xml` keeps screening D49
+alongside it. Max 1500 games (+/-10 Elo), SPRT stops earlier if decisive.
+
+**Bench nps is +5.6 % (4.52M -> 4.77M) and that is NOT the claim** — it is
+suggestive at best, since the two binaries search different trees and nps mixes
+node composition with per-node speed. Games decide.
