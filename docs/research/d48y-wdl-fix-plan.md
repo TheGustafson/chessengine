@@ -13368,3 +13368,49 @@ instruction cuts come off the **tail** of a backend-bound-2:1 machine.
 **D49:** sb1252, heldout ema **0.010492** — still the run's lowest, still falling.
 Four services active. **sb1700 in 16.1 h.** Cleaned the s20-era build tree
 (78 MB); 142 GB free.
+
+## Tick — 2026-07-31 23:1x, study 64 commissioned: cut WORK, not instructions
+
+The four-way race settles what to do next. **Nine studies have made the fold
+kernels faster; the last two bought nothing measurable.** Study 63's closing line
+is the brief:
+
+> **Ask what fraction of TRAFFIC a rung converts, not how many instructions it
+> deletes.**
+
+**Study 64 is explicitly forbidden from bringing another instruction-count arm.**
+`instructions:u` stays the *guard* — it proves an arm did what was meant — but on
+today's evidence an arm that only shrinks instruction count is worth ~zero:
+
+| | |
+|---|---|
+| studies 61+62 shipped | −217 i/n |
+| their wall-clock, valid instrument | **+0.141%, NOT LICENSED** |
+| study 63's rungs | −0.6513% instructions → **+0.111% time** |
+
+**The targets are work removed, not instructions removed:** whole NNUE forward
+passes the search does not need (lazy/staged eval, early exit, sibling reuse);
+**fold count** rather than fold cost — nine studies optimised the kernels, none
+asked how many folds are avoidable; `at_full`'s **full replay** where SF maintains
+incrementally (8% of instructions, 10.7% of L1d misses, our largest structural
+difference); and cheaply-resolvable nodes in `search::<NonPv>`. **Each candidate
+must state its traffic fraction before anything is built.**
+
+**On instruments, the brief is blunt:** `wallclock_panel.py` has had **four
+defects found in one day**, and even repaired its three valid runs are mutually
+inconsistent — **it is not an arbiter**. It is told to prefer what actually
+worked: **race two real PGO binaries on real positions, interleaved and pinned**,
+which is how the ~11% figure was obtained and is harder to get wrong than
+differencing a synthetic frame.
+
+**One label is pre-emptively enforced:** lazy or staged evaluation may change node
+counts, and **an arm that changes node counts is FUNCTIONAL, not a speedup** — it
+needs a strength test, not a speed test. That is a legitimate arm; it must not be
+reported as a free win.
+
+Closed in-brief so they are not re-litigated: memory locality (no eleventh
+prefetch arm), branch mispredicts, `forward_into` internals, the fold shape
+dispatch (**already a 100.00% cover**), `REGS_CAP = 5`, and the generic kernel's
+loop control (three failures plus study 63's declined pricing).
+
+**D49:** sb1252+, four services active, 142 GB disk. **sb1700 in ~16 h.**
