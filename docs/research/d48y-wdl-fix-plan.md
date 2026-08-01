@@ -17291,3 +17291,57 @@ predicate correction that fixed the A/B starvation an hour ago: **a unit's
 progress watchdog; matcher down until the A/B completes, then auto-restored;
 teacher calibration delivered with reproducible tooling; per-node microarch
 surface closed by studies 65–69.
+
+---
+
+## 2026-08-01 13:27 — ★★ LR JUMP→ANNEAL: THE VERDICT IS A NULL. −7.41 ± 10.76.
+
+**Direct A/B, three cycles (sb1630) vs the anchor (sb1540), ONE bar, 1500 games:**
+
+| | |
+|---|---:|
+| **Elo** | **−7.41 ± 10.76** |
+| nElo | −12.12 ± 17.58 |
+| W / L / D | 431 / 463 / 606 (48.93 %) |
+| Ptnml | [30, 182, 353, 160, 25] |
+
+**Ninety superbatches of jump→anneal bought nothing.** The point estimate is
+**negative**; the bar crosses zero. Honest statement: **no measurable gain,
+plausibly a small loss.**
+
+**Consistent in sign with the separate screens:** cycle 3 (+0.69) − anchor
+(+3.47) = **−2.78**. The direct A/B gives **−7.41** and is the better number
+because it carries one bar instead of two.
+
+**The full arc, and the lesson in it:**
+
+| | Elo vs canonical |
+|---|---:|
+| anchor sb1540 | +3.47 ± 11.22 |
+| cycle 1 sb1570 | +9.27 ± 11.04 |
+| cycle 2 sb1600 | +9.50 ± 10.86 |
+| cycle 3 sb1630 | +0.69 ± 10.76 |
+| **A/B: 3 cycles vs anchor** | **−7.41 ± 10.76** |
+
+**Cycles 1 and 2 landing within 0.23 Elo of each other looked like a stable
+plateau at +9.4.** It was two favourable draws from a series whose measured
+point-to-point spread is **13 Elo**. I flagged that risk when reporting cycle 1
+("+9.27 sits comfortably inside the ordinary spread of this series") and again
+when cycle 2 agreed; the A/B is what converted the caution into an answer.
+
+**Design lesson worth keeping, independent of the result:** measuring two things
+against a THIRD party adds their bars and can never resolve a ~6 Elo effect at
+n=1500. Put the two things on opposite sides of ONE match. The same design gave
+the undertraining number cleanly (**+30.31 ± 11.0**) and this null cleanly.
+
+**What survives from the experiment:**
+- **Checkpoints must be taken at the anneal bottom** — measured 13 Elo penalty
+  for a mid-cycle checkpoint (sb1580 −3.94 vs sb1570 +9.27). Now a trainer knob
+  (`export_every`, committed `a7a9133f`).
+- The five-point within-cycle trace (flat at peak LR → rising through anneal →
+  peak at LR=0 → collapse at next jump) is real and reproducible; it is the
+  *shape* that is real, not a net gain.
+
+**Box handed back cleanly and automatically:** `d49abpri` restored the matcher at
+13:26:38 (baseline sb1650), `d49x500` continues to sb2130 under `x500watch`,
+memory 6481 MB.
