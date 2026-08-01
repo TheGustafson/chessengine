@@ -59,6 +59,34 @@ Reduction was never the cause; the low node count was the SYMPTOM of failing low
 | Blunders are RARE in still-playable positions | **0.16%** of our moves at wp ≥ 0.10 (6 of 3,698 scored). At the 0.06 bar it is ~1.3% |
 | 56% of our moves in lost games come from still-playable positions | 3,698 of 6,600 scored, `best_cp ≥ −250` |
 
+## MOVE ORDERING — the first census, 2026-08-01 (perf study 70)
+
+Full writeup: `docs/research/perf-study-70-move-ordering-census.md`. Instruments:
+`--features census70` (the census) and `--features arm70` (one runtime-configurable
+build for every candidate), both verified node-identical to the shipped tree.
+
+| claim | deciding evidence |
+|---|---|
+| **First-move beta-cutoff rate is 0.845 at NonPV nodes** — measured for the first time | uho300 @ d11, 648,988 NonPV cutoffs. PV 0.838, qsearch 0.842, in-check 0.937 |
+| **It splits 15 points on whether a TT move was available** | NonPV **0.9135 with / 0.7645 without**, and 46% of NonPV cutoffs are in the second group, which therefore owns **~70% of the engine's wasted cutoff work**. PV: 0.8812 / 0.6585. Qsearch: 0.9764 / **0.8262** with 90% of its cutoffs TT-less |
+| **Node counts on a position set FAIL their own null** | an INERT ±1 tie-break jitter moves the 50-position wl50 d13 total **+18.3%** (positive in all six seeds, mean +9.3%) and the 300-position d11 total −4.7%. wl50 @ d13 is the set the NNUE gate pins — a fingerprint, not a measurement |
+| The instruments that DO resolve ordering | census statistics: null spread **±0.15 pp** on fhf, ±0.03 pp on the LMR re-search rate. Paired sign test over 1000 positions: better/worse **505 ± 6** across six null seeds |
+| Generation order is a real tiebreak | the ±1 null is one-signed; `partial_insertion_sort` is stable, so equal-scoring quiets keep movegen's order and destroying it costs nodes |
+| **3.64% of NonPV LMR scouts beat alpha and force a full-depth re-search**, costing **21.4%** of the tree (nested, an upper bound) | 1,992,531 scouts, 72,466 re-searches, 994,940 nodes. **41.5% of re-searches are at move TWO**, 71% within moves 2–4 |
+| ~~Evasion ordering is the weak spot~~ — **REFUTED** | in-check fhf is **0.937**, better than not-in-check, because evasion lists are short. And giving quiet evasions the full seven-plane stack reads **−0.84 pp**, eight times the null: more history is WORSE there |
+| ~~The quiet malus SHAPE is a lever~~ — **RETRACTED** | inverting it read −9.90% nodes; **pure magnitude with the shipped shape reads −10.42%**, and shape with magnitude pulled back reads **+1.52%**. `r -= stat_score·RED_STATSCORE_NUM()` wires history magnitude into LMR, so a history arm's node win is a PRUNING win |
+| ~~Cross-kind malus (punish tried quiets when the best move was a capture)~~ — **REFUTED** | −3.90% nodes uncompensated; **−0.29 pp fhf and +5.88% nodes** once magnitude-compensated |
+| Sorting completeness is not the problem | a FULL quiet sort reads −0.02 pp of NonPV fhf (inside the null) |
+| An LVA tiebreak on captures is inert in the main pipeline | −0.02 pp; the good/bad split's `see_ge(m, −score/18)` already prices attacker risk |
+| The quiet threat term and the butterfly weight both EARN their keep | deleting the threat term: **−0.59 pp**; halving butterfly weight: **−0.52 pp**. Falsification controls pass |
+| The ARCHON-original D30 offense term does NOT | `offensew=0` reads **+0.07 pp**, inside the null, for an `attacks()` call per non-pawn quiet. Flagged, not acted on |
+| ~~Our capture history can outweigh MVV because our frame is compressed~~ — **REFUTED** | `PIECE_VALUES` is 208/781/825/1276/2538, exactly SF `eca43a97`'s frame |
+| ~~We clobber TT moves on a moveless store~~ — **REFUTED** | `TtEntry::save` rule 1 already preserves them |
+| **LANDED: quiescence recapture discount** (`QS_CAPTURE_DEFENDED_NUM = 56`) | qsearch fhf **+3.51 pp** against a ±0.16 pp null. Qsearch has no good/bad SEE split and `QS_LATE_MOVE_LIMIT = 2`, so mis-ordering DELETES a capture rather than delaying it. The same term in the MAIN pipeline is inert (−0.01 pp) and is not paid for |
+| **The ordering metric GOODHARTS** | that discount's fhf curve is still climbing at the principled constant (full recapture, +4.63 pp) where the search is already worse (+1.19% nodes, 493/507 paired vs −0.50% and 519/481 at 56). Shipped at 56 |
+| **LANDED: capture history on evasion captures** | in-check fhf **+0.64 pp** against a ±0.11 pp null. Capture history was consulted for every capture in the engine except the ones played while in check — 27% of NonPV cutoffs. Applying the recapture discount to evasions too CUTS this to +0.41 pp, so evasions deliberately do not get it |
+| Both landed together | −1.31% nodes paired over 1000 positions at d10 (null spread ±1.4%, so directional). SPRT vs the same-source PGO baseline: **in flight** |
+
 ## WHY WE LOSE — the holistic answer (2026-07-28, full 404-game corpus)
 
 Full writeup: `searchopt/results/WHY-WE-LOSE-d48x.md`. Counted, not estimated.
