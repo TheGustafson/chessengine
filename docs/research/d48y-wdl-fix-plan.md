@@ -17029,3 +17029,39 @@ and which the blend will need.
 Told explicitly that "the frames are close enough" and "this needs the training
 loop to verify" are not findings — the entire purpose is to catch a bad
 conversion in a regression rather than twelve superbatches later.
+
+---
+
+## 2026-08-01 12:48 — ★ ROOT-CAUSED THE STARVATION BUG: `is-active` on a LOOP service is always true
+
+**The anchor A/B (`d49ab2`) had been stuck since 12:25** and would have starved
+**forever**. Its wait condition is `while systemctl is-active --quiet d49xml`.
+**`d49xml` is a long-running LOOP service** — it stays `active` *between* screens,
+not just during them. So the condition never clears, no matter how idle the box
+actually is.
+
+**This is the same bug that killed the 535 arm this morning**, which I diagnosed
+then as "the matcher screens near-continuously so the arm never gets a slot". That
+description was wrong in an important way: it is not that the slot is rare, it is
+that **the slot can never be detected**. Same wrong wait-condition, and I wrote it
+twice.
+
+**The correct predicate is the WORK, not the SERVICE:** `pgrep -c fastchess`.
+A loop service's `is-active` says the supervisor is alive; it says nothing about
+whether a match is running.
+
+**Fixed with `d49abpri`**, which:
+1. waits for `fastchess` to hit **zero** — the actual work, letting the in-flight
+   sb1630 screen finish (23 min into ~25, and it is cycle 3's own checkpoint vs
+   canonical, so worth keeping);
+2. **stops the matcher** so the A/B genuinely has the box;
+3. waits for `d49ab2` to complete;
+4. **restores the matcher**.
+
+**Generalisation worth keeping:** never gate on `is-active` of a service that
+loops. Gate on the process that does the work, or on a file the work produces.
+Every "wait for X to be idle" in this project's scripts should be re-read with
+that distinction in mind.
+
+**Live:** D49 continuation sb1639 (177–185k pos/s, self-restarting), teacher
+calibration agent working CPU-only, memory 6252 MB.
