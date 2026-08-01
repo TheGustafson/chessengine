@@ -16334,3 +16334,44 @@ now seen three detached jobs report healthy while dead (study 70's chain twice,
 my own LR orchestrator once), and every one looked fine at launch.
 
 **Live:** cycle 1 → sb1570; tunables SPRT running NNUE-verified; memory 6179 MB.
+
+---
+
+## 2026-08-01 09:05 — ★ THE TUNABLES ARE NEUTRAL. My revert was unjustified.
+
+**Tunables SPRT, NNUE-verified, n=1420 of 1500: −0.98 ± 10.62.**
+
+| measurement | engine actually tested | result |
+|---|---|---|
+| `sprt68` (05:19) — **VOID** | **PSQT both sides** | −29.49 ± 14.88 |
+| `d49retest3` (08:43) — valid | **NNUE, EvalFile verified on the live argv** | **−0.98 ± 10.62** |
+
+**The 154 SF `ebcea3ef` values are statistically indistinguishable from our
+`eca43a97` set at 25k fixed nodes.** They are neither the disaster the broken
+instrument claimed nor an improvement.
+
+**So the revert at 05:32 (`d5f89245`) was made on a measurement of an engine we
+do not play, and its stated justification is gone.** What remains true is only
+that the values are *not proven better* — which is a completely different claim
+from the −29 Elo regression I reported.
+
+**Why this arm is trustworthy where the last one was not**, both fixed:
+1. **NNUE, not PSQT** — `option.EvalFile=…d48x-1280-sb520-ema-s600.cenn` read off
+   the RUNNING fastchess argv, not inferred from the script.
+2. **A clean pair** — `archon-notun` (587683) vs `archon-tun` (486897), both PGO
+   from today's main, differing ONLY in the 154 values. The original pair also
+   differed by study 68's changes, and its baseline `archon-s25` was separately
+   found to be stale.
+
+**Owner's call, and it is a real choice rather than a formality:** main currently
+does NOT have the tunables. Restoring them is one `git revert d5f89245`. The
+honest summary is *"no measured difference at our TC"* — so the argument for
+carrying them is that they are Stockfish's current values and closer to upstream,
+and the argument against is that a neutral change is churn. **The VVLTC
+hypothesis also remains untested**: the tip commit of that range is literally
+"VVLTC parameters tweak", and everything here was measured at 25k fixed nodes,
+which is very short.
+
+**Also this tick:** the tb bridge for the LR cycles is confirmed structurally
+sound — `tb_shim` uses `COMP.search()`, which matches the journald-prefixed lines
+(`match()` would not have). Cycle 1 at sb1542.
