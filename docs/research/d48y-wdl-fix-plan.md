@@ -13319,3 +13319,52 @@ system-wide load check over-conservative**, which is visible here as a panel wit
 
 **D49:** sb1246, heldout ema **0.010503** — still the run's lowest and still
 falling. Four services active, 6.8 GB free.
+
+## Tick — 2026-07-31 23:0x, SPEED, MEASURED FOUR WAYS (user request)
+
+Built the **study-20-era commit `762d9860` (2026-07-29) with PGO** and raced it
+against current main and two Stockfish builds — 13 positions (startpos + UHO
+book), 2 s each, 1 thread, 16 MB, **pinned to core 2, all four interleaved**:
+
+| engine | median nps | depth | vs old ARCHON |
+|---|---:|---:|---:|
+| ARCHON old (study-20 era) | 712,335 | 22.0 | 1.000× |
+| **ARCHON new** (post-study-63) | **792,992** | 23.0 | **1.113×** |
+| **SF dev `eca43a97`** (SINGLE-net, PGO) | **1,001,610** | 24.0 | **1.406×** |
+| Stockfish 18 (dual-net, stock) | 901,469 | 22.0 | 1.266× |
+
+**The whole perf programme since study 20 is worth ~11% of real speed** —
+measured directly, not derived. **Single-net SF is 1.26× our current speed.**
+
+### Two corrections the measurement forced
+
+1. **The 1.6M nps figure was an artifact of the position set.** `wl50.fens` has a
+   **median of 12 pieces** (21 of 50 at ≤11) — it is endgame-heavy, the fastest
+   case for NNUE. Same binary: **2.74M nps** on a 5-piece endgame,
+   **~0.8–1.0M** on real game positions. A 3× spread from composition alone.
+2. **The owner caught a net-configuration error before it reached a conclusion.**
+   `stockfish18` (release) is **dual-net** (`EvalFile` + `EvalFileSmall`); the
+   pinned dev build `eca43a97` is **single-net**, like ours. And the single-net
+   build is **faster** (1.41× vs 1.27×), so comparing against SF18 would have
+   flattered us by ~11 points. The apples-to-apples number is **1.26×**.
+
+**Absolute values are load-dependent** — the same binary read 908k an hour earlier
+and 793k here — but **the ratios are what interleaving protects**, and they held
+across two independent runs (old→new 1.103× then 1.113×). Depth is only roughly
+comparable across engines, since depth means different things under different
+pruning.
+
+**This is the cleanest speed number of the session**, and notably it did **not**
+come from the wall-clock panel — it came from a direct interleaved race between
+real binaries. Given the panel has had four defects found in it today, that is
+worth noting as a methodological point: **racing two binaries on real positions is
+harder to get wrong than differencing a synthetic frame.**
+
+**Consistency check:** ~11% of real speed against **−669 i/n (−10.6%)** of
+instructions. Those are not the same thing and should not be equated, but they are
+the same order — and the shortfall is the same story study 63 told: late-stage
+instruction cuts come off the **tail** of a backend-bound-2:1 machine.
+
+**D49:** sb1252, heldout ema **0.010492** — still the run's lowest, still falling.
+Four services active. **sb1700 in 16.1 h.** Cleaned the s20-era build tree
+(78 MB); 142 GB free.
