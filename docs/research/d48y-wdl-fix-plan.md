@@ -16694,3 +16694,41 @@ sb1600 beats cycle 1's +9.27 and cycle 3 beats that again. `d49ab` will settle i
 directly (cycle-3 vs anchor, one bar).
 
 **Live:** cycle 2 at sb1594/1600, matcher screening sb1590, memory 4387 MB.
+
+---
+
+## 2026-08-01 11:19 — CHECKPOINTS NOW TAKEN AT THE BOTTOM OF THE CYCLE (owner instruction)
+
+**Measured reason for the change**, from the five-point cycle trace: a
+checkpoint 10 sb after a 5× LR jump is **13 Elo weaker** than the anneal-end one
+(**sb1580 −3.94 vs sb1570 +9.27**, 1500 games each) and **7 Elo below the anchor
+it started from**. Exporting every 10 sb was manufacturing weak checkpoints.
+
+**Implemented as a real config knob rather than a one-off:**
+- `jax/archon_jax/spec.py` — new field `export_every: int = 10` (the historical
+  default, so every existing run is unchanged).
+- `jax/tools/pump_train.py:257` — `sb % 10 == 0` became
+  `sb % cfg.export_every == 0`, with the comment carrying the measurement that
+  justifies it.
+- Cycle 3 config: `export_every=1000000`, `superbatches=1630` ⇒ the **only**
+  export is sb1630, the bottom of the cycle. Verified by enumeration:
+  `exports at: [1630]`.
+
+**A subtlety that would have silently defeated this: cycle 3 had ALREADY
+LAUNCHED** when cycle 2 hit sb1600 at 11:14:34, i.e. it had loaded the old config
+before my edit. Editing the JSON would have changed nothing. It had to be
+restarted — checked rather than assumed.
+
+**Also note `export_every=30` was WRONG** and I caught it by enumerating: 1620 is
+divisible by 30, so it would still have exported mid-cycle. Only the
+`superbatches` condition gives exactly one export.
+
+**Took over the orchestrator's remaining work** (`d49c3`), because stopping
+cycle 3 under the old orchestrator would have tripped the new
+DIED-before-target abort I added this morning. `d49c3` relaunches cycle 3 from
+sb1600, waits for sb1630, saves the protected checkpoint, then runs the
+**decisive A/B: cycle-3 sb1630 vs the sb1540 anchor, one match, one bar**.
+
+**Verified live:** `[pump d49-1280] RESUME from sb1600 (fresh Adam transient)`,
+cycle 3 training. **Cycle 2's checkpoint survived** the handover — all four
+`d49lrc2-sb1600-*.bin` present, confirmed on disk. Memory 8877 MB.
