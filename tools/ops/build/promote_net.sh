@@ -146,6 +146,33 @@ if [ "$CUR" != "$NEWD13" ]; then
 fi
 log "  CLAUDE.md current slot verified at ${NEWD13}"
 
+# 6a. PROVE THE CANONICAL PAIR LOADS — always, not just on an arch change.
+#
+# The gate does NOT cover this: check.sh builds its own binary from source using
+# arch.txt and never touches engines/canonical/archon. So a promotion can pass
+# every check while leaving a release binary that cannot load the release net.
+#
+# It happened on 2026-08-02: the new net is CENN-v5 and the then-current
+# engines/canonical/archon (archon-s25) only understood CENN-v2 —
+#   "CENN bad magic: [67,69,78,53]"  ([67,69,78,53] is ASCII "CEN5").
+# The FORMAT VERSION broke the pair, not the arch, so an arch-only guard missed
+# it. Check the pair itself, whatever changed.
+if [ -x "$ARCHON_ROOT/engines/canonical/archon" ]; then
+    if "$ARCHON_ROOT/engines/canonical/archon" nnue-eval \
+         "$(readlink -f "$ARCHON_ROOT/engines/canonical/net.cenn")" \
+         < tools/nnue/calib/wl50.fens 2>&1 | grep -qiE 'ERROR|bad magic|mismatch|cannot'; then
+        log "FATAL: canonical ENGINE cannot load the canonical NET after promotion."
+        "$ARCHON_ROOT/engines/canonical/archon" nnue-eval \
+          "$(readlink -f "$ARCHON_ROOT/engines/canonical/net.cenn")" \
+          < tools/nnue/calib/wl50.fens 2>&1 | grep -iE 'ERROR|bad magic|mismatch' | head -1 | sed 's/^/    /'
+        log "       Repoint engines/canonical/archon at a binary that can, then re-run."
+        exit 7
+    fi
+    log "  canonical engine + net verified loadable"
+else
+    log "  WARNING: engines/canonical/archon missing — cannot verify the pair"
+fi
+
 # 6. prove it
 log "  running the full gate"
 CHECK_NNUE_GATE=1 bash tools/check.sh > "$ARCHON_D49/promote_gate.log" 2>&1
