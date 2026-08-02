@@ -18604,3 +18604,39 @@ If the 768 HalfKA-only net holds up on value, that shows **HalfKA carries most o
 what a VALUE head needs**. It says **nothing** about disagreement. The gap between
 those two answers is precisely what would justify the separate L1 — so this is a
 question to re-ask after the value result, not one the value result settles.
+
+## 2026-08-01 23:55 — 768 HalfKA-ONLY: BOTH ENDS NOW TOOLED, waiting only on the anneal
+
+| piece | state |
+|---|---|
+| `arch-hka768` engine feature (768/16/32) | **built** — tests green, exclusion guard fires, default build byte-identical (Bench 351273) |
+| CENN format for a threatless net | **already existed** — header spec reads `threat_dims: u32 (60720 or 0)` |
+| trainer threat-drop on warm start | **already existed** — `load_warm`: "a halfka_only run warm-starting from a net that HAS threats is exactly the no-threats experiment" |
+| width narrowing 1280 -> 768 | **built** — `jax/tools/transplant_hka768.py` |
+| run spec `d50_hka768.json` | **built + validated** |
+
+**Cross-check that matters:** the target arch expects **18,225,531** params and the
+transplant produces exactly **18,225,531**. Tensor sets match to the parameter.
+
+### The column-selection finding
+Ranking accumulator columns by **how much the HEAD reads them** (`||l1w[col]||`)
+vs by **FT weight norm** agrees on only **70.4 %** of the 768 kept. So ~30 % of
+our 1280 columns are capacity the head has learned to IGNORE — a small,
+independent piece of evidence for the owner's capacity-vs-data thesis. `--rank
+first` is retained as a NULL ARM: if ranked selection does not beat arbitrary
+selection after training, the ranking was noise.
+
+### Two JUDGMENT CALLS in the spec, flagged as such (not measurements)
+1. **LR peak 1.5e-4** (~27 % of D49's original 5.5625e-4 peak), cosine to 1e-5
+   over 100 sb. The transplant DELETES 72.9 % of input rows, so the net must
+   relearn to express with HalfKA alone what it read off the threat channel —
+   closer to a partial re-init than a fine-tune, and the anneal's 1e-5 tail would
+   be far too small. **Diagnostic:** if heldout does not fall within ~10 sb, raise
+   it; if it spikes and stays up, lower it.
+2. **100 superbatches, gated every ~20.** The teacher gain was measured
+   FRONT-LOADED (+30.42 in ~18 sb, then **-1.85 +/- 10.33 over the next 72** at
+   n=1500), so long runs are not how this pays. Recovery from a transplant may
+   take longer than a plain continuation — but **gate early rather than assume**.
+
+**Sequence:** anneal completes (sb1758) -> gate the annealed net -> promote to
+canonical -> transplant -> launch d50_hka768 -> gate at ~sb1778 and ~sb1798.
