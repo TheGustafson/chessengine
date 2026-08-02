@@ -18322,3 +18322,42 @@ tests green (75 passed / 0 failed), PGO built, bench 351273 vs main 300694, and
 running a NON-INFERIORITY SPRT (elo0=-3, elo1=+1) at 2+0.1 — real clock because
 the arm removes work and its whole case is speed. At n=140: -14.90 +/- 20.40,
 LLR -0.20. Early, wide, leaning negative.
+
+## 2026-08-01 22:35 — CORRECTION to the entry above, and the ARCHITECTURE-MATCHED speed number
+
+**I "corrected" the 83,248 claim an hour ago and the correction was WRONG.**
+Checked directly:
+
+```
+eca43a97 :  ONE net,  (83248, 1024, 32, 32, 1)   106 MiB  -- no smallnet
+SF18 tag :  TWO nets, (102384, 1024, 15, 32, 1)  125 MiB  + (22528, 128, 15, 32, 1) 6 MiB
+```
+
+**The "identical 83,248 inputs" claim was always about `eca43a97`, and it is
+CORRECT for eca43a97.** SF18-the-release is a different, larger, dual-net engine.
+I read SF18's banner, saw 102,384, and declared a standing fact wrong — when the
+standing fact was about a different binary. **Read which binary printed the
+number before correcting the record.** [[verify-before-asserting]]; the pinned
+reference is `eca43a97`, never a release tag, in BOTH directions.
+
+**ARCHITECTURE-MATCHED SPEED (identical 83,248 inputs, single net, both PGO,
+interleaved 5 rounds):**
+
+| | median NPS |
+|---|---|
+| archon (PGO main + sb1648) | 1,331,790 |
+| **stockfish eca43a97 PGO** | **1,578,450** |
+| | **1.185x faster** = **~29 Elo** |
+
+So the honest same-architecture speed deficit is **1.185x / ~29 Elo**, not the
+1.231x / ~36 measured against dual-net SF18.
+
+**And the smallnet's value shows up as a residual:** SF18 is 1.231/1.185 =
+**1.039x faster than eca43a97 while carrying a LARGER net** (125 MiB vs 106 MiB,
+102,384 vs 83,248 inputs). A bigger net should be slower. It is faster. **That
+delta is the dual-net gate earning its keep** — which is independent evidence
+for arming ours, on top of the 1.25-1.39x FullThreats-skip ceiling.
+
+**Revised gap decomposition vs eca43a97-class architecture:**
+~29 Elo speed + the rest quality-per-node. Our unarmed smallnet gate's ceiling
+(1.25-1.39x) still EXCEEDS the 1.185x deficit outright.
