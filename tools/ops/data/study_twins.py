@@ -53,6 +53,8 @@ from pathlib import Path
 
 import chess
 
+RAW_MAGNITUDE_CAP = 10_000   # D46 criterion 3
+
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools/forensics"))
 import uciprobe  # noqa: E402
@@ -182,17 +184,28 @@ def main() -> int:
         with mp.Pool(args.workers, initializer=_init,
                      initargs=(args.oracle, args.net, 16)) as pool:
             res = pool.map(_score, jobs, chunksize=8)
-        deltas, changed, ok = [], 0, 0
+        deltas, changed, ok, mate_excluded = [], 0, 0, 0
         for i in range(0, len(res), 2):
             a, b = res[i], res[i + 1]
             if a is None or b is None:
+                continue
+            # D46 criterion 3 drops |raw| > 10000, so a mate-scored pair can
+            # NEVER become a training label and must not count as corpus noise.
+            # Measured before this exclusion, the rule50 mean read 27.6 -> 64.1
+            # -> 62.5 cp with a max of 29,830 -- i.e. uciprobe's mate mapping
+            # ((30000-|n|)*sign), a handful of pairs where the deep search saw
+            # a mate on one side of the clock twin and a draw on the other.
+            # That is a real effect about SEARCH, but it is not noise in the
+            # corpus we would actually build.
+            if abs(a[0]) > RAW_MAGNITUDE_CAP or abs(b[0]) > RAW_MAGNITUDE_CAP:
+                mate_excluded += 1
                 continue
             ok += 1
             deltas.append(abs(a[0] - b[0]))
             if a[1] != b[1]:
                 changed += 1
         report["tiers"][n] = dict(
-            pairs_scored=ok,
+            pairs_scored=ok, mate_excluded=mate_excluded,
             bestmove_changed=changed,
             bestmove_changed_pct=round(100 * changed / max(ok, 1), 2),
             abs_delta_cp=dict(p50=quant(deltas, .5), p90=quant(deltas, .9),
@@ -201,7 +214,8 @@ def main() -> int:
         )
         sys.stderr.write(f"[{n}] moved {changed}/{ok} "
                          f"({100*changed/max(ok,1):.1f}%), |d| p50="
-                         f"{quant(deltas,.5)} p90={quant(deltas,.9)}\n")
+                         f"{quant(deltas,.5)} p90={quant(deltas,.9)} "
+                         f"(mate-excluded {mate_excluded})\n")
 
     p = outdir / f"twins-{args.kind}.json"
     p.write_text(json.dumps(report, indent=2))
@@ -211,12 +225,13 @@ def main() -> int:
     print(f"pairs {len(pairs)}   network blind to the dimension: {blind_pct:.1f}% "
           f"(receipt: archon nnue-eval)\n")
     print(f"{'nodes':>8} {'bestmoveChg%':>13} {'|d|p50':>7} {'|d|p90':>7} "
-          f"{'|d|p99':>7} {'|d|mean':>8}")
+          f"{'|d|p99':>7} {'|d|mean':>8} {'|d|max':>7} {'mateExcl':>9}")
     for n in tiers:
         t = report["tiers"][n]
         d = t["abs_delta_cp"]
         print(f"{n:>8} {t['bestmove_changed_pct']:>13.1f} {d['p50']:>7} "
-              f"{d['p90']:>7} {d['p99']:>7} {d['mean']:>8.1f}")
+              f"{d['p90']:>7} {d['p99']:>7} {d['mean']:>8.1f} {d['max']:>7} "
+              f"{t['mate_excluded']:>9}")
     print("\nEvery cp of this spread is noise the network CANNOT fit: its inputs")
     print("are identical across the pair. Growth with node count is the precise")
     print("form of 'a shallow NNUE cannot learn what a deep search knows'.")
