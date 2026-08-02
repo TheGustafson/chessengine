@@ -18361,3 +18361,27 @@ for arming ours, on top of the 1.25-1.39x FullThreats-skip ceiling.
 **Revised gap decomposition vs eca43a97-class architecture:**
 ~29 Elo speed + the rest quality-per-node. Our unarmed smallnet gate's ceiling
 (1.25-1.39x) still EXCEEDS the 1.185x deficit outright.
+
+## 2026-08-01 22:40 — OWNER RULING: smallnet / cascade eval is BACKBURNERED
+
+**"I have no intention of going for a cascade eval right now. Please put our
+small net on the backburner."** Not a rejection of the measurement — the gate is
+built, its ceiling is real, and the SF18-vs-eca43a97 residual is evidence it
+works. It is simply not the direction now. **Do not re-propose it; the finding is
+recorded above and keeps.**
+
+**What that leaves for the speed half (~29 Elo, architecture-matched):**
+routes already CLOSED by construction are sub-byte FT formats, locality/row
+reordering, prefetch, code layout at every granularity, and branch mispredicts —
+the fold is **MSHR-limited**, so only reducing BYTES TOUCHED moves it.
+
+**The one live single-net route is WIDTH.** [[sf-trades-cheap-layer-for-expensive-one]]:
+on the identical 83,248 inputs SF runs **L1=1024 / L2=32** where we run
+**1280 / 16** — they spend ~1.6x on the cache-resident head to spend ~0.8x on the
+memory-bound FT, and the measured working-set ratio (1.250x) tracks the measured
+speed ratio (1.263x) almost exactly. Our own width study found **768-1536 is
+~Elo-NEUTRAL at equal time**. So narrowing the FT 1280 -> 1024 is the
+architecture change that would close most of the ~29 Elo at ~neutral quality.
+
+**It needs a retrain**, so it is a decision for after the current 500-sb run, not
+an interruption of it. Recorded, not proposed.
