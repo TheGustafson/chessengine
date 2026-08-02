@@ -68,6 +68,7 @@ depends on the caller's cwd.**
 |---|---|
 | `pgo.sh` | Memory-gated PGO build. Takes a **bare name**, always writes to `$ARCHON_ROOT/engines/bin/`, echoes the absolute path. |
 | `merge_gate.sh` | `CHECK_NNUE_GATE=1 tools/check.sh` under a cap, echoing which pins it checked. |
+| `promote_net.sh` | Promote a packed net to canonical: place, repoint, **re-measure BOTH pins** (a net change moves the eval hash too), rewrite check.sh + the CLAUDE.md **current** slot, prove with the full gate, add the ledger row. Refuses rather than half-finishing. |
 
 ## Operating rules these scripts encode
 
