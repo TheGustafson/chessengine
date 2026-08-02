@@ -68,8 +68,16 @@ export ARCHON_ROOT
 #
 # Rule: CODE comes from ARCHON_ROOT (the tree under test); BINARIES, BOOKS and
 # NETS come via asset(), which falls back to ARCHON_MAIN.
-ARCHON_MAIN="${ARCHON_MAIN:-$(git -C "$ARCHON_ROOT" rev-parse --git-common-dir 2>/dev/null | sed 's|/\.git$||')}"
-[ -d "$ARCHON_MAIN" ] || ARCHON_MAIN="$ARCHON_ROOT"
+# NB: --git-common-dir can return a RELATIVE ".git", so resolve to an absolute
+# path first and then take its parent. An earlier version sed'd a trailing
+# "/.git" and left a bare ".git", which passed the -d test (it IS a directory)
+# and silently set ARCHON_MAIN to a useless relative path.
+if [ -z "${ARCHON_MAIN:-}" ]; then
+    _gcd=$(git -C "$ARCHON_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+    ARCHON_MAIN=${_gcd:+$(dirname "$_gcd")}
+    unset _gcd
+fi
+[ -n "${ARCHON_MAIN:-}" ] && [ -d "$ARCHON_MAIN" ] || ARCHON_MAIN="$ARCHON_ROOT"
 export ARCHON_MAIN
 
 # asset RELPATH — echo the first existing absolute path, preferring
