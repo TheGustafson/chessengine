@@ -93,7 +93,14 @@ sed -i "s/NNUE_NODE_PIN-${OLDD13}/NNUE_NODE_PIN-${NEWD13}/" tools/check.sh
 
 # 5. CLAUDE.md CURRENT slot only, then PROVE the old value left it
 sed -i "s/\*\*d13 node total ${OLDD13}\*\*/**d13 node total ${NEWD13}**/" CLAUDE.md
-CUR=$(grep -oE 'd13 node total [0-9]+' CLAUDE.md | head -1 | grep -oE '[0-9]+')
+# CLAUDE.md writes the hash TRUNCATED ("2e1ede95…79c4"), so a full-64-char sed
+# silently misses it and the doc keeps naming the superseded net.
+OLDT="${OLDHASH:0:8}…${OLDHASH: -4}"; NEWT="${NEWHASH:0:8}…${NEWHASH: -4}"
+sed -i "s/${OLDT}/${NEWT}/g" CLAUDE.md
+# NB: take the LAST field, not `grep -oE '[0-9]+'` -- that also matches the "13"
+# inside "d13" and the comparison can then never succeed. This exact bug made the
+# guard refuse a promotion whose edit had in fact landed (2026-08-02).
+CUR=$(grep -oE 'd13 node total [0-9]+' CLAUDE.md | head -1 | awk '{print $NF}')
 if [ "$CUR" != "$NEWD13" ]; then
     log "FATAL: CLAUDE.md current pin slot did not move (still ${CUR}). Fix by hand;"
     log "       do NOT edit a history line — see the header warning."
