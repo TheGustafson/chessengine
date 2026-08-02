@@ -18823,3 +18823,29 @@ same alpha 0.4, same 12 corpora, same gate cadence, same reference net.
 Without it, -212 is unattributable and the owner's width thesis is neither
 supported nor refuted. [[mechanism-over-correlation]] — do not promote "768 is
 bad" from an experiment that changed two things.
+
+## 2026-08-02 05:0x — SCALE SWEEP FINAL (21,600 games): 600 confirmed, 756 refuted
+
+| rank | scale | Elo | +/- | n/arm |
+|---|---|---|---|---|
+| 1 | s900 | +5.60 | 4.07 | 10,800 |
+| 2 | **s600 (SHIPPED)** | +0.97 | 3.95 | 10,800 |
+| 3 | s1068 | +0.39 | 3.97 | 10,800 |
+| 4 | **s756** | **-6.95** | 4.09 | 10,800 |
+
+**s900 - s600 = 4.63 +/- 5.67 (0.82 sigma) — NOT significant.** Tie rule stands;
+canonical remains at 600, no re-promotion.
+
+**Do not read "s900 led all four reads" as corroboration.** The reads are
+CUMULATIVE on the same game set, not independent samples — it is one measurement
+observed four times. [[quote-levels-not-trends]].
+
+**What the 21,600 games bought: 756 is 7.92 below 600 (1.39 sigma) and was last
+in every read.** That is the scale the +30.65 promotion margin was measured at
+and the one that would have shipped without this sweep. The sweep's value was
+NOT picking a winner among the top three (it could not, and did not need to) —
+it was eliminating the one arm that was actually bad.
+
+**Method note:** the round-robin was the right shape. Four separate screens
+against canonical would have spent every game on arm-vs-canonical gaps we do not
+care about, then ranked arms by differencing two noisy numbers.
