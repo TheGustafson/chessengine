@@ -62,6 +62,12 @@ depends on the caller's cwd.**
 | `oom_priority.sh` | Raises `oom_score_adj` on everything disposable so the trainer is the last victim. Structural matching (repo + compilers + node/npm). **Kills nothing.** Merges three earlier scripts. |
 | `watchdog.sh` | Restarts a training unit when its **payload** dies — progress-gated, halts after `MAX_STALL` restarts with no advance. |
 
+### `data/`
+
+| script | purpose |
+|---|---|
+| `lc0_fetch.sh` | Fetch Lc0 training tars newest-first with a manifest (`data/nnue/lc0/manifest.tsv`), a per-file disk floor, and resume. The manifest is what lets the NEXT slice continue with no overlap and no holes. |
+
 ### `build/`
 
 | script | purpose |
