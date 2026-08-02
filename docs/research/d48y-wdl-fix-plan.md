@@ -18876,3 +18876,49 @@ Two reapers armed with retention matched to what each dir is FOR:
 **Verified after reaping: sb100 and sb200 both present with all 4 files, and the
 packed `.cenn` the gates actually played are intact.** The -212 result stays
 reproducible. 36 GB reclaimed, zero evidence lost.
+
+## 2026-08-02 08:0x — ★ ACCOUNT FOR SPEED. Equal-node was the wrong frame for this arm.
+
+**Owner: "Please account for speed in these tests. Ofc going smaller will take us
+slab at equal nodes."** Correct, and it reframes everything reported above.
+
+**A smaller net can only LOSE at equal nodes — cheaper nodes are its entire
+case.** Reporting -212.20 as "the result" measured the arm in the one frame that
+structurally cannot show its advantage.
+
+### Measured inference speed (5 interleaved rounds, matched non-PGO builds)
+| | median nps |
+|---|---|
+| 768 HalfKA-only | **2,136,415** |
+| 1280 canonical | **1,068,027** |
+| | **2.00x — exactly one doubling** |
+
+At the house ~120 Elo/doubling that is **+120 Elo of equal-time credit**, so the
+equal-time deficit is roughly **-212 + 120 = -92**, not -212.
+
+### ⚠ AND MY EARLIER "SPEED BUDGET" WAS WRONG
+I framed -212 as "3-5x the 45-70 Elo speed budget". **That budget only counted
+dropping THREATS** (perf study 7's +25-39 % instructions). It did not count the
+NARROWING. Together they buy a full 2.00x — roughly double what I credited. The
+correct budget is ~120 Elo, and -212 is ~1.8x it, not 3-5x.
+
+### Running now: the actual equal-time match
+768 HalfKA-only **sb200** vs canonical at **2+0.1**, 1500 games, both plain
+`cargo build --release` (matched — a non-PGO vs PGO pair at a real clock would
+measure the toolchain as much as the net).
+
+**Why this matters more than the fixed-node gates:** equal-node answers "better
+per node", which is not the shipping question for an architecture whose whole
+thesis is cheaper nodes. -92 is an ARITHMETIC estimate combining a games result
+with a speed conversion; this match measures it directly.
+
+### Bug fixed on the way
+`-each ${TC:+tc="$TC"} ${TC:-nodes="$NODES" tc=inf}` — `${VAR:-word}` yields
+`$VAR` when VAR is SET, so with TC=2+0.1 it emitted `tc=2+0.1 2+0.1` and
+fastchess rejected it (0 games, and the unit still went inactive looking done).
+Replaced with an explicit MODE array.
+
+**Standing correction for future arms:** any architecture change that trades size
+for speed MUST be reported at equal time, with the fixed-node number labelled as
+the per-node component only. The gate cadence for D50-W768 is fixed-node and
+inherits this flaw — its numbers need the same speed accounting.

@@ -42,6 +42,14 @@ REF_BIN=${REF_BIN:-target-sota/release/chessengine}
 REF_NET=${REF_NET:-engines/canonical/net.cenn}
 GAMES=${GAMES:-1500}
 NODES=${NODES:-25000}
+# TC mode: set TC (e.g. 2+0.1) for a REAL CLOCK instead of equal nodes.
+#
+# ⚠ THIS IS ONLY VALID WITH MATCHED BUILD TYPES. At a fixed node budget speed
+# drops out and a non-PGO candidate may be compared to a PGO reference. At a real
+# clock it CANNOT: the build's speed is then part of the result, and a non-PGO vs
+# PGO pair measures the toolchain as much as the net. Both sides must be built
+# the same way, and the caller is responsible for that.
+TC=${TC:-}
 CONC=${CONC:-3}
 TAG=${TAG:-$(basename "$CAND_NET" .cenn)}
 FASTCHESS=$(asset engines/bin/fastchess)
@@ -71,12 +79,21 @@ for pair in "CAND:$CAND_BIN:$CAND_NET" "REF:$REF_BIN:$REF_NET"; do
     log "  $which ok: $(basename "$b") + $(basename "$n")  eval stdev ${sd:-?}"
 done
 
-log "CROSS-ARCH SCREEN: $TAG vs $(basename "$REF_NET") — $GAMES games @ ${NODES}n conc=$CONC"
-OUT="$ARCHON_D49/xarch-${TAG}.out"
+# Build the mode as an ARRAY. `${TC:-nodes=...}` looks right and is not:
+# ${VAR:-word} yields $VAR when VAR is SET, so with TC=2+0.1 it expanded to
+# `tc=2+0.1 2+0.1` and fastchess rejected it.
+if [ -n "$TC" ]; then MODE=(tc="$TC"); else MODE=(nodes="$NODES" tc=inf); fi
+if [ -n "$TC" ]; then
+  log "CROSS-ARCH SCREEN (REAL CLOCK): $TAG vs $(basename "$REF_NET") — $GAMES games @ TC=$TC conc=$CONC"
+  log "  ⚠ build types must match; real-clock results are LOAD-SENSITIVE"
+else
+  log "CROSS-ARCH SCREEN: $TAG vs $(basename "$REF_NET") — $GAMES games @ ${NODES}n conc=$CONC"
+fi
+OUT="$ARCHON_D49/xarch-${TAG}-${TC:-${NODES}n}.out"
 "$FASTCHESS" \
   -engine cmd="$CAND_BIN" name=cand proto=uci option.EvalFile="$CAND_NET" \
   -engine cmd="$REF_BIN"  name=ref  proto=uci option.EvalFile="$REF_NET" \
-  -each nodes="$NODES" tc=inf \
+  -each "${MODE[@]}" \
   -openings file="$BOOK" format=epd order=random \
   -games 2 -rounds $((GAMES / 2)) -repeat -concurrency "$CONC" \
   -recover -ratinginterval 100 > "$OUT" 2>&1
