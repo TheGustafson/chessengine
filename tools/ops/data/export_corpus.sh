@@ -64,7 +64,7 @@ log "EXPORT ${#INPUTS[@]} input(s) -> $OUT"
 python3 - "$OUT.txt" "${INPUTS[@]}" <<'PYEOF'
 import sys, json, collections
 out_path, inputs = sys.argv[1], sys.argv[2:]
-n_in = n_out = n_nores = n_nocp = n_badclamp = 0
+n_in = n_out = n_nores = n_nocp = n_badclamp = n_unfiltered = 0
 res_counts = collections.Counter()
 frames = set()
 with open(out_path, "w") as out:
@@ -80,6 +80,13 @@ with open(out_path, "w") as out:
                 fen = f[ix["fen"]]
                 cp = f[ix["label_cp"]]
                 res = f[ix["result"]]
+                # An audit-mode (--no-filter) file carries rows the D46 filter
+                # REJECTED. Exporting one would put tactical labels into a
+                # static-eval loss -- the exact 27.5%/32% poisoning the contract
+                # exists to prevent. Refuse the whole file, loudly.
+                if "drop_reason" in ix and f[ix["drop_reason"]].strip():
+                    n_unfiltered += 1
+                    continue
                 if res not in ("1.0", "0.5", "0.0"):
                     n_nores += 1
                     continue
@@ -95,6 +102,7 @@ with open(out_path, "w") as out:
                 n_out += 1
 stats = dict(rows_in=n_in, rows_out=n_out, missing_result=n_nores,
              missing_cp=n_nocp, over_clamp=n_badclamp,
+             d46_rejected_rows=n_unfiltered,
              results={k: v for k, v in res_counts.items()})
 json.dump(stats, open(out_path + ".projstats.json", "w"), indent=2)
 print(json.dumps(stats))
@@ -120,6 +128,10 @@ python3 -c "exit(0 if $NORES == 0 else 1)" || \
      WITH the position, so a miss is a STAGE-2/3 BUG (a lost game_id or a
      truncated PGN), not an acceptable join loss. Fix upstream."
 [ "$OVER" -eq 0 ] || die "$OVER row(s) exceed the +/-2499 clamp — stage 3 did not clamp"
+REJ=$(python3 -c "import json;print(json.load(open('$PS'))['d46_rejected_rows'])")
+[ "$REJ" -eq 0 ] || die "$REJ row(s) carry a D46 drop_reason. This input was
+     produced with --no-filter (AUDIT ONLY). Re-label without it; audit output
+     must never become training data."
 log "  WDL hit-rate ${HIT}% (design target 100%: result carried from the game)"
 
 # (c) result distribution non-degenerate

@@ -227,8 +227,15 @@ def main() -> int:
     drops: dict[str, int] = {}
     kept = 0
     out = open(args.out, "w")
+    # drop_reason is always emitted (empty when the row passed). In --no-filter
+    # audit mode it is the whole point: a node-count study must compare the SAME
+    # positions at every tier, and the filter's own verdict MOVES with the tier
+    # (a deeper search returns a different best move, so a position can be quiet
+    # at 10k and a capture at 100k). Carrying the verdict per row lets a study
+    # intersect on "quiet at every tier" instead of silently comparing different
+    # position sets and attributing the difference to node count.
     out.write("fen\tlabel_cp\traw_cp\tbest\tresult\tply\tplies_to_end\t"
-              "termination\tgame_id\n")
+              "termination\tgame_id\tdrop_reason\n")
     dropf = open(args.out + ".dropped.tsv", "w")
     dropf.write("fen\traw_cp\tbest\treason\n")
 
@@ -242,7 +249,7 @@ def main() -> int:
         # CLAMP LAST — only after the raw magnitude criterion has been applied.
         label = max(-VALUE_SCORE_CAP, min(VALUE_SCORE_CAP, raw)) if raw is not None else ""
         out.write(f"{fen}\t{label}\t{'' if raw is None else raw}\t{best or ''}\t"
-                  f"{result}\t{ply}\t{pte}\t{term}\t{gid}\n")
+                  f"{result}\t{ply}\t{pte}\t{term}\t{gid}\t{reason or ''}\n")
         kept += 1
     out.close()
     dropf.close()

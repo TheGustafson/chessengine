@@ -194,8 +194,9 @@ def main() -> int:
                  terminations=term_counts,
                  kept_per_game=round(n_kept / max(n_games, 1), 2))
     sys.stderr.write(json.dumps(stats, indent=2) + "\n")
-    sp = Path(args.out).with_suffix(".stats.json")
-    sp.write_text(json.dumps(stats, indent=2))
+    # append, never with_suffix(): with_suffix REPLACES .tsv, so a sibling
+    # tool looking for "<out>.stats.json" (as every other stage does) misses.
+    Path(str(args.out) + ".stats.json").write_text(json.dumps(stats, indent=2))
     return 0
 
 
