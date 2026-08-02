@@ -58,6 +58,32 @@ set -uo pipefail
 # Resolved from THIS FILE's location, never from cwd: tools/ops/lib/ -> ../../..
 ARCHON_ROOT="${ARCHON_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 export ARCHON_ROOT
+# ARCHON_MAIN — the checkout that owns the big shared artifacts (binaries,
+# books, nets). Normally identical to ARCHON_ROOT; they diverge when a script
+# runs from a git WORKTREE, which shares the object store but NOT untracked
+# directories. In one such worktree `data/` was a symlink back to the primary
+# checkout while `engines/` was a real, nearly-empty directory — so a script
+# found nets and missed every binary, and an equal-node Stockfish match failed
+# with "our engine not executable" and "stockfish not executable" in one run.
+#
+# Rule: CODE comes from ARCHON_ROOT (the tree under test); BINARIES, BOOKS and
+# NETS come via asset(), which falls back to ARCHON_MAIN.
+ARCHON_MAIN="${ARCHON_MAIN:-$(git -C "$ARCHON_ROOT" rev-parse --git-common-dir 2>/dev/null | sed 's|/\.git$||')}"
+[ -d "$ARCHON_MAIN" ] || ARCHON_MAIN="$ARCHON_ROOT"
+export ARCHON_MAIN
+
+# asset RELPATH — echo the first existing absolute path, preferring
+# ARCHON_ROOT then ARCHON_MAIN. Returns non-zero (and echoes nothing) if absent,
+# so callers can `asset x || asset y` to express a fallback chain.
+asset() {
+    local rel=${1:?asset RELPATH} d
+    case "$rel" in /*) [ -e "$rel" ] && { echo "$rel"; return 0; }; return 1;; esac
+    for d in "$ARCHON_ROOT" "$ARCHON_MAIN"; do
+        [ -e "$d/$rel" ] && { echo "$d/$rel"; return 0; }
+    done
+    return 1
+}
+
 ARCHON_D49="${ARCHON_D49:-/home/nick/.local/share/archon-d49}"
 export ARCHON_D49
 mkdir -p "$ARCHON_D49"
