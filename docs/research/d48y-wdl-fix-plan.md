@@ -18225,3 +18225,47 @@ Restart hit `CUDA_ERROR_OUT_OF_MEMORY` because the dead process still held
 7.6 GB of GPU; the launcher's 120 s retry cleared it. **Recovered to sb1651, no
 OOM since 17:20.** Recommended to the owner: run npm under
 `systemd-run --user --scope -p MemoryMax=2G -p MemorySwapMax=0` so it dies alone.
+
+## 2026-08-01 21:50 — LADDER: even with SF16; the SF18 gap SPLITS into quality and speed
+
+**150-game bullet ladder (2+0.1), PGO main + the sb1648 distilled net:**
+
+| opponent | conditions | result |
+|---|---|---|
+| **Stockfish 16** | 2+0.1 real clock | **+6.95 +/- 26.09** — even |
+| **Stockfish 18** | 2+0.1 real clock | **-77.71 +/- 41.10** (n=97, running) |
+| **Stockfish 18** | 25k equal nodes | **-44.36 +/- 13.12** (n=1000) |
+
+**★ THE DECOMPOSITION.** Same opponent, two conditions: equal-node **-44.4**,
+real clock **-77.7**. Equal-node deliberately removes speed; a clock puts it
+back. **So the SF18 gap is ~44 Elo of QUALITY-PER-NODE + ~33 Elo of SPEED.**
+That is the first time we have priced the two halves separately, and it says NPS
+work is worth about a third of the remaining gap — the half that needs no
+training run. (n=97 on the real-clock arm, bar +/-41, so treat 33 as an estimate
+with a wide error, not a constant.)
+
+**SPRT ACCEPTED AND SHIPPED:** main (studies 70+71 + tier-0/0b simplification)
+vs canonical at 2+0.1 = **+7.19 +/- 5.68, LOS 99.35 %** over 1740 games. This
+also DISCHARGES study 71's outstanding debt: its +11.00 came from a fixed-node
+test structurally blind to its +3.99 % instructions/node, and it survives being
+charged for that at a real clock.
+
+**DISK UNBLOCKED — the primary strength lever can now finish.** Projected writes
+for the remaining run were 231 GB against 100 GB free; the run would have died
+around **sb1891 of 2130**. The fixed reaper is now live (`ckptreaper.service`,
+15-min sweeps) and freed **32.7 GB in its first pass (100G -> 131G)**, with
+steady-state bounded from here.
+
+**Correction to my own framing, twice over:** I had described the reclaimable
+mass as old experiments' data. Per-prefix measurement showed **every reclaimable
+byte is the LIVE run's own superseded intermediates** — the finished runs
+(d49lrc1/2/3, d49anchor, d49-1280) have ZERO reclaimable, because newest-4 +
+every-100 already protects everything they hold. That made the deletion far more
+clearly safe than I had been presenting it. `KEEP_ALWAYS` now pins every
+superbatch a RESULT is tied to: 400, 700, 1630 (warm point), 1642, 1648 (+30 net),
+verified by dry run at 0 reap lines each.
+
+**Tick loop set to 20 min** (cron 272c7b31): "maximally strong value-only NNUE
+engine". Next levers, in order: (1) the alpha sweep — 0.4 bought +30, nobody has
+tested 0.7/1.0 against the remaining ~58 of the +90.7 net gap; (2) NPS work, now
+priced at ~33 Elo vs SF18; (3) basket A's non-inferiority SPRT.
