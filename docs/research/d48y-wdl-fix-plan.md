@@ -18429,3 +18429,58 @@ less speed than the byte count suggests.
 **The transplant settles this definitively either way** — it produces the first
 768 net we have had, so step 5 IS the measurement. Just do not pre-commit to the
 1.667x figure when sizing the expected win.
+
+## 2026-08-01 23:05 — OWNER: make the 768 net HalfKA-ONLY (drop FullThreats). Scaffolding ALREADY EXISTS.
+
+**Proposal: 768 accumulator, HalfKA + pawn features only, no FullThreats, 16 -> 32
+head. "Our fastest net."**
+
+### Both ends already support it
+- **Trainer:** `spec.py:189` `halfka_only: bool = False  # D40_HALFKA_ONLY (drops
+  the threat tensor entirely)`, wired via `arch_halfka_only` in the run spec.
+- **Engine loader:** already handles a net with no threats channel
+  (`sota_loader.rs:162` "Empty if the net has no threats channel").
+- **Arch features:** `arch-d47v` already pins **L1 = 768**; `arch-hka2048` is an
+  existing **HalfKA-only** probe arch. The two have simply never been COMBINED —
+  a new `arch-hka768` (768/16/32, HalfKA-only) is the whole engine-side change.
+
+### The speed win is ALREADY MEASURED (perf study 7 §5)
+From the `arch-hka2048` doc comment, `instructions:u` (the only counter with a
+0.000 null), 3/3 rounds: **dropping the threat rows buys +25 % instructions
+(768/wl50) to +39 % (1280/middlegame) — roughly 45-70 Elo** at the house
+120 Elo/doubling.
+
+**That EXCEEDS the entire architecture-matched speed deficit** (1.185x / ~29 Elo
+vs eca43a97) on its own, before any width effect.
+
+### Working set, for context
+| net | FT bytes | vs ours |
+|---|---|---|
+| ours (83,248 x 1280) | 101.6 MB | 1.00x |
+| 768 with threats | 61.0 MB | 0.60x |
+| **768 HalfKA-only (22,528 x 768)** | **16.5 MB** | **0.162x** |
+
+**I SPECULATED that 16.5 MB might become L3-resident (7700X L3 = 32 MB) and
+"the memory wall disappears". That is NOT a finding** — the measured win is an
+INSTRUCTION-count win (fewer rows to fold), and `instructions:u` says nothing
+about cache residency. The L3 effect would be additive if real; do not size the
+experiment on it.
+
+### Two warnings carried from the same doc comment
+1. The old **"1.78x at 1280 / 1.40x at 768"** threat-cost figure was **REFUTED**
+   (a 2-position movetime instrument on a loaded box, reading 0.1-0.15 high, on a
+   stripped net that searched a different tree).
+2. **`arch-hka2048`'s choice of 2048 was derived from that refuted number** and
+   "needs re-deriving from the study's grid before this arch is launched". So do
+   not inherit 2048 — and re-derive rather than assume for 768 too.
+
+### The honest unknown
+HalfKA is **27.1 %** of our input rows; FullThreats is **72.9 %**. Dropping them
+removes most of the input space. **The speed win is measured; the QUALITY cost is
+not.** The experiment is worth running precisely because equal-time is what
+decides it: 45-70 Elo of speed is a large budget to pay quality out of.
+
+**Sequence unchanged:** cook -> gate sb1720 vs sb1648 -> anneal -> canonical ->
+THEN transplant. The transplant now drops threat rows as well as narrowing, so it
+is a partial transfer (keep the HalfKA block, discard the threat block), not a
+pure net2net.
