@@ -29,6 +29,7 @@ depends on the caller's cwd.**
 | `match/` | screens, SPRTs, and verdict harnesses |
 | `guard/` | memory / OOM / watchdog daemons |
 | `build/` | PGO builds and merge gates |
+| `data/` | the self-play → labelled-corpus pipeline, and the studies that set its parameters |
 | `archive/` | superseded one-shots, kept for provenance, **not maintained** |
 
 ## Index
@@ -64,9 +65,22 @@ depends on the caller's cwd.**
 
 ### `data/`
 
+The self-play corpus pipeline. Four stages, each resumable, each leaving its
+own stats file; `run_pipeline.sh` chains them. Design and the measured
+operating point: `docs/research/selfplay-data-design-2026-08-02.md`.
+
 | script | purpose |
 |---|---|
-| `lc0_fetch.sh` | Fetch Lc0 training tars newest-first with a manifest (`data/nnue/lc0/manifest.tsv`), a per-file disk floor, and resume. The manifest is what lets the NEXT slice continue with no overlap and no holes. |
+| `run_pipeline.sh` | **Start here.** Stages 1–4 for one mode → a trainer-ready corpus plus the provenance for every row. Stage boundaries are resumable. |
+| `gen_games.sh` | Stage 1. Plays games in three modes (`self` / `sf18` / `sf16`) at a fixed node budget, keeps the PGN as the provenance artifact, writes a manifest with sha256 of engine, net, opponent and book. `-repeat` only in the vs-Stockfish modes (self-play with it produces bit-identical duplicate games — measured); resign adjudication is `twosided` because our printed cp is ~2.07× Stockfish's and a one-sided threshold truncates asymmetrically. |
+| `pgn_positions.py` | Stage 2. PGN → candidate positions, sampled evenly across each game's plies so phases appear in the proportion we play them. Emits absolute game ply, the White-relative result, `plies_to_end` and `termination`. |
+| `label_positions.py` | Stage 3. **The D46 filter site** — the only layer holding both the raw score and the oracle best move. Filters, then clamps, never the reverse. `--null` relabels and diffs to prove labels are reproducible; `--no-filter` is audit-only and its output is refused by stage 4. |
+| `export_corpus.sh` | Stage 4. Labelled TSV → `FEN \| cp \| wdl` → 32-byte bulletformat, with the contract's §5 checks as hard aborts. WDL join hit-rate is 100% by construction here (the result rides with the position), so a miss is a bug, not an acceptable loss. |
+| `census.py` | What a corpus is a sample OF: phase, ply, label bands, decisiveness, and the share of rows where the WDL column is actually doing work (neither dead-drawn nor already-decided). |
+| `study_label_quality.py` | Picks the oracle node count. Eval-outcome disagreement vs nodes, on a paired position set, with a sampling null printed beside every tier. |
+| `study_twins.py` | Irreducible label noise: pairs identical in the network's input space that differ only in something it cannot see. Measures the part of a label no capacity can ever fit. |
+| `study_oracles.py` | Whether the choice of Stockfish actually changes the labels, with a same-binary null arm. |
+| `lc0_fetch.sh` | (vetoed 2026-08-01, kept for reference) Fetch Lc0 training tars newest-first with a manifest, a per-file disk floor, and resume. |
 
 ### `build/`
 
