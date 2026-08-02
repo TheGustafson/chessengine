@@ -168,33 +168,12 @@ fn rfp_margin(
         + correction_value.abs() / params::RFP_CORR_DIV()
 }
 
-/// The N10 RFP prune margin with the threat-coupled relaxation folded in
-/// (design/10 §3.4, Wave-G item 23, D30): the base [`rfp_margin`] minus
-/// `RFP_THREAT_MARGIN` when NONE of our pieces is currently threatened — a
-/// position with nothing hanging is safe enough to prune a little more
-/// readily. The caller supplies the predicate
-/// (`(all_threats() & occupancy(us)).is_empty()`, itself pinned by
-/// `rfp_threat_coupling_is_disarmed_when_an_own_piece_is_attacked`); keeping
-/// the subtraction in a pure function pins its SIGN and MAGNITUDE, so a wiring
-/// regression that dropped the term or flipped its sign changes this returned
-/// margin and a unit test catches it apart from the make/prune control flow.
-#[inline]
-fn rfp_prune_margin(
-    depth: Depth,
-    tt_hit: bool,
-    improving: bool,
-    opponent_worsening: bool,
-    correction_value: i32,
-    no_own_threat: bool,
-) -> Value {
-    rfp_margin(
-        depth,
-        tt_hit,
-        improving,
-        opponent_worsening,
-        correction_value,
-    ) - params::RFP_THREAT_MARGIN() * Value::from(no_own_threat)
-}
+// The RFP threat-coupled relaxation (`rfp_prune_margin`'s `no_own_threat`
+// flag − RFP_THREAT_MARGIN, Wave-G item 23, D30 — an ARCHON original) was
+// removed 2026-08-01 by basket A of the simplification plan: its removal
+// measured −3.5 ± 14.1 over 1185 games (neutral), and the whole two-margin
+// lazy-`all_threats` dance at the N10 site existed only to make the term
+// affordable. `rfp_margin` above is now the prune margin.
 
 // Speculative TM/margin head hooks DELETED here 2026-08-01 (simplification
 // plan tier 0, items 0.7/0.8): `score_tm_factor` + the TM_SCORE_* knobs (the
@@ -2918,20 +2897,13 @@ impl Worker {
                 use crate::eval::nnue::foldcount as fc;
                 // The margin never reads the eval, so the whole predicate
                 // collapses to `eval >= beta + m` for one effective `m`.
-                // `all_threats()` is a memo on the position key, so forcing it
-                // here changes timing and nothing else.
-                let no_own_threat = {
-                    let us = self.board.side_to_move();
-                    (self.board.all_threats() & self.board.occupancy(us)).is_empty()
-                };
                 let threshold = beta
-                    + rfp_prune_margin(
+                    + rfp_margin(
                         depth,
                         tt_hit,
                         improving,
                         opponent_worsening,
                         correction_value,
-                        no_own_threat,
                     );
                 // Every candidate goes through the SAME TT-value substitution
                 // and the same correction the real `eval` did, so the
@@ -3004,59 +2976,20 @@ impl Worker {
                 && !is_loss(beta)
                 && !is_win(eval)
             {
-                // Threat-coupled relaxation (Wave-G item 23, D30, Reckless R8):
-                // a position where none of our pieces is currently threatened
-                // is safe enough to prune a little more readily. Keys on ALL
-                // our pieces — pawns included — matching the doc's "no own
-                // piece is currently threatened" and Reckless's `all_threats()
-                // & colors(stm)`; a hanging pawn still blocks the relaxation.
-                // …but the threat map is only ever ABLE to change this node's
-                // answer inside one `RFP_THREAT_MARGIN`-wide band, so it is
-                // computed lazily (perf study 52 §5.5).
-                //
-                // `rfp_prune_margin` subtracts `RFP_THREAT_MARGIN * flag`, and
-                // `RFP_THREAT_MARGIN` is positive (55), so `m(true) <= m(false)`
-                // unconditionally — the flag can only ever make pruning EASIER.
-                // Writing `C(f)` for `eval - m(f) >= beta`, that ordering gives
-                // `C(false) => C(true)`, and therefore
-                //
-                //     C(flag)  ==  C(false) || (flag && C(true))
-                //
-                // exactly, for both values of `flag`. The right-hand side never
-                // evaluates the flag when `C(false)` already prunes or when
-                // `C(true)` cannot, which confines `all_threats()` to the band
-                // where the relaxation decides.
-                //
-                // Why this is worth doing: `Board::ensure_threats` memoises on
-                // the position key, but RFP runs BEFORE any child search, so the
-                // entry is cold here and this is a full `compute_threats()`
-                // sweep. Measured on the precise (IBS) instrument: the
-                // `all_threats` phase is 3.17% of `search::<NonPv>`'s executed
-                // micro-ops — 0.90% of ALL engine ops — at this one call site.
-                // Nodes that prune on the un-relaxed margin, or that go on to
-                // fail high before `MovePicker::init_quiets` asks for the map,
-                // now never build it.
-                //
-                // NOTE for anyone re-tightening this: the win is only real
-                // while the map is genuinely unused on the paths that skip it.
-                // It is a MEMO, so deferring never duplicates work — the first
-                // later consumer pays what this site used to.
-                let rfp_margin = |flag: bool| -> Value {
-                    rfp_prune_margin(
+                // Basket A (2026-08-01) removed the D30 threat-coupled
+                // relaxation and its two-margin lazy-`all_threats` dance —
+                // the margin is one call again, and RFP no longer builds the
+                // threat map at all.
+                if eval
+                    - rfp_margin(
                         depth,
                         tt_hit,
                         improving,
                         opponent_worsening,
                         correction_value,
-                        flag,
                     )
-                };
-                let prune = eval - rfp_margin(false) >= beta
-                    || (eval - rfp_margin(true) >= beta && {
-                        let us = self.board.side_to_move();
-                        (self.board.all_threats() & self.board.occupancy(us)).is_empty()
-                    });
-                if prune {
+                    >= beta
+                {
                     #[cfg(feature = "foldcount")]
                     if fresh_eval {
                         crate::eval::nnue::foldcount::note_search(
@@ -4108,8 +4041,8 @@ impl Worker {
             // are never cut nodes — and only THIS call writes
             // `pv_table[ply + 1]`, which is §3.3's freshness invariant:
             // a step-13 PV update must never stitch a child row a
-            // zero-window scout left stale (see `child_pv_fresh` below).
-            let mut child_pv_fresh = false;
+            // zero-window scout left stale (holds by construction since
+            // basket A removed the step-12 dither — see step 13).
             if NT::PV && (move_count == 1 || value > alpha) {
                 #[cfg(feature = "search-control")]
                 let trace_nodes_before_pv = self.nodes;
@@ -4126,7 +4059,6 @@ impl Worker {
                     trace_pv_research = true;
                     trace_pv_research_nodes = self.nodes - trace_nodes_before_pv;
                 }
-                child_pv_fresh = true;
             }
             self.undo_move(m);
 
@@ -4248,50 +4180,33 @@ impl Worker {
                 self.update_root_move(m, value, alpha, beta, move_count, self.nodes - nodes_before);
             }
 
-            // Step 12 — the equal-value dither: near the leaves an
-            // equal-to-best value is occasionally promoted — deliberate
-            // diversity so equal (typically repetition-flavored) lines do
-            // not all resolve to the first one found. The `is_win` guard
-            // keeps the whole decisive band out (§8.11: mate distances
-            // are never dithered), and short-circuiting on `value ==
-            // best_value` first keeps `abs()` off the -INFINITE sentinel.
-            // Only the comparisons below see `inc` — stored values and
-            // window updates stay raw.
-            let inc = Value::from(
-                value == best_value
-                    && ply + params::DITHER_PLY_MARGIN() >= self.root_depth as usize
-                    && (self.nodes & params::DITHER_NODE_MASK()) == 0
-                    && !is_win(value.abs() + 1),
-            );
-            if inc != 0 {
-                self.stats.gate(Gate::Dither);
-            }
+            // Step 12's equal-value dither (an ARCHON original, never
+            // validated by games; fired 0.94/1k nodes) was removed by
+            // basket A, 2026-08-01, together with the `child_pv_fresh`
+            // truncation dance it required. The `value_draw` dither (3-fold
+            // blindness damping) is distinct and stays.
 
-            // Step 13 — best/alpha/beta updates (dither-biased compares).
-            if value + inc > best_value {
+            // Step 13 — best/alpha/beta updates.
+            if value > best_value {
                 best_value = value;
                 if fl_mode != 0 {
                     fl_move = m;
                 }
-                if value + inc > alpha {
+                if value > alpha {
                     best_move = m;
                     #[cfg(feature = "census70")]
                     {
                         c70_best_idx = move_count;
                     }
                     if NT::PV {
-                        // §3.3 freshness: the equal-value dither can
-                        // promote a move whose LAST child call was a
-                        // zero-window scout (`value == alpha`, `inc ==
-                        // 1`) — `pv_table[ply + 1]` then still holds an
-                        // earlier sibling's line, and stitching it would
-                        // publish an illegal PV tail (caught by fastchess
-                        // as "Illegal PV move" in the P7 clock games).
-                        // Truncate instead: clear the stale row so the
-                        // PV honestly ends at `m`.
-                        if !child_pv_fresh {
-                            self.pv_table[ply + 1].clear();
-                        }
+                        // §3.3 freshness holds by construction now that the
+                        // step-12 dither is gone: promotion needs a strict
+                        // `value > alpha`, and under NT::PV that implies the
+                        // full-window (c) call just ran and wrote
+                        // `pv_table[ply + 1]` (a scout that stayed <= alpha
+                        // cannot be promoted). Basket A removed the
+                        // `child_pv_fresh` truncation that guarded the
+                        // dither's value==alpha promotions.
                         update_pv(&mut self.pv_table[..], ply, m);
                     }
                     if value >= beta {

@@ -42,7 +42,7 @@ use crate::moves::{MAX_MOVES, Move, MoveList};
 use crate::search::params::{
     CAPTURE_MVV_FACTOR, EVASION_CAPTURE_BONUS, GOOD_CAPTURE_SEE_DIVISOR, GOOD_QUIET_THRESHOLD,
     QS_CAPTURE_DEFENDED_NUM, QUIET_CHECK_BONUS, QUIET_CHECK_SEE_MARGIN, QUIET_LOW_PLY_WEIGHT,
-    QUIET_MAIN_HISTORY_WEIGHT, QUIET_OFFENSE_FACTOR, QUIET_PAWN_HISTORY_WEIGHT, QUIET_SEE_PENALTY,
+    QUIET_MAIN_HISTORY_WEIGHT, QUIET_PAWN_HISTORY_WEIGHT, QUIET_SEE_PENALTY,
     QUIET_SORT_DEPTH_FACTOR, QUIET_THREAT_FACTOR,
 };
 use crate::types::{DEPTH_QS, Depth, PieceType, VALUE_ZERO, Value};
@@ -175,14 +175,10 @@ pub(crate) fn partial_insertion_sort(moves: &mut [ExtMove], limit: i32) {
 struct PtRow {
     /// Squares attacked by an enemy piece strictly cheaper than this type.
     threat: Bitboard,
-    /// Reverse attack fan onto the undefended enemies this type may threaten.
-    offense: Bitboard,
     /// Squares from which this type would give check.
     check: Bitboard,
     /// `pt.value() * QUIET_THREAT_FACTOR()`, premultiplied.
     threat_w: i32,
-    /// `pt.value() * QUIET_OFFENSE_FACTOR()`, premultiplied.
-    offense_w: i32,
     /// Study 71 `qeq` arm only: squares attacked by an EQUAL-or-lesser piece.
     #[cfg(feature = "arm70")]
     eq: Bitboard,
@@ -915,26 +911,12 @@ impl MovePicker {
             by_rook,         // Queen
             Bitboard::EMPTY, // King
         ];
-        // Offense (D30): the "create a threat" counterpart — for each of our
-        // piece types, the undefended enemy pieces (not in the opponent's own
-        // attack map) worth at least as much as the mover; a quiet moving to a
-        // square attacking one earns the offense bonus.
-        let them = us.flip();
-        let occ = board.all_occupancy();
-        let undefended = board.occupancy(them) & !all_threats;
-        let eq = board.pieces(them, PieceType::Queen);
-        let er = eq | board.pieces(them, PieceType::Rook);
-        let eb = er | board.pieces(them, PieceType::Bishop);
-        let en = eb | board.pieces(them, PieceType::Knight);
-        let ep = en | board.pieces(them, PieceType::Pawn);
-        let vulnerable: [Bitboard; 6] = [
-            ep & undefended, // Pawn: any undefended enemy
-            en & undefended, // Knight: >= knight value
-            eb & undefended, // Bishop
-            er & undefended, // Rook
-            eq & undefended, // Queen: only an undefended queen
-            Bitboard::EMPTY, // King
-        ];
+        // The D30 offense term (the "create a threat" counterpart of the
+        // threat tier — reverse fans onto undefended enemies; an ARCHON
+        // original, SF's score<QUIETS> has no analogue) was removed by
+        // basket A of the simplification plan, 2026-08-01: `offensew=0`
+        // read +0.07 pp fhf, inside the census null, and it was the last
+        // `attacks()` work in this hot symbol.
         let main_plane = &hist.main[us as usize];
         let pawn_plane = hist.pawn_slot(board.pawn_key());
         // Offsets 1,2,3,4,6 → cont_hist[0,1,2,3,5]; offset 5 is not read for
@@ -946,45 +928,6 @@ impl MovePicker {
         let c6 = hist.cont_ref(self.cont_hist[5]);
         let ply = self.ply;
         let low_ply_plane = (ply < LOW_PLY_SIZE).then(|| &hist.low_ply[ply]);
-        // Hoist the slider-table `LazyLock` deref (CLAUDE.md hot-loop rule).
-        // Since perf study 12 §5 the offense term no longer calls `attacks()`
-        // per quiet — it builds one reverse fan per piece type below — so this
-        // is now paid once per `init_quiets` and read only inside that fan.
-        let att_tables = crate::attacks::tables();
-
-        // Perf study 12 §5 — the offense term, turned inside out.
-        //
-        // The test is `attacks(pt, to, occ) & vulnerable[pt] != 0`, which cost
-        // ONE magic-bitboard lookup per scored quiet (Stockfish's `score<QUIETS>`
-        // has no analogue at all — this is an ARCHON original, D30). The attack
-        // relation is SYMMETRIC under a fixed occupancy: `sq ∈ attacks(pt, to,
-        // occ)` iff `to ∈ attacks(pt, sq, occ)`, because both say "sq and to lie
-        // on a pt-ray and every square strictly between them is empty in occ".
-        // So the union of the *reverse* fans over the (few) vulnerable enemy
-        // squares is a per-piece-type bitboard, and the per-move test collapses
-        // to one `contains`. Lookups drop from ~one per quiet to
-        // Σ_pt popcount(vulnerable[pt]) — and those sets are nested and usually
-        // near-empty. Bit-identical by the symmetry above; measured −34 i/n,
-        // node-identical.
-        //
-        // Pawns are the one asymmetric case: `target ∈ pawn_attacks(us, to)`
-        // iff `to ∈ pawn_attacks(them, target)` — the reverse fan flips colour.
-        let offense_from: [Bitboard; 6] = std::array::from_fn(|i| {
-            let targets = vulnerable[i];
-            if targets.is_empty() {
-                return Bitboard::EMPTY;
-            }
-            let pt = PieceType::ALL[i];
-            let mut fan = Bitboard::EMPTY;
-            for sq in targets {
-                fan |= if pt == PieceType::Pawn {
-                    crate::attacks::pawn_attacks(them, sq)
-                } else {
-                    att_tables.attacks(pt, sq, occ)
-                };
-            }
-            fan
-        });
 
         // One `st()` for all ~30 scored quiets (perf study 13 §4.4) instead of
         // one per quiet: `pt` varies per move, so the query cannot be hoisted
@@ -1008,10 +951,8 @@ impl MovePicker {
         #[cfg(not(feature = "arm70"))]
         let row_of = |i: usize| PtRow {
             threat: threat[i],
-            offense: offense_from[i],
             check: check_squares[i],
             threat_w: PieceType::ALL[i].value() * QUIET_THREAT_FACTOR(),
-            offense_w: PieceType::ALL[i].value() * QUIET_OFFENSE_FACTOR(),
         };
         // Study 70's arm bench folds its per-16ths weights into the same
         // premultiplied row, so the scoring loop is untouched.
@@ -1020,10 +961,8 @@ impl MovePicker {
             let a = crate::arm70::arm();
             PtRow {
                 threat: threat[i],
-                offense: offense_from[i],
                 check: check_squares[i],
                 threat_w: PieceType::ALL[i].value() * QUIET_THREAT_FACTOR() * a.threat_w / 16,
-                offense_w: PieceType::ALL[i].value() * QUIET_OFFENSE_FACTOR() * a.offense_w / 16,
                 eq: threat_eq[i],
             }
         };
@@ -1083,10 +1022,6 @@ impl MovePicker {
                 let to_threat = row.threat.contains(m.to()) as i32;
                 value += row.threat_w * (from_threat - to_threat);
 
-                if row.offense.contains(m.to()) {
-                    value += row.offense_w;
-                }
-
                 if let Some(lp) = low_ply_plane {
                     value += QUIET_LOW_PLY_WEIGHT() * lp[raw].get() / (1 + ply as i32);
                 }
@@ -1100,7 +1035,7 @@ impl MovePicker {
                 // it. Together they leave 0.155 `see_ge` calls per scored
                 // quiet.
                 //
-                // Placed LAST on purpose — after the threat and offense terms,
+                // Placed LAST on purpose — after the threat term,
                 // so the second guard reads the finished score. That is not
                 // just cheaper, it is the non-redundant order: the threat tier
                 // has already sunk "queen onto a square a rook attacks" below
@@ -2095,15 +2030,12 @@ mod tests {
             b.all_threats().contains(Square::D1),
             "the black rook must attack d1 or the cheap guard skips the test"
         );
-        // The offense term also fires here (the rook on d1 attacks the
-        // undefended enemy rook on d8), so the unclamped score would be
-        // `BASE + offense - QUIET_SEE_PENALTY()` = -41686 — well past the
+        // The unclamped score `BASE - QUIET_SEE_PENALTY()` is well past the
         // threshold, so the CLAMP catches it and the move stays the worst
         // GOOD quiet instead of becoming a bad one. That clamp is the whole
         // difference between an ordering change and a pruning change.
         assert!(
-            BASE + PieceType::Rook.value() * QUIET_OFFENSE_FACTOR() - QUIET_SEE_PENALTY()
-                < GOOD_QUIET_THRESHOLD(),
+            BASE - QUIET_SEE_PENALTY() < GOOD_QUIET_THRESHOLD(),
             "this case must be one the clamp actually binds on"
         );
         assert_eq!(
@@ -2116,10 +2048,7 @@ mod tests {
         // (b) The same shape with the destination DEFENDED: Rxd1 Kxd1 is an
         //     even trade, `see_ge(m, 0)` holds, and nothing is subtracted.
         let b = board("3r3k/8/8/8/8/8/2K5/4R3 w - - 0 1");
-        assert_eq!(
-            quiet_score(&b, &fresh, rd1, 7),
-            BASE + PieceType::Rook.value() * QUIET_OFFENSE_FACTOR()
-        );
+        assert_eq!(quiet_score(&b, &fresh, rd1, 7), BASE);
 
         // (c) The cheap guard: a destination no enemy attacks never pays for a
         //     `see_ge` and never loses a point.
@@ -2181,109 +2110,6 @@ mod tests {
         assert!(
             quiet_score(&b, &fresh, qd1, 7) < GOOD_QUIET_THRESHOLD(),
             "must be a bad quiet"
-        );
-    }
-
-    #[test]
-    fn wave_g_offense_term_scores_only_an_undefended_target() {
-        // G1 offense (D30): a quiet moving to a square from which the piece
-        // attacks an UNDEFENDED enemy piece worth >= the mover earns
-        // QUIET_OFFENSE_FACTOR · piece_value. This pins BOTH branches of the
-        // term precisely (hand-computed), including the disarm branch the
-        // determinism/mate smoke tests never touch.
-        //
-        // Fresh-history base (same as quiet_scoring_matches_hand_computed_values).
-        const BASE: i32 = 2 * -5 + 2 * -1262 + 5 * -552; // −5294
-        let fresh = Histories::new();
-        let nc6 = Move::normal(Square::E5, Square::C6);
-
-        // Armed: the lone Black rook on b8 is undefended (nothing Black attacks
-        // b8). White Ne5–c6 attacks b8 (rook ≥ knight), so the offense term
-        // fires and is the ONLY non-base term (no check, no threat escape:
-        // threat[Knight] is the pawn map, and Black has no pawns).
-        let armed = board("1r5k/8/8/4N3/8/8/8/K7 w - - 0 1");
-        assert!(
-            !armed.all_threats().contains(Square::B8),
-            "the lone Black rook on b8 is undefended (absent from Black's attack map)"
-        );
-        assert_eq!(
-            quiet_score(&armed, &fresh, nc6, 7),
-            BASE + PieceType::Knight.value() * QUIET_OFFENSE_FACTOR(),
-            "attacking an undefended enemy rook must add the offense bonus"
-        );
-
-        // Disarmed: a Black knight on a6 defends b8, so b8 joins Black's attack
-        // map and is no longer 'undefended' — the offense bonus is withheld and
-        // the identical move scores the bare base. (a6 is a Knight attacker, so
-        // it feeds piece_threats(Knight)/by_minor, never threat[Knight] — the
-        // White knight's escape term stays zero, so nothing else moves.)
-        let defended = board("1r5k/8/n7/4N3/8/8/8/K7 w - - 0 1");
-        assert!(
-            defended.all_threats().contains(Square::B8),
-            "with a defender the rook's square joins Black's attack map"
-        );
-        assert_eq!(
-            quiet_score(&defended, &fresh, nc6, 7),
-            BASE,
-            "a DEFENDED enemy is not a vulnerable target — the offense bonus is disarmed"
-        );
-    }
-
-    /// Perf study 12 §5 rewrote the offense term as a REVERSE attack fan. The
-    /// knight case above cannot catch the two things that rewrite actually
-    /// changed, because a knight's fan is both occupancy- and colour-independent:
-    ///
-    ///  * the **pawn colour flip** — the reverse fan of `pawn_attacks(us, to)`
-    ///    is `pawn_attacks(them, target)`, not `pawn_attacks(us, target)`;
-    ///  * **slider occupancy symmetry** — the reverse fan must see the same
-    ///    blockers the forward lookup did.
-    ///
-    /// Writing `us` for `them`, or fanning with an empty occupancy, passes every
-    /// other test in the suite. This is the only place either is pinned.
-    #[test]
-    fn offense_reverse_fan_pins_the_pawn_flip_and_slider_blockers() {
-        const BASE: i32 = 2 * -5 + 2 * -1262 + 5 * -552; // −5294, as above
-        let fresh = Histories::new();
-
-        // PAWN. b3–b4 attacks the undefended rook on c5: b4 ∈ pawn_attacks(us=White, c5)
-        // forward, i.e. c5 ∈ pawn_attacks(them=Black, b4) reversed. The reverse fan
-        // of c5 for a White pawn mover is pawn_attacks(Black, c5) = {b4, d4}.
-        // Fanning with `us` gives pawn_attacks(White, c5) = {b6, d6} and silently
-        // withholds the bonus.
-        let pawn = board("7k/8/8/2r5/8/1P6/8/K7 w - - 0 1");
-        assert!(
-            !pawn.all_threats().contains(Square::C5),
-            "the lone rook must be undefended for the term to arm"
-        );
-        assert_eq!(
-            quiet_score(&pawn, &fresh, Move::normal(Square::B3, Square::B4), 7),
-            BASE + PieceType::Pawn.value() * QUIET_OFFENSE_FACTOR(),
-            "a pawn attacking an undefended rook must earn the offense bonus"
-        );
-
-        // SLIDER, clear ray. Re1–d1 attacks the undefended queen on d8 down an
-        // empty d-file. The white king sits on c2 rather than a1 so that d1 is
-        // DEFENDED: without that, `QUIET_SEE_PENALTY` fires (the queen takes
-        // the rook for nothing) and buries the offense bonus this case exists
-        // to pin. Black's attack map — the only thing the offense term reads —
-        // is unaffected by where the white king stands.
-        let open = board("3q3k/8/8/8/8/8/2K5/4R3 w - - 0 1");
-        assert!(!open.all_threats().contains(Square::D8));
-        assert_eq!(
-            quiet_score(&open, &fresh, Move::normal(Square::E1, Square::D1), 7),
-            BASE + PieceType::Rook.value() * QUIET_OFFENSE_FACTOR(),
-            "a rook attacking an undefended queen down a clear file earns the bonus"
-        );
-
-        // SLIDER, blocked. The same move with a pawn on d5: the reverse fan
-        // `rook_attacks(d8, occ)` stops at d5 and never reaches d1, exactly as
-        // the forward `rook_attacks(d1, occ)` stopped at d5 and never reached d8.
-        // An occupancy-blind fan would wrongly pay the bonus here.
-        let blocked = board("3q3k/8/8/3p4/8/8/8/K3R3 w - - 0 1");
-        assert_eq!(
-            quiet_score(&blocked, &fresh, Move::normal(Square::E1, Square::D1), 7),
-            BASE,
-            "a blocked ray must NOT earn the offense bonus"
         );
     }
 

@@ -252,13 +252,9 @@ crate::tunables! {
     /// `QUIET_THREAT_FACTOR * piece_value`, stepping onto one costs the same.
     /// Fed by the Wave-G threat map (D30, `Board::piece_threats`).
     pub QUIET_THREAT_FACTOR: Value = 20;
-    /// Per-piece-value multiplier of the Wave-G offense term (D30, needs the threat
-    /// map): moving to a square from which the piece attacks a *vulnerable* enemy —
-    /// an undefended enemy piece worth at least as much as the mover — earns
-    /// `QUIET_OFFENSE_FACTOR * piece_value`. The "create a threat" counterpart to
-    /// the "avoid a threat" escape term; a modest reward (SF/our §3.7 scored only
-    /// the defensive side).
-    pub QUIET_OFFENSE_FACTOR: Value = 10;
+    // QUIET_OFFENSE_FACTOR (the D30 offense term) was removed by basket A of
+    // the simplification plan, 2026-08-01: `offensew=0` read +0.07 pp fhf,
+    // inside study 70's census null.
     /// Weight on low-ply history in the quiet ordering score (plies 0..4 only,
     /// scaled by `/ (1 + ply)`).
     pub QUIET_LOW_PLY_WEIGHT: Value = 8;
@@ -343,14 +339,10 @@ crate::tunables! {
     /// Weight (÷[`RFP_TREND_DEN`] of `futility_mult`) by which a *worsening*
     /// opponent shrinks the margin.
     pub RFP_OPP_WORSENING: Value = 343;
-    /// Threat-coupled RFP relaxation (Wave-G item 23, D30): when NO own piece
-    /// (pawns included) is currently threatened (the Wave-G threat map says the
-    /// position is safe), subtract this flat term from the N10 margin so RFP fires
-    /// a little more readily — a safe position at/above beta is very likely a real
-    /// fail-high. The N10 use-site keys on `all_threats() & occupancy(us)` — ALL
-    /// our pieces, matching Reckless's `all_threats() & colors(stm)`; a hanging
-    /// pawn still blocks the relaxation. Un-tuned placeholder pending the SPSA pass.
-    pub RFP_THREAT_MARGIN: Value = 55;
+    // RFP_THREAT_MARGIN (the D30 threat-coupled relaxation) was removed by
+    // basket A of the simplification plan, 2026-08-01: removal measured
+    // −3.5 ± 14.1 over 1185 games, and the two-margin lazy-threat machinery
+    // existed only to make the term affordable.
     /// Beta weight (in 1024ths) of the RFP return blend
     /// `(W·beta + (1024−W)·eval) / 1024` — a value ≥ beta, pulled toward beta
     /// to damp static-eval noise (the same instability-damping idiom as the
@@ -1306,14 +1298,9 @@ crate::constants! {
     pub ASPIRATION_WIDEN_DEN: Value = 128;
     /// Denominator of the search-again depth damping.
     pub ASPIRATION_SEARCH_AGAIN_DEN: Depth = 4;
-    /// Node-counter mask of the equal-value dither: near the leaves an
-    /// equal-to-best value is promoted to best only when `(nodes & 14) == 0`
-    /// (nodes ≡ 0 or 1 mod 16, ~1 in 8 made moves) — deliberate diversity so
-    /// equal lines do not all tie on the first one found.
-    pub DITHER_NODE_MASK: u64 = 14;
-    /// Leaf-proximity gate of the dither: it fires only when
-    /// `ply + 2 >= root_depth`.
-    pub DITHER_PLY_MARGIN: usize = 2;
+    // DITHER_NODE_MASK / DITHER_PLY_MARGIN (the step-12 equal-value dither)
+    // were removed with basket A, 2026-08-01 — an ARCHON original that was
+    // never validated by games and produced one illegal-PV bug class.
     /// Denominator of the improving/opponent-worsening margin discounts.
     pub RFP_TREND_DEN: Value = 1024;
     /// Denominator of the log reduction table (a power of two — exactly

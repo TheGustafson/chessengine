@@ -18269,3 +18269,261 @@ verified by dry run at 0 reap lines each.
 engine". Next levers, in order: (1) the alpha sweep — 0.4 bought +30, nobody has
 tested 0.7/1.0 against the remaining ~58 of the +90.7 net gap; (2) NPS work, now
 priced at ~33 Elo vs SF18; (3) basket A's non-inferiority SPRT.
+
+## 2026-08-01 22:20 — ★ THE SPEED HALF HAS A BUILT, UNARMED LEVER (smallnet gate)
+
+**Measured this tick, interleaved panel (A,B,A,B so trainer/SPRT load hits both):**
+
+| | median NPS |
+|---|---|
+| archon (PGO main + sb1648 net) | 1,290,171 |
+| **Stockfish 18** | **1,587,843** |
+| | **SF18 is 1.231x faster** |
+
+**TWO INDEPENDENT INSTRUMENTS AGREE ON THE SPEED HALF.** 1.231x at the measured
+~120 Elo/speed-doubling = **~36 Elo**. The match difference (real-clock -85.04
+minus equal-node -44.36) = **~41 Elo**. Within 5 Elo of each other by completely
+unrelated methods. **The SF18 gap is ~44 quality-per-node + ~38 speed.**
+
+**★ AND SF18 RUNS TWO NETS:**
+```
+nn-c288c895ea92.nnue  125 MiB  (102384, 1024, 15, 32, 1)   <- big
+nn-37f18f62d772.nnue    6 MiB  ( 22528,  128, 15, 32, 1)   <- small, 20x cheaper
+```
+**Correction to a standing claim:** SF18's big-net input space is **102,384**,
+NOT the 83,248 that "identical feature space" assertions have been resting on.
+That figure came from eca43a97 and does not describe the SF18 binary we test
+against. Re-derive before repeating it.
+
+**WE ALREADY BUILT THE SAME GATE AND NEVER ARMED IT** (perf study #3 item #8,
+`src/eval/nnue/mod.rs:454`, `sota_context.rs:118-140`):
+- `ARCHON_SMALLNET` (cheap-net path), `ARCHON_SMALLNET_THRESH` (decided-position
+  cp), `ARCHON_SMALLNET_MAT_GATE` (material prefilter) — **all unset, gate inert.**
+- When armed it runs the cheap net's HalfKA channel first and, if `|value| >=`
+  thresh, returns it — **skipping the big net's FullThreats fold AND head.**
+- **FullThreats is 60,720 of our 83,248 inputs (73 %)**, and the measured threat
+  channel cost is **1.25-1.39x** ([[threat-channel-costs-half-our-speed]]).
+
+**So the gate's CEILING (1.25-1.39x) covers the ENTIRE measured 1.231x deficit.**
+It is the single largest identified strength lever that needs no eval-quality
+work at all — and it is value-only, exactly on-goal.
+
+**What it needs, honestly:** a dedicated cheap net. The code notes our natural
+cheap net is HalfKA-only-768 at ~0.6x the big net (not SF-tiny at 0.05x), which
+is why the material prefilter exists — running a 0.6x net on every node to skip a
+1.0x net is a bad trade unless the gate fires often. **The ceiling is real; the
+realised fraction is unmeasured.** Next measurement, before any training: what
+fraction of eval'd nodes clear a plausible threshold. If it is small the lever
+shrinks accordingly.
+
+**Also this tick:** basket A cherry-picked onto current main (its branch had
+drifted so far that diffing it would have DELETED 10,565 lines of today's work),
+tests green (75 passed / 0 failed), PGO built, bench 351273 vs main 300694, and
+running a NON-INFERIORITY SPRT (elo0=-3, elo1=+1) at 2+0.1 — real clock because
+the arm removes work and its whole case is speed. At n=140: -14.90 +/- 20.40,
+LLR -0.20. Early, wide, leaning negative.
+
+## 2026-08-01 22:35 — CORRECTION to the entry above, and the ARCHITECTURE-MATCHED speed number
+
+**I "corrected" the 83,248 claim an hour ago and the correction was WRONG.**
+Checked directly:
+
+```
+eca43a97 :  ONE net,  (83248, 1024, 32, 32, 1)   106 MiB  -- no smallnet
+SF18 tag :  TWO nets, (102384, 1024, 15, 32, 1)  125 MiB  + (22528, 128, 15, 32, 1) 6 MiB
+```
+
+**The "identical 83,248 inputs" claim was always about `eca43a97`, and it is
+CORRECT for eca43a97.** SF18-the-release is a different, larger, dual-net engine.
+I read SF18's banner, saw 102,384, and declared a standing fact wrong — when the
+standing fact was about a different binary. **Read which binary printed the
+number before correcting the record.** [[verify-before-asserting]]; the pinned
+reference is `eca43a97`, never a release tag, in BOTH directions.
+
+**ARCHITECTURE-MATCHED SPEED (identical 83,248 inputs, single net, both PGO,
+interleaved 5 rounds):**
+
+| | median NPS |
+|---|---|
+| archon (PGO main + sb1648) | 1,331,790 |
+| **stockfish eca43a97 PGO** | **1,578,450** |
+| | **1.185x faster** = **~29 Elo** |
+
+So the honest same-architecture speed deficit is **1.185x / ~29 Elo**, not the
+1.231x / ~36 measured against dual-net SF18.
+
+**And the smallnet's value shows up as a residual:** SF18 is 1.231/1.185 =
+**1.039x faster than eca43a97 while carrying a LARGER net** (125 MiB vs 106 MiB,
+102,384 vs 83,248 inputs). A bigger net should be slower. It is faster. **That
+delta is the dual-net gate earning its keep** — which is independent evidence
+for arming ours, on top of the 1.25-1.39x FullThreats-skip ceiling.
+
+**Revised gap decomposition vs eca43a97-class architecture:**
+~29 Elo speed + the rest quality-per-node. Our unarmed smallnet gate's ceiling
+(1.25-1.39x) still EXCEEDS the 1.185x deficit outright.
+
+## 2026-08-01 22:40 — OWNER RULING: smallnet / cascade eval is BACKBURNERED
+
+**"I have no intention of going for a cascade eval right now. Please put our
+small net on the backburner."** Not a rejection of the measurement — the gate is
+built, its ceiling is real, and the SF18-vs-eca43a97 residual is evidence it
+works. It is simply not the direction now. **Do not re-propose it; the finding is
+recorded above and keeps.**
+
+**What that leaves for the speed half (~29 Elo, architecture-matched):**
+routes already CLOSED by construction are sub-byte FT formats, locality/row
+reordering, prefetch, code layout at every granularity, and branch mispredicts —
+the fold is **MSHR-limited**, so only reducing BYTES TOUCHED moves it.
+
+**The one live single-net route is WIDTH.** [[sf-trades-cheap-layer-for-expensive-one]]:
+on the identical 83,248 inputs SF runs **L1=1024 / L2=32** where we run
+**1280 / 16** — they spend ~1.6x on the cache-resident head to spend ~0.8x on the
+memory-bound FT, and the measured working-set ratio (1.250x) tracks the measured
+speed ratio (1.263x) almost exactly. Our own width study found **768-1536 is
+~Elo-NEUTRAL at equal time**. So narrowing the FT 1280 -> 1024 is the
+architecture change that would close most of the ~29 Elo at ~neutral quality.
+
+**It needs a retrain**, so it is a decision for after the current 500-sb run, not
+an interruption of it. Recorded, not proposed.
+
+## 2026-08-01 22:55 — OWNER'S PLAN: cook -> gate -> anneal -> canonical -> 768 TRANSPLANT
+
+1. Let the teacher run cook.
+2. **Next checkpoint: gate it vs its past self.** Armed as `ckptgate.service`:
+   fires on sb1720, `warm_point_verdict.sh` with **REF_SB=1648** (the net that
+   measured +30.42 +/- 11.02 vs canonical), 1500 games @25k. Same lineage, same
+   pack path -> the delta is progress since that gate, nothing else. sb1648 is
+   pinned in the reaper's KEEP_ALWAYS so the reference cannot vanish.
+3. If strong: **pause training and anneal.**
+4. That becomes **canonical**.
+5. Then **transplant its weights into a 768 accumulator -> 16 -> 32** and train up.
+
+**Why the transplant is the right way to test width:** net2net keeps the learned
+function and isolates the architecture change, instead of confounding width with
+a fresh run's luck. Same reason the D48X warm was a verbatim transfer.
+
+### ⚠ ONE THING TO CHECK BEFORE SPENDING THAT RUN — width elasticity may be WEAK
+
+The working-set model says speed should track FT bytes:
+
+| acc | FT bytes (83,248 x acc x 1B) | vs ours |
+|---|---|---|
+| 768 | 61.0 MB | 0.60x |
+| 1024 (SF eca43a97) | 81.3 MB | 0.80x |
+| **1280 (ours)** | **101.6 MB** | 1.00x |
+
+If speed tracked working set, 768 would be **1.667x** faster than 1280 and the
+whole ~29 Elo speed deficit would evaporate.
+
+**But I have a REMEMBERED prior that it does NOT scale that way** — the width
+study's NPS panel (V-768 ~1051k, X-1280 ~893k) is only **~1.18x**, against a
+1.667x working-set ratio. **I could NOT verify it this session: every net on disk
+is acc_width 1280** (probed all 40 in `nets/screens/`), so there is no 768 net to
+re-measure. **Treat 1.18x as UNVERIFIED.**
+
+If that elasticity is real, the implied cost of our 1280 over SF's 1024 is only
+**~1.07x**, i.e. the accumulator explains roughly **40 % of the measured 1.185x**
+in log terms — NOT "most of it", and the 768 transplant would buy proportionally
+less speed than the byte count suggests.
+
+**The transplant settles this definitively either way** — it produces the first
+768 net we have had, so step 5 IS the measurement. Just do not pre-commit to the
+1.667x figure when sizing the expected win.
+
+## 2026-08-01 23:05 — OWNER: make the 768 net HalfKA-ONLY (drop FullThreats). Scaffolding ALREADY EXISTS.
+
+**Proposal: 768 accumulator, HalfKA + pawn features only, no FullThreats, 16 -> 32
+head. "Our fastest net."**
+
+### Both ends already support it
+- **Trainer:** `spec.py:189` `halfka_only: bool = False  # D40_HALFKA_ONLY (drops
+  the threat tensor entirely)`, wired via `arch_halfka_only` in the run spec.
+- **Engine loader:** already handles a net with no threats channel
+  (`sota_loader.rs:162` "Empty if the net has no threats channel").
+- **Arch features:** `arch-d47v` already pins **L1 = 768**; `arch-hka2048` is an
+  existing **HalfKA-only** probe arch. The two have simply never been COMBINED —
+  a new `arch-hka768` (768/16/32, HalfKA-only) is the whole engine-side change.
+
+### The speed win is ALREADY MEASURED (perf study 7 §5)
+From the `arch-hka2048` doc comment, `instructions:u` (the only counter with a
+0.000 null), 3/3 rounds: **dropping the threat rows buys +25 % instructions
+(768/wl50) to +39 % (1280/middlegame) — roughly 45-70 Elo** at the house
+120 Elo/doubling.
+
+**That EXCEEDS the entire architecture-matched speed deficit** (1.185x / ~29 Elo
+vs eca43a97) on its own, before any width effect.
+
+### Working set, for context
+| net | FT bytes | vs ours |
+|---|---|---|
+| ours (83,248 x 1280) | 101.6 MB | 1.00x |
+| 768 with threats | 61.0 MB | 0.60x |
+| **768 HalfKA-only (22,528 x 768)** | **16.5 MB** | **0.162x** |
+
+**I SPECULATED that 16.5 MB might become L3-resident (7700X L3 = 32 MB) and
+"the memory wall disappears". That is NOT a finding** — the measured win is an
+INSTRUCTION-count win (fewer rows to fold), and `instructions:u` says nothing
+about cache residency. The L3 effect would be additive if real; do not size the
+experiment on it.
+
+### Two warnings carried from the same doc comment
+1. The old **"1.78x at 1280 / 1.40x at 768"** threat-cost figure was **REFUTED**
+   (a 2-position movetime instrument on a loaded box, reading 0.1-0.15 high, on a
+   stripped net that searched a different tree).
+2. **`arch-hka2048`'s choice of 2048 was derived from that refuted number** and
+   "needs re-deriving from the study's grid before this arch is launched". So do
+   not inherit 2048 — and re-derive rather than assume for 768 too.
+
+### The honest unknown
+HalfKA is **27.1 %** of our input rows; FullThreats is **72.9 %**. Dropping them
+removes most of the input space. **The speed win is measured; the QUALITY cost is
+not.** The experiment is worth running precisely because equal-time is what
+decides it: 45-70 Elo of speed is a large budget to pay quality out of.
+
+**Sequence unchanged:** cook -> gate sb1720 vs sb1648 -> anneal -> canonical ->
+THEN transplant. The transplant now drops threat rows as well as narrowing, so it
+is a partial transfer (keep the HalfKA block, discard the threat block), not a
+pure net2net.
+
+## 2026-08-01 23:20 — OWNER'S THESIS: data is the limit, so capacity is dead weight
+
+**"Our data is clearly the limiting factor and our larger net isn't living up to
+its potential because the data quality isn't there. It is possible it ends up as
+a similarly good evaluator at a smaller size."**
+
+### The strongest evidence FOR this, already measured
+1. **Our FT is 1.25x LARGER than SF's on the IDENTICAL input space** — 83,248 x
+   1280 (101.6 MB) vs 83,248 x 1024 (81.3 MB) at `eca43a97` — and their weights
+   beat ours by **+90.7 Elo in OUR OWN SEARCH**
+   ([[deficit-is-the-weights]]). Bigger, same information, 90 Elo worse.
+2. **Width is measured Elo-NEUTRAL from 768 to 1536 at equal time.** Extra width
+   does not convert to strength here.
+3. **The teacher blend bought +30.42 by improving the TARGET, not the capacity.**
+4. **Rising label-heldout alongside rising Elo** — the labels point the wrong way.
+
+All four say the same thing: **capacity is not the binding constraint; targets
+are.** Capacity we cannot fill is dead weight paid for on every node.
+
+### ⚠ BUT THE TWO CHANGES ARE NOT EQUALLY SUPPORTED — keep them distinct
+- **1280 -> 768 removes CAPACITY for the same information.** Directly supported
+  by (1) and (2). Low risk.
+- **Dropping FullThreats removes INFORMATION, not capacity.** NOTHING above
+  speaks to it. Mild counter-signal: `eca43a97` runs the same 83,248 inputs we
+  do — **threats included** — so the engine that beats us by 90.7 chose to keep
+  them.
+
+**So the experiment does NOT ask "is our net too big". It asks: can HalfKA
+reconstruct enough of what threats encode, given 45-70 Elo of speed to pay with?**
+That is a genuinely open question and equal-time games answer it cleanly.
+
+### The falsifiable form
+**If data is the binding constraint, the 768 HalfKA-only net should lose FAR less
+than its 5.9x smaller working set suggests**, because most discarded capacity was
+never used.
+- Near parity at equal time -> strong support for the thesis, and it ships as the
+  fastest net.
+- Collapse -> threats carry information HalfKA cannot recover. Worth knowing
+  BEFORE the curation program starts, since it says what the features must
+  preserve.
+
+Either outcome is informative, which is what makes it worth the run.
