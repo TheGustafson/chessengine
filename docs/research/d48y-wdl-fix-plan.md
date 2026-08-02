@@ -18385,3 +18385,47 @@ architecture change that would close most of the ~29 Elo at ~neutral quality.
 
 **It needs a retrain**, so it is a decision for after the current 500-sb run, not
 an interruption of it. Recorded, not proposed.
+
+## 2026-08-01 22:55 — OWNER'S PLAN: cook -> gate -> anneal -> canonical -> 768 TRANSPLANT
+
+1. Let the teacher run cook.
+2. **Next checkpoint: gate it vs its past self.** Armed as `ckptgate.service`:
+   fires on sb1720, `warm_point_verdict.sh` with **REF_SB=1648** (the net that
+   measured +30.42 +/- 11.02 vs canonical), 1500 games @25k. Same lineage, same
+   pack path -> the delta is progress since that gate, nothing else. sb1648 is
+   pinned in the reaper's KEEP_ALWAYS so the reference cannot vanish.
+3. If strong: **pause training and anneal.**
+4. That becomes **canonical**.
+5. Then **transplant its weights into a 768 accumulator -> 16 -> 32** and train up.
+
+**Why the transplant is the right way to test width:** net2net keeps the learned
+function and isolates the architecture change, instead of confounding width with
+a fresh run's luck. Same reason the D48X warm was a verbatim transfer.
+
+### ⚠ ONE THING TO CHECK BEFORE SPENDING THAT RUN — width elasticity may be WEAK
+
+The working-set model says speed should track FT bytes:
+
+| acc | FT bytes (83,248 x acc x 1B) | vs ours |
+|---|---|---|
+| 768 | 61.0 MB | 0.60x |
+| 1024 (SF eca43a97) | 81.3 MB | 0.80x |
+| **1280 (ours)** | **101.6 MB** | 1.00x |
+
+If speed tracked working set, 768 would be **1.667x** faster than 1280 and the
+whole ~29 Elo speed deficit would evaporate.
+
+**But I have a REMEMBERED prior that it does NOT scale that way** — the width
+study's NPS panel (V-768 ~1051k, X-1280 ~893k) is only **~1.18x**, against a
+1.667x working-set ratio. **I could NOT verify it this session: every net on disk
+is acc_width 1280** (probed all 40 in `nets/screens/`), so there is no 768 net to
+re-measure. **Treat 1.18x as UNVERIFIED.**
+
+If that elasticity is real, the implied cost of our 1280 over SF's 1024 is only
+**~1.07x**, i.e. the accumulator explains roughly **40 % of the measured 1.185x**
+in log terms — NOT "most of it", and the 768 transplant would buy proportionally
+less speed than the byte count suggests.
+
+**The transplant settles this definitively either way** — it produces the first
+768 net we have had, so step 5 IS the measurement. Just do not pre-commit to the
+1.667x figure when sizing the expected win.
