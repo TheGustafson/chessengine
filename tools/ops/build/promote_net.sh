@@ -47,10 +47,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 SRC=${1:?usage: promote_net.sh <packed.cenn> <net-id> [--elo "..."] [--dry-run]}
 NET_ID=${2:?net-id required (becomes the filename and the ledger id)}
 shift 2
-ELO=""; DRY=0
+ELO=""; DRY=0; NEW_ARCH=""; NEW_ENGINE=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --elo) ELO=$2; shift 2;;
+        --arch) NEW_ARCH=$2; shift 2;;
+        --engine) NEW_ENGINE=$2; shift 2;;
         --dry-run) DRY=1; shift;;
         *) log "unknown arg: $1"; exit 2;;
     esac
@@ -60,6 +62,26 @@ case "$SRC" in /*) ;; *) SRC="$ARCHON_ROOT/$SRC";; esac
 [ -s "$SRC" ] || { log "FATAL: packed net not found: $SRC"; exit 2; }
 DEST="$ARCHON_ROOT/data/nnue/nets/screens/${NET_ID}.cenn"
 ARCH=$(cat "$ARCHON_ROOT/engines/canonical/arch.txt")
+OLD_ARCH="$ARCH"
+[ -n "$NEW_ARCH" ] && ARCH="$NEW_ARCH"
+
+# ⚠ AN ARCH CHANGE IS A THREE-WAY COUPLING, not a one-file edit.
+#   arch.txt  net.cenn  archon(binary)  must all move together.
+# A .cenn records its acc_width and the loader REFUSES a mismatch, so promoting a
+# 768 net while engines/canonical/archon is still a 1280 build leaves a canonical
+# ENGINE that cannot load the canonical NET -- and nothing else in the tree
+# checks that pair. Refuse rather than produce it.
+if [ "$ARCH" != "$OLD_ARCH" ]; then
+    log "ARCH CHANGE: $OLD_ARCH -> $ARCH"
+    [ -n "$NEW_ENGINE" ] || {
+        log "FATAL: --arch requires --engine <binary built with the NEW arch>."
+        log "       Build it first:  bash tools/ops/build/pgo.sh <name> '$ARCH' <net>"
+        log "       Otherwise the canonical engine cannot load the canonical net."
+        exit 2
+    }
+    case "$NEW_ENGINE" in /*) ;; *) NEW_ENGINE="$ARCHON_ROOT/$NEW_ENGINE";; esac
+    [ -x "$NEW_ENGINE" ] || { log "FATAL: --engine not executable: $NEW_ENGINE"; exit 2; }
+fi
 OLD=$(readlink -f "$ARCHON_ROOT/engines/canonical/net.cenn")
 OPS_LOG=${OPS_LOG:-$ARCHON_D49/promote.log}; export OPS_LOG
 
@@ -72,6 +94,22 @@ log "  arch:     $ARCH"
 cp -n "$SRC" "$DEST" 2>/dev/null || cp "$SRC" "$DEST"
 ln -sfn "../../data/nnue/nets/screens/${NET_ID}.cenn" "$ARCHON_ROOT/engines/canonical/net.cenn"
 log "  canonical -> $(basename "$(readlink -f "$ARCHON_ROOT/engines/canonical/net.cenn")")"
+
+if [ "$ARCH" != "$OLD_ARCH" ]; then
+    printf '%s\n' "$ARCH" > "$ARCHON_ROOT/engines/canonical/arch.txt"
+    cp "$NEW_ENGINE" "$ARCHON_ROOT/engines/bin/$(basename "$NEW_ENGINE")" 2>/dev/null || true
+    ln -sfn "../bin/$(basename "$NEW_ENGINE")" "$ARCHON_ROOT/engines/canonical/archon"
+    log "  arch.txt -> $ARCH"
+    log "  archon   -> $(basename "$NEW_ENGINE")"
+    # PROVE the canonical pair actually loads before anything downstream trusts it
+    if "$ARCHON_ROOT/engines/canonical/archon" nnue-eval \
+         "$(readlink -f "$ARCHON_ROOT/engines/canonical/net.cenn")" \
+         < tools/nnue/calib/wl50.fens 2>&1 | grep -qiE 'ERROR|mismatch|cannot'; then
+        log "FATAL: canonical engine cannot load canonical net after the arch change"
+        exit 6
+    fi
+    log "  canonical engine + net load OK"
+fi
 
 # 3. re-measure BOTH pins against the NEW net
 need_mem 2500 || exit 1
