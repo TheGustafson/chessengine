@@ -18963,3 +18963,47 @@ not load-robust.
 
 **Neither arm beats canonical yet**, and both are at sb100 of 530 still
 descending. These are early attributions, not verdicts.
+
+## 2026-08-02 11:2x — OWNER RULING: KEEP THREATS. Focus on 768+threats reaching strength.
+
+**"Stockfish had a BIG accumulator in SF16 when they didn't have threats, so this
+makes sense."** Verified by file size and it is the right frame:
+
+| engine | inputs | L1 | FT weights |
+|---|---|---|---|
+| **SF16** (NO threats) | 22,528 | **~2048** (inferred: 90.6 MB net; 22,528x1024xi16 would be only 46 MB) | ~46 M |
+| **eca43a97** (threats) | 83,248 | **1024** | 81 M |
+| SF18 (threats) | 102,384 | 1024 | 100 M |
+| ARCHON canonical | 83,248 | 1280 | 102 M |
+| **ARCHON 768+threats** | 83,248 | **768** | **61 M** |
+
+**Stockfish HALVED its accumulator when it gained threats.** A rich input space
+does the work a wide accumulator previously did. That is exactly the trade we
+measured, and it explains why -212 was two mistakes compounding: we dropped the
+threats AND narrowed, i.e. removed the thing that makes narrowing affordable.
+
+### Equal-time standings (final on the refuted arm)
+| arm | fixed-node | speed | equal-time |
+|---|---|---|---|
+| 768 HalfKA-only sb200 | -206 | 2.00x | **-97.94 +/- 9.47** (measured, 1500 games) |
+| **768 WITH threats sb200** | **-44.72 +/- 10.72** | ~1.15x | **≈ -22** (derived) |
+
+**Speed-credit calibration:** predicted -92, measured -97.94 -> the conversion
+**over-credits by ~6 Elo per doubling** (effective ~114, not 120). Extra nodes
+bought by a cheaper eval are worth slightly less than extra nodes generally.
+Barely moves the live arm (0.20 doublings), which is reassuring — the derived
+figure does not lean on the constant.
+
+### Trajectory of the live arm
+| gate | Elo | n |
+|---|---|---|
+| sb100 | -57.26 +/- 11.42 | 1500 |
+| sb200 | **-44.72 +/- 10.72** | 1500 |
+
+**+12.5 Elo / 100 sb** (difference bar +/-15.7, so not individually significant).
+If it holds, the remaining ~300 sb land near **-7 fixed-node / ≈ +16 equal-time**.
+**The sb300 gate turns this from projection into trend** — two points inside each
+other's bars is a hope; three with a consistent slope is a claim.
+
+**PLAN: get 768+threats to strength.** Run continues to sb530 (cosine to 1e-5,
+then 30 sb linear anneal to true zero), gates every 100.
