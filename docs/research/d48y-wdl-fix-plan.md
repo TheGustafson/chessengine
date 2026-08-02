@@ -19007,3 +19007,52 @@ other's bars is a hope; three with a consistent slope is a claim.
 
 **PLAN: get 768+threats to strength.** Run continues to sb530 (cosine to 1e-5,
 then 30 sb linear anneal to true zero), gates every 100.
+
+## 2026-08-02 12:5x — ★ SPEED RE-MEASURED CLEAN: 1.271x, not 1.15x. 768+threats is ≈ PARITY at sb200.
+
+**The 1.15x figure was contaminated** — measured on a loaded box (trainer + two
+matches, load 7.6) with a **29 % spread** across 3 rounds. I flagged it as needing
+re-measurement; it was wrong by a wide margin, in our favour.
+
+**Clean re-measurement: PGO vs PGO, quiet box (load 1.6, no matches), 5
+interleaved rounds, spreads 2.7 % and 3.8 %:**
+
+| | median nps |
+|---|---|
+| 768+threats (`archon-hka768-pgo`) | **1,586,680** |
+| canonical (`archon-main-6b59a8cc`, PGO) | **1,248,829** |
+| | **1.271x = 0.35 doublings ≈ +39 Elo** |
+
+### Standings with the corrected credit
+| arm | fixed-node | speed | **equal-time** |
+|---|---|---|---|
+| 768 HalfKA-only sb200 | -206 | 2.00x | **-97.94 +/- 9.47** (measured) |
+| **768 WITH threats sb200** | **-44.72 +/- 10.72** | **1.271x** | **≈ -5** (derived; ~-7 after the over-credit correction) |
+
+**The ablation is at roughly PARITY with canonical at equal time, at sb200 of
+530.** Canonical is a fully-trained teacher-distilled net with a terminal anneal;
+this is a third of a run.
+
+**PGO bought this arch only ~2.7 %** (1,608,121 vs 1,565,802) against the +8.1 %
+perf study 3 measured historically — inside the noise at these spreads, but if
+the 768 arch genuinely gains less from PGO that matters before shipping it.
+
+### ⚠ AND A REAL DEFECT I INTRODUCED THIS MORNING, NOW FIXED
+**The canonical ENGINE could not load the canonical NET.**
+```
+engines/canonical/archon -> archon-s25   (understands CENN-v2 only)
+engines/canonical/net.cenn -> d49sfb-sb1758-s600.cenn   (CENN-v5)
+CENN bad magic: [67, 69, 78, 53]     <- ASCII "CEN5"
+```
+`archon-s25` loaded the PREVIOUS canonical net fine, so **my promotion broke a
+working pair.** Repointed at `archon-main-6b59a8cc` (PGO, d48x, verified).
+
+**Why nothing caught it:** `CHECK_NNUE_GATE` builds its own binary from source
+using `arch.txt` and **never touches `engines/canonical/archon`**. A promotion can
+pass every check while leaving a release binary that cannot load the release net.
+And the guard I added an hour earlier only fired on an **arch** change — this
+came through the **format version**. `promote_net.sh` now verifies the pair on
+EVERY promotion (exit 7), whatever changed.
+
+**Lesson:** guard the INVARIANT (engine loads net), not the CAUSE you happened to
+think of (arch mismatch).
