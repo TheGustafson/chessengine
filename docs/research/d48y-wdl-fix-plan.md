@@ -18484,3 +18484,46 @@ decides it: 45-70 Elo of speed is a large budget to pay quality out of.
 THEN transplant. The transplant now drops threat rows as well as narrowing, so it
 is a partial transfer (keep the HalfKA block, discard the threat block), not a
 pure net2net.
+
+## 2026-08-01 23:20 — OWNER'S THESIS: data is the limit, so capacity is dead weight
+
+**"Our data is clearly the limiting factor and our larger net isn't living up to
+its potential because the data quality isn't there. It is possible it ends up as
+a similarly good evaluator at a smaller size."**
+
+### The strongest evidence FOR this, already measured
+1. **Our FT is 1.25x LARGER than SF's on the IDENTICAL input space** — 83,248 x
+   1280 (101.6 MB) vs 83,248 x 1024 (81.3 MB) at `eca43a97` — and their weights
+   beat ours by **+90.7 Elo in OUR OWN SEARCH**
+   ([[deficit-is-the-weights]]). Bigger, same information, 90 Elo worse.
+2. **Width is measured Elo-NEUTRAL from 768 to 1536 at equal time.** Extra width
+   does not convert to strength here.
+3. **The teacher blend bought +30.42 by improving the TARGET, not the capacity.**
+4. **Rising label-heldout alongside rising Elo** — the labels point the wrong way.
+
+All four say the same thing: **capacity is not the binding constraint; targets
+are.** Capacity we cannot fill is dead weight paid for on every node.
+
+### ⚠ BUT THE TWO CHANGES ARE NOT EQUALLY SUPPORTED — keep them distinct
+- **1280 -> 768 removes CAPACITY for the same information.** Directly supported
+  by (1) and (2). Low risk.
+- **Dropping FullThreats removes INFORMATION, not capacity.** NOTHING above
+  speaks to it. Mild counter-signal: `eca43a97` runs the same 83,248 inputs we
+  do — **threats included** — so the engine that beats us by 90.7 chose to keep
+  them.
+
+**So the experiment does NOT ask "is our net too big". It asks: can HalfKA
+reconstruct enough of what threats encode, given 45-70 Elo of speed to pay with?**
+That is a genuinely open question and equal-time games answer it cleanly.
+
+### The falsifiable form
+**If data is the binding constraint, the 768 HalfKA-only net should lose FAR less
+than its 5.9x smaller working set suggests**, because most discarded capacity was
+never used.
+- Near parity at equal time -> strong support for the thesis, and it ships as the
+  fastest net.
+- Collapse -> threats carry information HalfKA cannot recover. Worth knowing
+  BEFORE the curation program starts, since it says what the features must
+  preserve.
+
+Either outcome is informative, which is what makes it worth the run.
