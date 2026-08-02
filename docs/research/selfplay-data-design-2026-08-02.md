@@ -631,6 +631,39 @@ These scale linearly in cores and are lower bounds.
 | **`nnue_convert inspect` cross-decode** | **3,222 records, 0 piece-count mismatches, ALL CHECKS PASSED** |
 | twins blindness receipt | `archon nnue-eval` identical on **700/700** pairs, both kinds |
 | oracle-comparison null arm | **100.00 % agreement, 0 cp** |
+| **`run_pipeline.sh` end to end, at the recommended settings** | **85 s for 30 games → 1,603 records, ALL CHECKS PASSED** |
+
+### 8.1 The end-to-end run
+
+```bash
+MODE=self GAMES=30 GAMENODES=25000 ORACLE=engines/bin/stockfish-eca43a97 \
+LABELNODES=10000 PERGAME=80 CONC=2 WORKERS=4 TAG=e2e \
+  bash tools/ops/data/run_pipeline.sh
+```
+
+30 games → 2,100 candidates → **1,603 kept** (23.67 % label-stage drop:
+460 capture, 36 kind, 1 score — inside the contract's 20–35 % band), 230 pos/s
+at 10k nodes, `corpus.bin` = 51,296 B = 1,603 × 32 exactly, and
+`nnue_convert inspect` re-decoded every record with zero mismatches. Artifacts
+in `data/nnue/selfplay/e2e/`: `games.pgn`, `manifest.json`, `positions.tsv`,
+`labelled.tsv` (+ `.dropped.tsv`, `.stats.json`), `corpus.{txt,bin,shuf.bin}`,
+`corpus.meta.json`, `census.json`, `pipeline.log`.
+
+### 8.2 Is the WDL column doing work? (census of that run)
+
+| category | share |
+|---|---|
+| dead-drawn (\|cp\| ≤ 50 **and** drawn) | 31.0 % |
+| already-decided (\|cp\| ≥ 600) | 3.9 % |
+| **LIVE — the result is adding information** | **65.1 %** |
+| contradicted / decisive | **0 / 515** |
+
+Two thirds of the corpus has a result column that is genuinely informative.
+**The 31 % dead-drawn share is the one distributional number worth acting on**:
+in those rows the label and the outcome agree but neither discriminates, so they
+contribute a large, easy, uninformative mass to the loss. `census.py` reports it
+on every corpus so it can be tracked, and down-weighting or capping that band is
+an obvious next lever — untested here.
 
 `nnue_convert inspect` is the strongest available proof: it re-decodes every
 record with bulletformat's own loader and asserts the piece multiset, one king
