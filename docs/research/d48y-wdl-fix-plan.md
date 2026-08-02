@@ -18527,3 +18527,38 @@ never used.
   preserve.
 
 Either outcome is informative, which is what makes it worth the run.
+
+## 2026-08-01 23:05 — ★ THE TEACHER GAIN IS FRONT-LOADED. sb1720 == sb1648 over 1500 games.
+
+```
+sb1720 vs sb1648 (72 superbatches apart), 1500 games @25k:
+Elo: -1.85 +/- 10.33   nElo: -3.15   LOS 36.26 %   PairsRatio 1.00
+W427 L435 D638   Ptnml [23,178,349,184,16]
+eval stdev 453.5 vs 445.3 (1.8 % apart -> NO frame confound)
+```
+
+**Dead flat at the full bar.** The 60/40 SF-teacher blend bought **+30.42 +/- 11.02
+vs canonical in its first ~18 superbatches** and then **nothing measurable for the
+next 72.** The gain SATURATES fast.
+
+**Consequence for the research program:** future distillation runs should be
+budgeted in TENS of superbatches, not hundreds. The 500-sb plan would have spent
+~26 more hours of GPU for, on this evidence, no further strength. Gate early and
+often rather than committing to a long run.
+
+**Owner stopped the run and started the terminal anneal** (`d49anneal.service`):
+sb1728 -> sb1758, LR **1.6879e-05 -> exactly 0** linearly over 30 sb, **teacher
+HELD at alpha 0.4 throughout** (owner: "It will have a teacher too btw" — yes, by
+design: changing alpha and LR together would make "the anneal helped" and "less
+teacher helped" inseparable).
+
+**Also shipped this tick: search-simplification basket A** on the owner's ruling
+("I'm certain it is elo neutral. Ship it"). Merged, pins moved
+(`Bench: 300694 -> 351273`, d13 `2045128 -> 1865161`, eval hash unchanged),
+`CHECK_NNUE_GATE=1 tools/check.sh` -> All checks passed, pushed as `4a9dc66c`.
+Its SPRT read **-3.66 +/- 11.88 over 380 games** — consistent with neutral but
+never powered to separate neutral from slightly negative. **Recorded in CLAUDE.md
+as NOT the evidence for the merge**, so it cannot later be quoted as if it were.
+
+**Next in the owner's sequence:** anneal finishes -> gate the annealed net ->
+promote to canonical -> transplant into **768 HalfKA-only** (16/32 head).
