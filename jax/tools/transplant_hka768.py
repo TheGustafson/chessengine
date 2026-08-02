@@ -90,6 +90,11 @@ def main() -> None:
     ap.add_argument("--rank", default="head", choices=["head", "ft", "product", "first"])
     ap.add_argument("--spec", default="../tools/nnue/runs/d49_sfblend_500.json",
                     help="run spec of the SOURCE checkpoint (supplies its arch/shapes)")
+    ap.add_argument("--keep-threats", action="store_true",
+                    help="ABLATION: narrow the accumulator but KEEP the FullThreats "
+                         "channel. Separates 'we narrowed' from 'we dropped threats' -- "
+                         "the D50 sb100 gate read -212 for the two changes TOGETHER and "
+                         "cannot say which caused it.")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
 
@@ -117,8 +122,11 @@ def main() -> None:
 
     out: dict[str, np.ndarray] = {}
     dropped = sliced = kept = 0
+    drop_set = () if a.keep_threats else DROP
+    if a.keep_threats:
+        print("  --keep-threats: FullThreats retained and narrowed with the accumulator")
     for name, arr in params.items():
-        if name in DROP:
+        if name in drop_set:
             dropped += arr.size
             continue
         if acc in arr.shape:
