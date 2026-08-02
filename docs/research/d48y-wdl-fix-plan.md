@@ -18562,3 +18562,45 @@ as NOT the evidence for the merge**, so it cannot later be quoted as if it were.
 
 **Next in the owner's sequence:** anneal finishes -> gate the annealed net ->
 promote to canonical -> transplant into **768 HalfKA-only** (16/32 head).
+
+## 2026-08-01 23:35 — DESIGN NOTE (owner): a SEPARATE, BIGGER L1 for disagreement
+
+**Owner's thinking:** the small value net may be capacity-constrained once it also
+has to represent disagreement, so give disagreement its own L1 — and that one can
+be bigger, "since we don't have to poll disagreement on every node."
+
+**The cost-asymmetry reasoning is correct and is the whole lever.** A head polled
+at decision points has its cost divided by the polling rate.
+
+### ⚠ But the expense of a second L1 is MAINTENANCE, not evaluation
+An incrementally-updated accumulator costs on **every make/unmake**, whether or
+not anything reads it. A second 2048-wide L1 maintained the usual way therefore
+costs at every node and pays back only at polled ones — exactly backwards.
+
+**The fix is to NOT maintain it: refresh from scratch at the polled nodes only.**
+That path already exists (`finny_refresh_into`, `sota_accumulator.rs:632`).
+
+### The crossover, concretely
+| strategy | cost |
+|---|---|
+| incremental | ~4 row updates per move, EVERY node |
+| refresh-on-demand | ~30 active-feature rows, ONLY at polled nodes |
+
+**Refresh wins below roughly 1 polled node in 8.** A decision-point signal (root,
+PV nodes, high-depth cutoffs) sits far below that, so the second L1 is close to
+free. If polling creeps toward "most nodes", incremental wins and the separate-L1
+advantage evaporates. **Measure the polling rate before sizing the head.**
+
+### The cheaper middle option
+A **wider HEAD (L2/L3) on the SHARED accumulator** costs nothing in maintenance —
+the accumulator is already there. Strictly better than a second L1 *if* HalfKA
+already contains what disagreement depends on. A second transformer is only
+justified if disagreement needs different FEATURES (e.g. the relational/threat
+structure the HalfKA-only net discards), not merely more processing of the same
+ones.
+
+### What the current experiment does and does NOT tell us
+If the 768 HalfKA-only net holds up on value, that shows **HalfKA carries most of
+what a VALUE head needs**. It says **nothing** about disagreement. The gap between
+those two answers is precisely what would justify the separate L1 — so this is a
+question to re-ask after the value result, not one the value result settles.
