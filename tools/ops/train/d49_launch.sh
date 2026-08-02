@@ -43,6 +43,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 RUN_SPEC=${RUN_SPEC:-d49_sfblend_500.json}
 CKPT_GLOB=${CKPT_GLOB:-d49sfb}
 MIN_MEM_MB=${MIN_MEM_MB:-3000}
+
+# EXACT dependency set. Do NOT paraphrase or "simplify" this line: dropping
+# `optax` and unpinning jax made the trainer die instantly with
+# ModuleNotFoundError while the loop cheerfully retried every 120 s. Pinned
+# versions because a silent jax upgrade changes numerics mid-run.
+UV_DEPS=${UV_DEPS:-'--with numpy==2.5.1 --with jax[cuda12]==0.11.0 --with optax==0.2.8'}
 EXP_DIR="$ARCHON_ROOT/data/nnue/experiments/d49-1280"
 SPEC_PATH="$ARCHON_ROOT/tools/nnue/runs/$RUN_SPEC"
 OPS_LOG="$EXP_DIR/cyc.log"; export OPS_LOG
@@ -68,8 +74,13 @@ while :; do
     log "launching from sb${RESUME} (spec $RUN_SPEC)"
     (
         cd "$ARCHON_ROOT/jax" || exit 9
+        # Cap JAX's preallocation so the run coexists with a desktop session.
+        # JAX grabs ~90% of VRAM by default; with Chrome's GPU process holding
+        # ~720 MiB the trainer could not fit and died with CUDA_ERROR_OUT_OF_MEMORY
+        # on every retry. 0.78 leaves room for a browser without starving it.
+        XLA_PYTHON_CLIENT_MEM_FRACTION=${XLA_MEM_FRACTION:-0.78} \
         PYTHONUNBUFFERED=1 ARCHON_JAX_ALLOW_GPU=1 ARCHON_JAX_FT_IMPL=pallas \
-            uv run --no-project --with numpy==2.5.1 --with jax[cuda12] \
+            uv run --no-project $UV_DEPS \
             python tools/pump_train.py "../tools/nnue/runs/$RUN_SPEC" "$RESUME"
     ) >> "$OPS_LOG" 2>&1
     rc=$?
