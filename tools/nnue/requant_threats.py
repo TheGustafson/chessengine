@@ -80,6 +80,20 @@ def main() -> int:
     # returns flat arrays when it is not told the arch.
     params = checkpoint.open_raw(a.raw, arch.param_shapes(), mmap=True)
     params = {k: np.asarray(v) for k, v in params.items()}
+
+    # A HalfKA-ONLY net (arch_halfka_only) carries no threat table at all, so
+    # there is nothing to requantise and `l0_threatw` does not exist. Skip
+    # straight to the export -- without this the whole D50-HKA768 experiment
+    # could be TRAINED but never PACKED, i.e. never played, never gated.
+    if getattr(arch, "halfka_only", False) or "l0_threatw" not in params:
+        if a.dry_run:
+            print("(halfka_only: no threat table; dry run — nothing written)")
+            return 0
+        n = checkpoint.write_quant(a.out, params, arch)
+        print(f"halfka_only: no threat table to requantise")
+        print(f"wrote {a.out} ({n:,} bytes)")
+        return 0
+
     w = params["l0_threatw"].astype(np.float32)
 
     lim = 127.0 / a.scale

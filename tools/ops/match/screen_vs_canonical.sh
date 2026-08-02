@@ -68,7 +68,18 @@ uv run --no-project --with numpy==2.5.1 python tools/nnue/requant_threats.py \
     "$CKPT" "$OUT/q${SB}.bin" --scale 256 \
     --run-spec "tools/nnue/runs/$RUN_SPEC" >/dev/null 2>&1 \
     || { log "FATAL: requant failed"; exit 3; }
-D40_ACC=1280 D40_L2=16 D40_L3=32 D40_POLICY=1 D40_POL_DIM=16 \
+# Pack dims come from the RUN SPEC, never hardcoded: a 1280 default silently
+# mispacks any other arch, and D40_HALFKA_ONLY must be set for a threatless net
+# or netpack demands a threat table that does not exist. Both bit the D50-HKA768
+# sb100 gate on 2026-08-02 -- the net trained fine and simply could not be packed.
+SPEC_JSON="$ARCHON_ROOT/tools/nnue/runs/$RUN_SPEC"
+D40_ACC=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('arch_hl',1280))" "$SPEC_JSON")
+D40_L2=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('arch_l2',16))" "$SPEC_JSON")
+D40_L3=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('arch_l3',32))" "$SPEC_JSON")
+D40_HALFKA_ONLY=$(python3 -c "import json,sys;print(1 if json.load(open(sys.argv[1])).get('arch_halfka_only') else 0)" "$SPEC_JSON")
+export D40_ACC D40_L2 D40_L3 D40_HALFKA_ONLY
+log "  pack dims from spec: acc=$D40_ACC l2=$D40_L2 l3=$D40_L3 halfka_only=$D40_HALFKA_ONLY"
+D40_POLICY=1 D40_POL_DIM=16 \
 D40_THREAT_QUANT=256 D40_NETWORK_SCALE="$SCALE" \
   uv run --no-project --with numpy==2.5.1 python tools/nnue/netpack.py \
     "$OUT/q${SB}.bin" "$CAND" d40 >/dev/null 2>&1 \
