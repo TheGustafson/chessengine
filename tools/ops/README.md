@@ -53,6 +53,7 @@ depends on the caller's cwd.**
 |---|---|
 | `screen_vs_canonical.sh` | Pack the newest checkpoint and screen it against `engines/canonical/net.cenn`. 1500 games @ 25k fixed nodes. Reads eval stdev **before** the games. |
 | `warm_point_verdict.sh` | Screen a checkpoint against **the exact checkpoint it warmed from** — isolates a change from ordinary training progress. Requires `REF_SB`. |
+| `cross_arch_screen.sh` | Screen two nets needing DIFFERENT builds (e.g. 768 vs 1280). A `.cenn` records `acc_width` and the loader refuses a mismatch, so one binary cannot drive both. Verifies each binary loads its net **before** spending games — fastchess reports 0 games and exits 0 otherwise. |
 | `sprt.sh` | SPRT a built engine vs a reference at a **real time control** — the only instrument that can price a search change's time cost. |
 | `vs_stockfish.sh` | External anchor vs a Stockfish binary. Equal-node (`NODES=`, load-immune, quality-per-node) or real clock (`TC=`, load-sensitive, who-wins). Never a merge gate. |
 
