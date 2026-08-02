@@ -65,6 +65,11 @@ arch-d48x = []
 # itself carries the no-threats flag, so the engine needs no runtime switch;
 # this feature only sets the dimensions. Same exclusivity rule.
 arch-hka2048 = []
+# HalfKA-ONLY 768/16/32 (2026-08-01, owner-directed) — the fastest net shape we
+# can build: threat rows dropped entirely (FT working set 101.6 MB -> 16.5 MB),
+# at the width the fold kernels were originally written for. Mutually exclusive
+# with every other arch-* feature. Quality cost UNMEASURED; equal-time games decide.
+arch-hka768 = []
 # Distribution-only: embed net-0 as the default eval so the engine plays NNUE
 # with no `EvalFile` set (for GUIs that can't set UCI string options). OFF by
 # default, so runtime [dependencies] stays empty (D15) and the default build is

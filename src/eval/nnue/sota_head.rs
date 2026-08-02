@@ -43,6 +43,10 @@ use crate::types::Color;
     all(feature = "arch-d48w", feature = "arch-d48x"),
     all(feature = "arch-d48w", feature = "arch-hka2048"),
     all(feature = "arch-d48x", feature = "arch-hka2048"),
+    all(feature = "arch-d47v", feature = "arch-hka768"),
+    all(feature = "arch-d48w", feature = "arch-hka768"),
+    all(feature = "arch-d48x", feature = "arch-hka768"),
+    all(feature = "arch-hka2048", feature = "arch-hka768"),
 ))]
 compile_error!(
     "the arch-* cargo features are mutually exclusive: each sets a different \
@@ -54,7 +58,8 @@ compile_error!(
     feature = "arch-d47v",
     feature = "arch-d48w",
     feature = "arch-d48x",
-    feature = "arch-hka2048"
+    feature = "arch-hka2048",
+    feature = "arch-hka768"
 )))]
 pub const L1: usize = 1280;
 /// D47V (2026-07-26): the distilled 768 deploy arch — see the doctrine
@@ -87,17 +92,39 @@ pub const L1: usize = 1280;
 /// the study's grid before this arch is launched. 2048/32/32 + skip.
 #[cfg(feature = "arch-hka2048")]
 pub const L1: usize = 2048;
+/// HalfKA-ONLY 768 (2026-08-01, owner-directed): the fastest net we can build.
+/// Same 768 width the fold kernels were originally written for (this module's
+/// header still says "768-wide"), with the d48x head shape (16/32) rather than
+/// D47V's 32.
+///
+/// The threat rows are dropped ENTIRELY, not narrowed: HalfKA is 22,528 of the
+/// 83,248 input rows (27.1 %), so the FT working set falls 101.6 MB -> 16.5 MB
+/// (0.162x). Perf study 7 §5 measured dropping threat rows at **+25 % (768/wl50)
+/// to +39 % (1280/middlegame) instructions:u, 3/3 rounds** — roughly 45-70 Elo
+/// at the house 120/doubling, which exceeds the whole architecture-matched speed
+/// deficit vs eca43a97 (1.185x / ~29 Elo, measured 2026-08-01).
+///
+/// Nothing here forces a threatless net: `largenet_threats` is an `Option` and
+/// the loader accepts a net with no threat sections, so the CENN decides. This
+/// feature only fixes the DIMS.
+///
+/// **The quality cost is UNMEASURED** — this discards 72.9 % of the input rows,
+/// and `eca43a97`, which beats us by +90.7 in our own search, keeps its threats.
+/// Equal-time games decide it.
+#[cfg(feature = "arch-hka768")]
+pub const L1: usize = 768;
 /// L1→L2 output width (the D47 shared bottleneck).
 #[cfg(not(any(
     feature = "arch-d47v",
     feature = "arch-d48w",
     feature = "arch-d48x",
-    feature = "arch-hka2048"
+    feature = "arch-hka2048",
+    feature = "arch-hka768"
 )))]
 pub const L2: usize = 128;
 #[cfg(any(feature = "arch-d47v", feature = "arch-hka2048"))]
 pub const L2: usize = 32;
-#[cfg(any(feature = "arch-d48w", feature = "arch-d48x"))]
+#[cfg(any(feature = "arch-d48w", feature = "arch-d48x", feature = "arch-hka768"))]
 pub const L2: usize = 16;
 /// L2→L3 output width.
 pub const L3: usize = 32;
