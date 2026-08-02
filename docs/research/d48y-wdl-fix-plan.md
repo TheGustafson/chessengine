@@ -18640,3 +18640,50 @@ selection after training, the ranking was noise.
 
 **Sequence:** anneal completes (sb1758) -> gate the annealed net -> promote to
 canonical -> transplant -> launch d50_hka768 -> gate at ~sb1778 and ~sb1798.
+
+## 2026-08-02 01:5x — PROMOTION READY; the scale sweep changed the answer
+
+**Promotion gate FINAL: annealed sb1758 vs canonical = `+30.65 +/- 10.95`,
+LOS 100.00 %, 1500 games** (W513 L381 D606, Ptnml [20,133,331,227,39]).
+
+### ★ The scale sweep says do NOT ship at 756 — the scale that number was measured at
+
+4-arm round-robin on the SAME checkpoint, fixed nodes. Two reads:
+
+| scale | n=1000/arm | n=1800/arm |
+|---|---|---|
+| s900 | +4.52 (2nd) | **+5.60 (1st)** |
+| s600 | **+5.90 (1st)** | +0.97 (2nd) |
+| s1068 | +2.44 (3rd) | +0.39 (3rd) |
+| **s756** | **-12.86 (4th)** | **-6.95 (4th)** |
+
+**THE LEADER CHANGED BETWEEN READS and the spread collapsed 19 -> 12.5 Elo.**
+Textbook regression to the mean, and the same trap that caught me twice on
+2026-08-01 (1068 read "identical" at n=529, finished -3.01; 756 read -6.77 at
+n=1027, finished -1.39).
+
+**What survives BOTH reads:** 756 is last; the top three are indistinguishable
+(5.2 Elo apart at +/-9.7). The robust claim is **"do not ship 756"**, NOT
+"ship 900".
+
+**Decision by the PRE-REGISTERED tie rule** (written into `scale_sweep.sh`'s
+header before any games ran): when the top arms sit inside each other's bars,
+take the one nearest the incumbent scale rather than inventing a winner.
+Incumbent = **600**. **Promote at 600.**
+
+Note the +30.65 was measured AT 756 — the worst arm — so the promotion margin at
+600 should be no worse and plausibly better. It is not re-measured; the sweep
+compares arms to each other, not to canonical.
+
+### Bug: scale_sweep sized its rounds 6x too large
+`GAMES_PER_PAIR*PAIRS/2` is the natural reading and it is wrong — fastchess plays
+EVERY pairing per round, so one round = `2*PAIRS` games and
+`ROUNDS = GAMES_PER_PAIR/2`. Asked for 3,600 games, queued 21,600. Fixed; the
+running sweep is being allowed to finish because the extra games sharpen exactly
+the comparison that matters.
+
+### D50-HKA768 live
+sb58/530 at ~320k pos/s (**2.0x the 1280 net's 159k**). Heldout 0.016831 (sb4) ->
+**0.013972 (sb56)**, descending and flattening. The LR judgment call (1.5e-4)
+is VINDICATED by the fall; the diagnostic I pre-registered was "if it does not
+fall within ~10 sb, the LR is wrong."
