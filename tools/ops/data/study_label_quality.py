@@ -113,6 +113,42 @@ def disagreement(items, T):
     return dec, contra
 
 
+def auc(items):
+    """P(label ranks a White WIN above a White LOSS), draws excluded.
+
+    WHY THIS EXISTS. The contradiction-rate above turned out to be SATURATED on
+    real self-play data: at |cp| >= 150 it sits at 0.2-0.5% for every node count
+    from 2k to 200k, inside both its own CI and the sampling null, and it is
+    exactly 0.00% on played-out games. A statistic pinned at zero cannot rank
+    node counts, so a second one is needed that uses the whole ordering instead
+    of a threshold.
+
+    AUC uses ONLY the ordering of labels and the binary outcome, so it is
+    scale-free, frame-free, and needs no sigmoid constants or fitted transform
+    -- nothing that could smuggle a trainer assumption into the measurement.
+    0.5 is a coin flip; 1.0 is a label that orders every outcome correctly.
+    """
+    w = sorted(cp for cp, r in items if cp is not None and r == 1.0)
+    l = sorted(cp for cp, r in items if cp is not None and r == 0.0)
+    if not w or not l:
+        return None, 0
+    # rank-sum (Mann-Whitney), ties counted as half
+    merged = sorted([(c, 0) for c in l] + [(c, 1) for c in w])
+    rank = 0
+    i = 0
+    wins = 0.0
+    while i < len(merged):
+        j = i
+        while j < len(merged) and merged[j][0] == merged[i][0]:
+            j += 1
+        nl = sum(1 for k in range(i, j) if merged[k][1] == 0)
+        nw = sum(1 for k in range(i, j) if merged[k][1] == 1)
+        wins += nw * rank + nw * nl / 2.0
+        rank += nl
+        i = j
+    return wins / (len(w) * len(l)), len(w) + len(l)
+
+
 def wilson(k, n):
     """95% Wilson interval half-width, in percent. Small-n honest."""
     if n == 0:
@@ -205,10 +241,23 @@ def main() -> int:
         allrows = tsvs[n]
         dropped = sum(1 for v in allrows.values() if v["reason"])
 
+        a, a_n = auc(items)
+        # threshold sweep: the contradiction rate is only informative where the
+        # outcome is genuinely in doubt, so report it at several bars rather
+        # than trusting one.
+        sweep = {}
+        for t in (50, 150, 400):
+            d2, c2 = disagreement(items, t)
+            sweep[t] = dict(decisive=d2,
+                            pct=round(100 * c2 / max(d2, 1), 2),
+                            ci95=wilson(c2, d2)[0])
+
         report["results"][n] = dict(
             decisive=dec, contradicted=contra,
             disagreement_pct=round(100 * contra / max(dec, 1), 2),
             disagreement_ci95=hw,
+            auc=round(a, 4) if a is not None else None, auc_n=a_n,
+            disagreement_sweep=sweep,
             bestmove_agree_with_deepest_pct=round(100 * agree / max(len(common), 1), 2),
             median_abs_delta_vs_deepest_cp=med,
             d46_drop_pct_at_tier=round(100 * dropped / max(len(allrows), 1), 2),
@@ -224,10 +273,15 @@ def main() -> int:
         d1, c1 = disagreement(h1, args.threshold)
         r0 = 100 * c0 / max(d0, 1)
         r1 = 100 * c1 / max(d1, 1)
+        a0, _ = auc(h0)
+        a1, _ = auc(h1)
         report["null"][n] = dict(
-            half0=dict(decisive=d0, pct=round(r0, 2)),
-            half1=dict(decisive=d1, pct=round(r1, 2)),
+            half0=dict(decisive=d0, pct=round(r0, 2),
+                       auc=round(a0, 4) if a0 else None),
+            half1=dict(decisive=d1, pct=round(r1, 2),
+                       auc=round(a1, 4) if a1 else None),
             half_spread_pp=round(abs(r0 - r1), 2),
+            auc_half_spread=round(abs(a0 - a1), 4) if (a0 and a1) else None,
         )
 
     # --- slices at the deepest and a mid tier --------------------------------
@@ -260,15 +314,27 @@ def main() -> int:
     print(f"paired positions: {len(common)}   threshold |cp|>={args.threshold} "
           f"({frame})\n")
     print(f"{'nodes':>8} {'disagree%':>10} {'+-95%':>7} {'nullspread':>11} "
-          f"{'bmAgree%':>9} {'medD':>6} {'drop%':>6} {'pos/s':>8}")
+          f"{'AUC':>7} {'AUCnull':>8} {'bmAgree%':>9} {'medD':>6} {'drop%':>6} "
+          f"{'pos/s':>8}")
     for n in tiers:
         r = report["results"][n]
+        nl = report["null"][n]
         print(f"{n:>8} {r['disagreement_pct']:>10.2f} {r['disagreement_ci95']:>7.2f} "
-              f"{report['null'][n]['half_spread_pp']:>11.2f} "
+              f"{nl['half_spread_pp']:>11.2f} "
+              f"{(r['auc'] if r['auc'] is not None else 0):>7.4f} "
+              f"{(nl['auc_half_spread'] or 0):>8.4f} "
               f"{r['bestmove_agree_with_deepest_pct']:>9.1f} "
               f"{r['median_abs_delta_vs_deepest_cp']:>6} "
               f"{r['d46_drop_pct_at_tier']:>6.1f} "
               f"{r['throughput']['pos_per_s']:>8.1f}")
+    print(f"\ncontradiction sweep (decisive n / rate% +-CI):")
+    print(f"{'nodes':>8}" + "".join(f"{'|cp|>='+str(t):>22}" for t in (50, 150, 400)))
+    for n in tiers:
+        s = report["results"][n]["disagreement_sweep"]
+        row = f"{n:>8}"
+        for t in (50, 150, 400):
+            row += f"{s[t]['decisive']:>8} {s[t]['pct']:>6.2f}+-{s[t]['ci95']:<5.2f}"
+        print(row)
     print("\nnullspread = |half0 - half1| at the SAME tier = sampling noise floor.")
     print("A tier-to-tier change smaller than the local nullspread is NOT resolvable.")
     print(f"\nreport -> {outp}")
