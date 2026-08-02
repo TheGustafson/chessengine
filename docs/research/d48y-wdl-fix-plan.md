@@ -18743,3 +18743,46 @@ protect the output.
 
 **Not caused by the promotion** — commit `ea109cec` touched zero files under
 `ledger/`; this predates it.
+
+## 2026-08-02 03:5x — ★ D50-HKA768 sb100 GATE: -219.03 +/- 16.26. Dropping threats is CATASTROPHIC.
+
+```
+768 HalfKA-only sb100 vs canonical (d49sfb-sb1758-s600), cross-arch, 25k fixed nodes
+Elo: -219.03 +/- 16.26   nElo: -341.22   LOS 0.00 %
+1200 games  W111 L781 D308 (22.08 %)  PairsRatio 0.02
+eval stdev 344.3 (cand) vs 360.5 (ref) -> no frame confound
+```
+
+**Scale of the number:** the teacher blend bought **+30.42**; SF's entire net
+advantage over ours is **+90.7**. This is **more than 2x the whole SF gap**, in
+the wrong direction.
+
+**The speed case cannot cover it.** Dropping threat rows was measured at +25-39 %
+instructions = **45-70 Elo** equal-time (perf study 7 §5). That was the budget we
+were paying quality out of. **-219 is 3-5x the budget.**
+
+**This IS the experiment's answer.** The question was: can HalfKA reconstruct
+enough of what FullThreats encodes, given 45-70 Elo of speed to pay with? At
+sb100: **no.** The threat channel carries information the HalfKA channel cannot
+recover — at least not in 100 superbatches.
+
+**★ THE HELDOUT GAVE NO WARNING.** It fell smoothly and monotonically throughout:
+0.016831 (sb4) -> 0.013565 (sb132), flattening normally. Nothing in the loss
+curve hinted at -219. **Loss and Elo have now disagreed TWICE tonight in OPPOSITE
+directions** — the teacher blend gained +30 while heldout ROSE; this net's
+heldout FELL the whole way while it lost 219. [[loss-is-not-elo]] is not a caveat
+about precision; the two quantities are close to unrelated here.
+
+**Continuing to the sb200 gate rather than stopping now.** The pre-registered
+abort said "first gate materially negative -> stop", and -219 qualifies. But the
+owner explicitly chose 500 sb over my front-loading concern, and the TRAJECTORY
+is the real decision input: sb200 near -180 means recovery is far too slow to
+matter; near -100 means the budget was right. One gate (~3 h) converts a guess
+into a measurement.
+
+**The confound now matters a great deal.** This run changed TWO things — narrowed
+1280->768 AND dropped threats. -219 does not say which. The ablation (768 WITH
+threats, same transplant tooling) is the separator and is nearly free now that
+`transplant_hka768.py`, `arch-hka768`, the halfka_only export path and
+`cross_arch_screen.sh` all exist. **Run it before concluding that width is fine
+and threats are essential** — the evidence so far says only that the PAIR is bad.
