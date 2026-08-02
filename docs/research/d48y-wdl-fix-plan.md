@@ -18922,3 +18922,44 @@ Replaced with an explicit MODE array.
 for speed MUST be reported at equal time, with the fixed-node number labelled as
 the per-node component only. The gate cadence for D50-W768 is fixed-node and
 inherits this flaw — its numbers need the same speed accounting.
+
+## 2026-08-02 08:1x — ★ THE ABLATION ATTRIBUTES THE LOSS: threats ~141 Elo, width ~71
+
+Both arms at sb100, 25k fixed nodes, vs the same canonical:
+
+| arm | Elo | +/- |
+|---|---|---|
+| 768 **HalfKA-only** | **-212.20** | 14.20 (n=1500) |
+| 768 **WITH threats** | **-71.34** | 22.92 (n=400 block) |
+
+**Dropping FullThreats costs ~141 Elo. Narrowing 1280 -> 768 costs ~71.**
+The owner's width thesis SURVIVES; the threat channel was the expensive change.
+This is exactly why the two changes had to be separated — -212 alone would have
+condemned the width idea for a cost it did not incur.
+
+### With speed accounted for (the frame that actually decides)
+| arm | fixed-node | measured speed | **equal-time (est.)** |
+|---|---|---|---|
+| 768 HalfKA-only | -212 | **2.00x** (5 rounds, quiet) | **≈ -92** |
+| 768 with threats | -71 | **~1.15x** (3 rounds, LOADED) | **≈ -47** |
+
+**The with-threats variant wins even after crediting HalfKA-only its full 2x.**
+Dropping threats trades ~141 Elo of quality for ~0.85 of a speed doubling — a
+bad trade at the house 120 Elo/doubling.
+
+### ★ AND IT VERIFIES THE WIDTH-ELASTICITY PRIOR I COULD NOT CHECK
+On 2026-08-01 I recorded a REMEMBERED figure — "768 vs 1280 is only ~1.18x
+despite a 1.667x working-set ratio" — and flagged it UNVERIFIABLE because every
+net on disk was acc_width 1280. **The ablation produced the first 768 net, and it
+measures 1.15x.** The remembered prior is confirmed: **narrowing buys far less
+speed than the byte count implies**, consistent with the fold being MSHR-limited
+rather than bandwidth-limited.
+
+**Caveat on that 1.15x: measured on a LOADED box** (trainer + two matches, load
+7.6), 3 rounds, range 960,961-1,244,410 — a **29 % spread**. The 2.00x figure was
+5 rounds on a quieter box with a tight spread. Re-measure 1.15x when the box is
+free before building on it. [[cycles-noise-floor-1p57]]: time-based counters are
+not load-robust.
+
+**Neither arm beats canonical yet**, and both are at sb100 of 530 still
+descending. These are early attributions, not verdicts.
