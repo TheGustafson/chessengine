@@ -80,8 +80,12 @@ done
 
 N=$(echo $SCALES | wc -w)
 PAIRS=$(( N*(N-1)/2 ))
-ROUNDS=$(( GAMES_PER_PAIR * PAIRS / 2 ))
-log "  ${N} arms, ${PAIRS} pairs, round-robin, ${ROUNDS} rounds (~$((ROUNDS*2)) games total)"
+# fastchess plays EVERY pairing each round, so one round = 2*PAIRS games and
+# rounds = GAMES_PER_PAIR/2. Sizing this as GAMES_PER_PAIR*PAIRS/2 (the natural
+# but wrong reading) overshoots by PAIRS -- measured 2026-08-02: it asked for
+# 3,600 games and fastchess queued 21,600.
+ROUNDS=$(( GAMES_PER_PAIR / 2 ))
+log "  ${N} arms, ${PAIRS} pairs, round-robin, ${ROUNDS} rounds = $((ROUNDS*2*PAIRS)) games total (${GAMES_PER_PAIR}/pair)"
 log "  pairwise bar = +/-$(python3 -c "print(f'{383/($GAMES_PER_PAIR**0.5):.1f}')") Elo"
 
 SW="$ARCHON_D49/scale-sb${SB}.out"
