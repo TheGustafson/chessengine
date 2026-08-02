@@ -49,7 +49,7 @@ MIN_MEM_MB=${MIN_MEM_MB:-3000}
 # ModuleNotFoundError while the loop cheerfully retried every 120 s. Pinned
 # versions because a silent jax upgrade changes numerics mid-run.
 UV_DEPS=${UV_DEPS:-'--with numpy==2.5.1 --with jax[cuda12]==0.11.0 --with optax==0.2.8'}
-EXP_DIR="$ARCHON_ROOT/data/nnue/experiments/d49-1280"
+EXP_DIR=${EXP_DIR:-$ARCHON_ROOT/data/nnue/experiments/d49-1280}
 SPEC_PATH="$ARCHON_ROOT/tools/nnue/runs/$RUN_SPEC"
 OPS_LOG="$EXP_DIR/cyc.log"; export OPS_LOG
 
