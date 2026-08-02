@@ -26,7 +26,89 @@ positions, it is to produce labels that do not fight the outcome.**
 
 ## 1. THE RECOMMENDED OPERATING POINT
 
-*(section filled in below once every parameter's measurement is in — see §2 ff.)*
+```bash
+# per mode; run one at a time, or share the box by lowering CONC
+systemd-run --user --unit=dgself -p MemoryMax=6G -p MemorySwapMax=0 \
+  --working-directory=/home/nick/projects/chessengine \
+  -E MODE=self -E GAMES=20000 -E GAMENODES=25000 \
+  -E ORACLE=engines/bin/stockfish-eca43a97 -E LABELNODES=10000 \
+  -E PERGAME=80 -E CONC=3 -E WORKERS=5 \
+  /home/nick/projects/chessengine/tools/ops/data/run_pipeline.sh
+```
+
+| parameter | recommendation | why (section) |
+|---|---|---|
+| **mode mix** | 50 % `self` / 30 % `sf18` / 20 % `sf16` | §6.2, §6.3 — **judgement, not measurement** |
+| **play node budget** | 25,000 both sides | §6.3 — both SF anchors contested here |
+| **oracle** | `stockfish-eca43a97` | §5, §5.3 |
+| **oracle node budget** | **10,000** | §4 — the whole of it |
+| **book** | `UHO_Lichess_4852_v1.epd`, sliced per run | §6.7 |
+| **positions per game** | **80** (yields 73.6) | §6.1 — largest *unbiased* cap |
+| **adjudication** | on (`ADJ=1`), two-sided resign | §6.4, §6.5 |
+| **expected yield** | ~176k kept positions/h; ~2.8 h per 1M on 12 cores | §7 |
+
+### 1.1 The node count, honestly
+
+**Nothing I measured distinguishes 5,000 from 200,000 nodes on the criterion the
+owner named.** Eval-outcome consistency is flat across a 100× range on three
+independent instruments, each below its own noise floor (§4.1). The
+representability argument — the owner's "a shallow NNUE can't learn them" —
+came out a **wash** once a mate-score contamination was removed (§4.6). So the
+evidence bounds a *range*, 5k–25k, rather than picking a point in it.
+
+Within that range I recommend **10,000** because:
+
+* **2,000 is strictly dominated** — same throughput as 5,000 (284.3 vs 292.4
+  pos/s, per-position overhead rules below ~5k) and worse labels (§4.4).
+* **Cost is dominated by game generation, not labelling.** 5k → 10k costs only
+  **+15 %** total core-hours (28.8 → 33.2 per million). Paying that buys label
+  σ 65.6 → 59.2 against the deep reference. Going on to 100k costs 2.1× (§7.2).
+* It hedges the one argument that favours depth (§4.5) and the one structural
+  worry the null cannot address: at 10k the oracle is not *much* weaker than the
+  25k search that generated the games.
+
+**5,000 and 25,000 are both defensible.** Anyone preferring the cheap end or the
+matched-to-play end should take them; the data does not separate them.
+
+### 1.2 What makes this pipeline better than the one it replaces
+
+Not the node count — the **provenance and the WDL column**:
+
+* **100 % real WDL by construction.** The result rides with the position from
+  the game that produced it. `build_canon_tight.sh` ships `JOIN_MIN=33` because
+  its measured join overlap was 35.6 %; two thirds of its labelled positions had
+  no result at all (§2).
+* **Every row traces to `(run, game, ply)`**, with sha256 of the engine, net,
+  opponent and book in a manifest written *before* the games start. This is the
+  granularity the D38 ledger cannot give today — it proves a corpus came from a
+  recipe, not which position came from which game.
+* **The filter runs where it can be correct**, and the export stage *refuses*
+  audit-mode input rather than trusting the caller (§2, verified in §8).
+
+### 1.3 Do this before training on it
+
+1. `tools/ledger/ledger.py add-data` — identity is the corpus sha256, already in
+   `corpus.meta.json`.
+2. `tools/nnue/net_scale_check.sh` on the first trained net. Labels are raw SF
+   UCI cp, so contract §2 says `SCORE_MULT` 1.42 at WDL=0.3 / 1.94 at WDL=0 —
+   **but the gate script is the authority, not that sentence.** It is a hard
+   pre-game gate for a reason.
+
+### 1.4 Sizing
+
+Our label problem is a *quality* problem, so this corpus does not need to rival
+the 24 GB of binpacks. **5 M positions (~14 h on 12 cores)** is enough to answer
+whether self-generated, fully-provenanced data beats the current mix, and 1 M
+(~2.8 h) is enough to smoke-test the whole chain into the trainer.
+
+### 1.5 The experiment that actually settles the node count
+
+Everything above is an argument from label properties. **Games arbitrate.** Two
+corpora of *equal size* from the same games — one labelled at 5k, one at 25k —
+trained with identical recipes and screened against each other. That is one
+extra labelling pass over positions already generated (§7.2: ~8 core-hours per
+million extra at 25k), and it converts §4's null from "no measurable difference"
+into a verdict.
 
 ---
 
@@ -300,6 +382,42 @@ eca43a97 0.30 % — all inside a ±0.5 pp CI at n≈1,000. **Same null as §4.**
 So the labels differ materially, and the metric that matters cannot say which
 set is better. The tie has to be broken on strength.
 
+### 5.3 So I measured strength directly — and it is decisive
+
+```
+engines/bin/fastchess \
+  -engine cmd=engines/bin/stockfish-eca43a97 name=eca43a97 \
+  -engine cmd=engines/bin/stockfish18 name=SF18 \
+  -each nodes=25000 tc=inf option.Hash=64 option.Threads=1 \
+  -openings file=UHO_Lichess_4852_v1.epd format=epd order=random start=1200000 \
+  -games 2 -rounds 150 -repeat -srand 777 -concurrency 3 -maxmoves 250
+```
+
+```
+Elo: +47.78 +/- 25.58   nElo: +74.52 +/- 39.32   LOS 99.99 %
+Games: 300, W113 L72 D115, Points 170.5 (56.83 %)   Ptnml [2,27,62,46,13]
+```
+
+**`stockfish-eca43a97` is +47.78 ± 25.58 Elo stronger than `stockfish18` at
+exactly the node budget we label at.** The CI excludes zero comfortably. This
+also confirms the version reasoning from `CLAUDE.md` — eca43a97 (2026-07-06) is
+223 commits *newer* than the `sf_18` tag (2026-01-31), and the release binary
+named "Stockfish 18" is the older engine.
+
+**Recommendation: `engines/bin/stockfish-eca43a97`.** Three reasons, in order:
+
+1. It is measurably the strongest oracle at 25k nodes, so it is the best
+   available proxy for a position's true value.
+2. It costs nothing — 112.7 pos/s against SF18's 107.3 in the same run.
+3. It is **already our pinned constants reference**. Labelling with the same
+   revision the engine's tunables were transcribed from removes a whole class
+   of cross-version drift between what we train toward and what we compare
+   against.
+
+Note this is the one place a "strongest" claim was worth the games: §5.1 had
+already shown the choice *changes the labels* (56–60 % move agreement), so the
+ranking was decision-relevant rather than cosmetic.
+
 ---
 
 ## 6. Diversity and WDL meaningfulness
@@ -414,6 +532,31 @@ consumes 0.8 % of the book. `gen_games.sh` derives a reproducible non-overlappin
 book slice from the run tag (`BOOKSTART`, `SRAND`), so successive runs never mine
 the same openings twice.
 
+### 6.8 The mode mix — reasoning, and what would falsify it
+
+**50 % `self` / 30 % `sf18` / 20 % `sf16`. This is a judgement, not a
+measurement**, and it is the weakest recommendation in this document.
+
+What the measurements support: all three modes produce non-degenerate result
+distributions and broad phase coverage (§6.2), and both Stockfish anchors are
+contested rather than one-sided (§6.3). Nothing distinguishes them on label
+quality, because the label comes from the oracle regardless of who played.
+
+So what a mode actually buys is **position distribution**, and the reasoning is:
+
+* `self` is the cheapest per position and is the only mode that samples the
+  positions *our own search actually reaches* — which is where our net's errors
+  live and therefore where correcting them pays.
+* `sf18` supplies the hardest opposition and the most endgames (33.6 % ≤12
+  pieces, the highest of the three), i.e. the conversion technique that resign
+  adjudication otherwise removes (§6.4).
+* `sf16` supplies positions where we are the stronger side (+82.59 Elo), so it
+  is the mode richest in *winning* positions we must learn to convert.
+
+**What would falsify the weighting:** train equal-size corpora from single-mode
+data and screen them. Since the label pipeline is mode-agnostic, that experiment
+costs only game generation and reuses everything else.
+
 ---
 
 ## 7. Throughput
@@ -474,7 +617,30 @@ These scale linearly in cores and are lower bounds.
 
 ---
 
-## 8. What I could NOT establish, and the failed arms
+## 8. Validation — the tools are exercised, not just written
+
+| check | result |
+|---|---|
+| stage 1 produces games with `[FEN]` header + per-move eval/nodes | 150 games × 3 modes |
+| `-repeat` duplication claim in self-play | 8 games → **4 distinct signatures**, every pair bit-identical |
+| stage 2 ply accounting | 16,999 plies → 15,050 candidates, D46 stage-2 drop 11.47 % |
+| stage 3 reproducibility (`--null`) | **200/200 labels bit-identical** |
+| stage 3 D46 drop rate | **28.0 %** at 25k — inside the contract's 20–35 % band |
+| stage 4 refuses audit-mode input | **exit 1, no `.bin` written** (933 flagged rows) |
+| stage 4 happy path | 3,222 rows → 3,222 records, 32B-aligned, text/bin match, WDL 100 % |
+| **`nnue_convert inspect` cross-decode** | **3,222 records, 0 piece-count mismatches, ALL CHECKS PASSED** |
+| twins blindness receipt | `archon nnue-eval` identical on **700/700** pairs, both kinds |
+| oracle-comparison null arm | **100.00 % agreement, 0 cp** |
+
+`nnue_convert inspect` is the strongest available proof: it re-decodes every
+record with bulletformat's own loader and asserts the piece multiset, one king
+per side, `occ` popcount vs nibble count, `|score| < 2500`, `result ∈ {0,1,2}`,
+`ksq`/`opp_ksq^56` consistency **and** the sign/flip canonicalisation against
+the source text line.
+
+---
+
+## 9. What I could NOT establish, and the failed arms
 
 Reported because they are required, and because a null is not a licence to stop.
 
