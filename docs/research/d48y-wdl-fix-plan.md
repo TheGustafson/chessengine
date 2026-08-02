@@ -18786,3 +18786,40 @@ threats, same transplant tooling) is the separator and is nearly free now that
 `transplant_hka768.py`, `arch-hka768`, the halfka_only export path and
 `cross_arch_screen.sh` all exist. **Run it before concluding that width is fine
 and threats are essential** — the evidence so far says only that the PAIR is bad.
+
+## 2026-08-02 04:2x — D50-HKA768 STOPPED at sb214. No recovery. Ablation launched.
+
+### The trajectory, which is what sb200 was run to establish
+| gate | Elo vs canonical | games |
+|---|---|---|
+| sb100 | **-212.20 +/- 14.20** | 1500 |
+| sb200 | **-206.01 +/- 16.58** | 1047 |
+
+**100 superbatches bought +6.2 Elo — inside both bars, indistinguishable from
+zero.** At that rate the remaining 316 sb buy ~19 Elo and the run finishes near
+**-187**, still **3x the entire 45-70 Elo speed budget** it was meant to pay for.
+There is no trajectory on which this becomes competitive.
+
+**STOPPED at sb214 and the GPU redirected to the ablation.** This overrides the
+owner's 500-sb sizing: that was chosen BEFORE the -212 data existed, the flat
+sb200 was pre-registered as the stop condition, and 11 more GPU-hours confirming
+a known failure costs the answer to the question that is actually open. All
+checkpoints intact; reversible.
+
+### D50-W768 ABLATION now running — the arm that assigns blame
+Identical to d50_hka768 in **every** field except `arch_halfka_only: True ->
+False`. Same transplant source, same column ranking (head-norm), same LR cosine,
+same alpha 0.4, same 12 corpora, same gate cadence, same reference net.
+
+- warm ckpt **65,344,251 params (0.603x)** vs HalfKA-only's 18,225,531 (0.168x)
+- `l0_threatw` correctly **(60720, 768)** — threats narrowed, not dropped
+- sb1 value **0.013044** vs the HalfKA-only arm's **0.015033** — retaining
+  threats starts from a better point, as it should
+
+**What it buys:**
+- **this arm's gate = the cost of NARROWING alone**
+- **difference between the arms = the cost of DROPPING THREATS**
+
+Without it, -212 is unattributable and the owner's width thesis is neither
+supported nor refuted. [[mechanism-over-correlation]] — do not promote "768 is
+bad" from an experiment that changed two things.
