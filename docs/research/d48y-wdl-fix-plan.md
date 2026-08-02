@@ -18269,3 +18269,56 @@ verified by dry run at 0 reap lines each.
 engine". Next levers, in order: (1) the alpha sweep — 0.4 bought +30, nobody has
 tested 0.7/1.0 against the remaining ~58 of the +90.7 net gap; (2) NPS work, now
 priced at ~33 Elo vs SF18; (3) basket A's non-inferiority SPRT.
+
+## 2026-08-01 22:20 — ★ THE SPEED HALF HAS A BUILT, UNARMED LEVER (smallnet gate)
+
+**Measured this tick, interleaved panel (A,B,A,B so trainer/SPRT load hits both):**
+
+| | median NPS |
+|---|---|
+| archon (PGO main + sb1648 net) | 1,290,171 |
+| **Stockfish 18** | **1,587,843** |
+| | **SF18 is 1.231x faster** |
+
+**TWO INDEPENDENT INSTRUMENTS AGREE ON THE SPEED HALF.** 1.231x at the measured
+~120 Elo/speed-doubling = **~36 Elo**. The match difference (real-clock -85.04
+minus equal-node -44.36) = **~41 Elo**. Within 5 Elo of each other by completely
+unrelated methods. **The SF18 gap is ~44 quality-per-node + ~38 speed.**
+
+**★ AND SF18 RUNS TWO NETS:**
+```
+nn-c288c895ea92.nnue  125 MiB  (102384, 1024, 15, 32, 1)   <- big
+nn-37f18f62d772.nnue    6 MiB  ( 22528,  128, 15, 32, 1)   <- small, 20x cheaper
+```
+**Correction to a standing claim:** SF18's big-net input space is **102,384**,
+NOT the 83,248 that "identical feature space" assertions have been resting on.
+That figure came from eca43a97 and does not describe the SF18 binary we test
+against. Re-derive before repeating it.
+
+**WE ALREADY BUILT THE SAME GATE AND NEVER ARMED IT** (perf study #3 item #8,
+`src/eval/nnue/mod.rs:454`, `sota_context.rs:118-140`):
+- `ARCHON_SMALLNET` (cheap-net path), `ARCHON_SMALLNET_THRESH` (decided-position
+  cp), `ARCHON_SMALLNET_MAT_GATE` (material prefilter) — **all unset, gate inert.**
+- When armed it runs the cheap net's HalfKA channel first and, if `|value| >=`
+  thresh, returns it — **skipping the big net's FullThreats fold AND head.**
+- **FullThreats is 60,720 of our 83,248 inputs (73 %)**, and the measured threat
+  channel cost is **1.25-1.39x** ([[threat-channel-costs-half-our-speed]]).
+
+**So the gate's CEILING (1.25-1.39x) covers the ENTIRE measured 1.231x deficit.**
+It is the single largest identified strength lever that needs no eval-quality
+work at all — and it is value-only, exactly on-goal.
+
+**What it needs, honestly:** a dedicated cheap net. The code notes our natural
+cheap net is HalfKA-only-768 at ~0.6x the big net (not SF-tiny at 0.05x), which
+is why the material prefilter exists — running a 0.6x net on every node to skip a
+1.0x net is a bad trade unless the gate fires often. **The ceiling is real; the
+realised fraction is unmeasured.** Next measurement, before any training: what
+fraction of eval'd nodes clear a plausible threshold. If it is small the lever
+shrinks accordingly.
+
+**Also this tick:** basket A cherry-picked onto current main (its branch had
+drifted so far that diffing it would have DELETED 10,565 lines of today's work),
+tests green (75 passed / 0 failed), PGO built, bench 351273 vs main 300694, and
+running a NON-INFERIORITY SPRT (elo0=-3, elo1=+1) at 2+0.1 — real clock because
+the arm removes work and its whole case is speed. At n=140: -14.90 +/- 20.40,
+LLR -0.20. Early, wide, leaning negative.
