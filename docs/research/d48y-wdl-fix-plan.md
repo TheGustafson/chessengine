@@ -18849,3 +18849,30 @@ it was eliminating the one arm that was actually bad.
 **Method note:** the round-robin was the right shape. Four separate screens
 against canonical would have spent every game on arm-vs-canonical gaps we do not
 care about, then ranked arms by differencing two noisy numbers.
+
+## 2026-08-02 05:2x — the reaper only covered d49-1280; both D50 dirs were unbounded
+
+Caught by watching disk fall ~6 GB/tick:
+
+| dir | before | after |
+|---|---|---|
+| `d50-hka768` (stopped) | 232 files, 12 G | **16 files, 897 M** |
+| `d50-w768` (live) | 172 files, 28 G | **16 files, 2.9 G** |
+| disk free | 241 G | **277 G** |
+
+**The live ablation was growing at ~0.33 GB/superbatch — it would have reached
+~175 GB by sb530.** `ckptreaper` was launched with EXP_DIR defaulted to
+`d49-1280`, so every experiment dir created afterwards was unbounded. **A reaper
+scoped to one directory silently stops covering the project the moment a new run
+starts.**
+
+Two reapers armed with retention matched to what each dir is FOR:
+- `reap-hka` (stopped run): `KEEP_ALWAYS="100 200"` — the two GATED superbatches,
+  the only evidence behind the -212 result — plus newest 2.
+- `reap-w768` (live): `KEEP_EVERY=100` (the gate cadence) + `KEEP_ALWAYS=530`
+  (the terminal anneal, NOT a multiple of 100 and so otherwise unprotected) +
+  newest 4 for resume safety.
+
+**Verified after reaping: sb100 and sb200 both present with all 4 files, and the
+packed `.cenn` the gates actually played are intact.** The -212 result stays
+reproducible. 36 GB reclaimed, zero evidence lost.
