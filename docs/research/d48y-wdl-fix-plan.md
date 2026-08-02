@@ -18687,3 +18687,59 @@ sb58/530 at ~320k pos/s (**2.0x the 1280 net's 159k**). Heldout 0.016831 (sb4) -
 **0.013972 (sb56)**, descending and flattening. The LR judgment call (1.5e-4)
 is VINDICATED by the fall; the diagnostic I pre-registered was "if it does not
 fall within ~10 sb, the LR is wrong."
+
+## 2026-08-02 02:4x — CANONICAL PROMOTED; and a provenance hole found by `ledger verify`
+
+**PROMOTED `d49sfb-sb1758-s600`** — the D49 SF-teacher net (60/40 blend, then a
+30 sb terminal anneal to LR=0) — at **+30.65 +/- 10.95 vs D48X, LOS 100 %**,
+1500 games @25k. Gate: `All checks passed`. Pushed as `ea109cec`.
+
+| pin | was | now |
+|---|---|---|
+| eval hash | `2e1ede95…79c4` | **`f147080e…c04d`** |
+| d13 nodes | 1865161 | **1951295** |
+| Bench | 351273 | 351273 (unchanged — search untouched) |
+
+**Shipped at network_scale 600, NOT the 756 the margin was measured at.** The
+4-arm round-robin put 756 LAST in both reads; the top three sat inside each
+other's bars and **the leader changed between reads** (600 at n=1000, 900 at
+n=1800). Decided by the tie rule pre-registered in `scale_sweep.sh` before any
+games ran: take the arm nearest the incumbent rather than invent a winner.
+
+### Two bugs in promote_net.sh, both surfaced by its own guard refusing
+1. the verifier ran `grep -oE '[0-9]+'` on `d13 node total N` — which also
+   matches the **`13` inside `d13`**, so the comparison could never succeed;
+2. **CLAUDE.md writes the hash TRUNCATED** (`2e1ede95…79c4`), so a full-64-char
+   sed silently missed it and the doc would have kept naming the superseded net —
+   the exact failure the script exists to prevent, through a door I had not
+   anticipated. Both fixed.
+
+### ⚠ `ledger verify`: 98 problems, and ONE of them matters
+
+| class | n | meaning |
+|---|---|---|
+| MISSING | 86 | nets/corpora recorded but since deleted — expected debt |
+| DANGLING | 97 | experiments referencing those — expected |
+| **DRIFT** | **1** | **a hash that never matched its artifact** |
+
+**The drift is `fishpack32-jax-shuf` = `fishpack32.shuf.bin`, 51.6 GB, the
+SECOND-LARGEST corpus in the live training mix (15.8 % weight), which D50 is
+training on right now.** On-disk `cc6d66f8dab1…` vs recorded `34619b4b875e…`.
+
+**File mtime Jul 23 01:10; ledger row created 2026-07-23 — same day, untouched
+since.** So the artifact did not change after registration; **the recorded hash
+was wrong from the start.** Most likely the row was registered while the 51.6 GB
+file was still being WRITTEN, hashing an incomplete artifact.
+
+**Benign for training** (we have trained on it for weeks and it works) but a real
+hole in provenance, and it lands exactly where the curation program will live:
+**a ledger row can be registered before its artifact is final, and nothing
+catches it until a verify months later.**
+
+**Requirement for the new data pipeline:** hash the output artifact AFTER it is
+closed and fsynced, and re-read it to confirm, before writing the ledger row.
+Hashing inputs up front (which the generation tooling already does) does not
+protect the output.
+
+**Not caused by the promotion** — commit `ea109cec` touched zero files under
+`ledger/`; this predates it.
