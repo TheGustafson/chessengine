@@ -107,7 +107,13 @@ def main() -> int:
     wall_h = waves * hours_per_task
 
     # Worst case: every task runs the full cap, at full price.
-    max_run_s = int(hours_per_task * 3600 * 2.0)  # 2x headroom before Batch kills it
+    # 2x headroom on COMPUTE, plus a flat allowance for per-task setup that does
+    # not scale with shard size: apt-get python3+zstd (~9 s measured), the
+    # 107 MB payload download, and the untar. For a full 2M-position shard that
+    # is a rounding error; for a canary it DOMINATES, and a cap derived from
+    # compute alone (153 s for a 100k shard) would kill the task during setup.
+    SETUP_S = 300
+    max_run_s = max(900, int(hours_per_task * 3600 * 2.0) + SETUP_S)
     compute = shards * hours_per_task * a.vcpus_per_task * a.vcpu_hour
     corpus_gb = a.target * BYTES_PER_POS / 1e9
     pgn_gb = a.target / 1e6 * PGN_ZST_GB_PER_M
