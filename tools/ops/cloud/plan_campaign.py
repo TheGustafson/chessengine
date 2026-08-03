@@ -1,6 +1,18 @@
 #!/usr/bin/env python3
 """Turn a target position count into a Batch job spec, a cost, and a verdict.
 
+THE vCPU CEILING IS MEASURED, NOT READ OFF A QUOTA ROW
+    The compute quota reports CPUS 300 and C2D_CPUS 300 in us-east1. Planning on
+    those is wrong: job #4 was submitted at parallelism 18 (288 vCPU) and settled
+    at exactly 6 concurrent tasks / 96 vCPU, stable over minutes, with 6 live
+    VMs and 67 tasks PENDING. Whatever binds -- a Spot-specific ceiling, a Batch
+    scheduling limit, or regional Spot capacity -- it is not the row this tool
+    was pointed at, and reading that row made every wall-clock estimate 3x
+    optimistic.
+
+    So --vcpu-limit means "what actually runs at once", and the number to pass
+    today is 96. Confirm it against a live job before trusting a new one.
+
 WHAT THIS EXISTS TO PREVENT
     The previous campaign's design doc plans around 17,600 vCPUs and records
     four quota requests as "accepted and reconciling". The live limits in
@@ -54,7 +66,11 @@ def main() -> int:
     p.add_argument("--target", type=int, required=True, help="kept positions")
     p.add_argument("--shard-pos", type=int, default=2_000_000)
     p.add_argument("--vcpu-limit", type=int, required=True,
-                   help="REAL regional vCPU quota. Parallelism is derived from this.")
+                   help="EFFECTIVE concurrent vCPU ceiling. MEASURED 2026-08-03 = 96 "
+                        "(6 concurrent 16-vCPU tasks). Do NOT read this off the compute "
+                        "CPUS/C2D_CPUS quota rows: those say 300 and something else "
+                        "binds first. A job submitted with parallelism 18 sat at exactly "
+                        "6 RUNNING / 67 PENDING and 6 live VMs, stable, not ramping.")
     p.add_argument("--machine", default="c2d-highcpu-16")
     p.add_argument("--vcpus-per-task", type=int, default=16)
     p.add_argument("--vcpu-hour", type=float, default=0.012,

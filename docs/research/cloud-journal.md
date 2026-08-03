@@ -33,9 +33,18 @@ records four quota requests as "accepted and reconciling". Actual:
 | `PREEMPTIBLE_CPUS` | 20,000 | **0** |
 | `INSTANCES` | 1,250 | 1,250 ✓ |
 
-Only the instance request landed. 300 vCPU ⇒ **at most 18 concurrent 16-vCPU
-tasks**. `PREEMPTIBLE_CPUS = 0` turned out to be harmless: modern Batch `SPOT`
-draws on the regular `CPUS` quota, proven by canary 1 reaching RUNNING.
+Only the instance request landed. `PREEMPTIBLE_CPUS = 0` turned out to be
+harmless: modern Batch `SPOT` draws on the regular `CPUS` quota, proven by
+canary 1 reaching RUNNING.
+
+**⚠ THE QUOTA ROWS ARE NOT THE EFFECTIVE CEILING. MEASURED CAP = 96 vCPU.**
+`CPUS`/`C2D_CPUS` read 300, and I planned job #4 at parallelism 18 (288 vCPU) on
+that basis. It settled at exactly **6 concurrent tasks / 96 vCPU** — 6 live VMs,
+67 tasks PENDING, stable over minutes, not ramping. Owner confirms 96 is the cap.
+Whatever binds (Spot-specific ceiling, Batch scheduling limit, or regional Spot
+capacity) is not the row the tooling was reading, and reading it made every
+wall-clock estimate **3x optimistic**. Pass `--vcpu-limit 96`, and confirm
+against a live job before trusting a new number.
 
 **Cost model** (worst case; prices are unverified list figures):
 `$0.012/vCPU-h` compute, `$0.12/GB` egress, **2.90 vCPU-h per 1M kept
@@ -54,7 +63,7 @@ campaign at **~150 M unique positions**. See "Opening supply" below.
 | 1 | `oracle-canary-canary-20260803-184238` | 18:42 | 1 task, 100k pos | prove Spot/quota/GCS/image | **FAILED** exit 127 — `gcloud: command not found`. Entrypoint used `bash -lc`; a login shell sources `/etc/profile`, resets PATH, drops `/usr/lib/google-cloud-sdk/bin`. Did prove Spot works under `PREEMPTIBLE_CPUS=0` (reached RUNNING). |
 | 2 | `oracle-canary2-canary-20260803-184735` | 18:47 | 1 task, 100k pos | same, with `-c` fix | **FAILED** exit 3 — `Illegal instruction (core dumped)`, rc=132 in stage 1. Binaries built `-march=native` on Zen 4 **with AVX-512**; c2d is Zen 3 with none. fastchess 5,302 AVX-512 insns, Stockfish 1,363. **A local `docker run` cannot catch this** — the container uses the host CPU. |
 | 3 | `oracle-canary3-canary-20260803-185921` | 18:59 | 1 task, 100k pos | same, with portable binaries | **SUCCEEDED** in ~4 min. 101,331 records, 58.27 rows/game, 22.58 % D46 drop. Fetched back, sha256 verified on arrival. |
-| 4 | `oracle-uho1-run-20260803-191039` | 19:10 | **73 tasks**, par 18, 145 M target | ~2.1 h wall, **$6.86** worst case; 73 shards × ~2 M. Sized to 73 of the book's 75 available shards so it never wraps. | **RUNNING** |
+| 4 | `oracle-uho1-run-20260803-191039` | 19:10 | **73 tasks**, par 18 requested, 145 M target | ~2.1 h wall, **$6.86** worst case; 73 shards × ~2 M. Sized to 73 of the book's 75 available shards so it never wraps. | **RUNNING** — but only **6 tasks run at once** (96 vCPU cap), so the real wall clock is ~12 waves × 0.43 h ≈ **5.2 h**, ETA ~00:20. The 2.1 h estimate assumed parallelism 18 and was 3x optimistic. Cost is unchanged (same total vCPU-h). |
 
 ---
 
