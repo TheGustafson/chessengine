@@ -87,7 +87,22 @@ else
     log "WARN: no sb$((AT_SB - 2)) to compare against; skipping size check"
 fi
 
-# --- 3. stop the trainer ---------------------------------------------------
+# --- 3. capture how to relaunch, THEN stop ---------------------------------
+# A `systemd-run --user` unit is TRANSIENT: systemd deletes the unit the moment
+# it stops, so `systemctl --user start <unit>` afterwards fails with "Unit not
+# found" — there is nothing left to start. This cost a restart on 2026-08-03:
+# the stop, the integrity check and the LR scale all succeeded, the start
+# reported a failure with no trainer log at all, and the run sat idle. So read
+# ExecStart / Description / Environment off the LIVE unit while it still exists
+# and re-issue the same systemd-run afterwards.
+EXECSTART=$(systemctl --user show "$UNIT" -p ExecStart --value \
+            | sed -nE 's/.*argv\[\]=([^ ]+).*/\1/p' | head -1)
+DESC=$(systemctl --user show "$UNIT" -p Description --value)
+mapfile -t UENV < <(systemctl --user show "$UNIT" -p Environment --value | tr ' ' '\n' | grep -E '^[A-Za-z_][A-Za-z0-9_]*=')
+[ -n "$EXECSTART" ] || { log "FATAL: cannot read ExecStart from $UNIT; refusing to stop it"; exit 6; }
+log "relaunch recipe: $EXECSTART"
+log "  env: ${UENV[*]}"
+
 log "stopping $UNIT"
 systemctl --user stop "$UNIT"
 sleep 5
@@ -110,7 +125,10 @@ rc=${PIPESTATUS[0]}
 
 # --- 6. restart and confirm it actually trains -----------------------------
 log "restarting $UNIT from sb$RESUME"
-systemctl --user start "$UNIT"
+systemctl --user reset-failed "$UNIT" 2>/dev/null
+envargs=(); for e in "${UENV[@]}"; do envargs+=(-E "$e"); done
+systemd-run --user --unit="$UNIT" --description="$DESC" "${envargs[@]}" "$EXECSTART" >/dev/null 2>&1 \
+    || { log "FATAL: systemd-run failed to relaunch $UNIT"; exit 5; }
 for _ in $(seq 1 40); do
     sleep 30
     systemctl --user is-active --quiet "$UNIT" || { log "FATAL: $UNIT failed to stay up"; exit 5; }
