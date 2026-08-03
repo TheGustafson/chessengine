@@ -13,13 +13,17 @@
 #   self   ARCHON vs ARCHON            — cheapest positions/hour, our own distribution
 #   sf18   ARCHON vs engines/bin/stockfish18
 #   sf16   ARCHON vs engines/bin/stockfish16
+#   oracle ORACLE vs ORACLE (eca43a97)  — every ply is a position the LABELLING
+#          engine itself searched, so label density per game is 100 %. Highest
+#          label quality and the strongest WDL, at the cost of sampling
+#          Stockfish's position distribution rather than our own.
 #
 # USAGE
 #   MODE=self  GAMES=200 NODES=25000 bash tools/ops/data/gen_games.sh
 #   MODE=sf18  GAMES=200 TAG=pilot   bash tools/ops/data/gen_games.sh
 #
 #   Environment:
-#     MODE      self | sf18 | sf16               (default self)
+#     MODE      self | sf18 | sf16 | oracle      (default self)
 #     GAMES     total games                      (default 200)
 #     NODES     per-move node budget, both sides (default 25000)
 #     CONC      fastchess concurrency            (default 4)
@@ -87,12 +91,17 @@ case "$MODE" in
     self) OPP=$ENGINE ; OPPNET=$NET ;;
     sf18) OPP=$(asset engines/bin/stockfish18) ; OPPNET="" ;;
     sf16) OPP=$(asset engines/bin/stockfish16) ; OPPNET="" ;;
-    *) log "FATAL: MODE must be self|sf18|sf16 (got '$MODE')"; exit 2 ;;
+    # ORACLE vs ORACLE. Both sides are the labelling engine, so EVERY ply of
+    # every game is a position the oracle itself searched — the maximum-density
+    # source of oracle-quality labels with a real result attached.
+    oracle) ENGINE=$(asset engines/bin/stockfish-eca43a97) ; OPP=$ENGINE ; OPPNET="" ; NET="" ;;
+    *) log "FATAL: MODE must be self|sf18|sf16|oracle (got '$MODE')"; exit 2 ;;
 esac
 
 [ -x "$ENGINE" ]    || { log "FATAL: engine not executable: $ENGINE"; exit 2; }
 [ -x "$OPP" ]       || { log "FATAL: opponent not executable: $OPP"; exit 2; }
-[ -s "$NET" ]       || { log "FATAL: net missing: $NET"; exit 2; }
+# oracle mode has no ARCHON side, so no .cenn to check.
+[ "$MODE" = oracle ] || [ -s "$NET" ] || { log "FATAL: net missing: $NET"; exit 2; }
 [ -x "$FASTCHESS" ] || { log "FATAL: fastchess missing"; exit 2; }
 [ -s "$BOOK" ]      || { log "FATAL: book missing: $BOOK"; exit 2; }
 
@@ -110,27 +119,42 @@ OPS_LOG=${OPS_LOG:-$OUTDIR/gen.log}; export OPS_LOG
 BOOKLINES=$(wc -l < "$BOOK")
 BOOKSTART=${BOOKSTART:-$(( SRAND % (BOOKLINES - GAMES - 10) + 1 ))}
 
-# Pairing: see the -repeat note in the header.
-if [ "$MODE" = "self" ]; then
+# Pairing: see the -repeat note in the header. `oracle` joins `self` here for
+# the same measured reason — two identical deterministic engines replay the
+# same game with colours reversed, so -repeat is an exact 2x CPU waste that
+# contributes zero new positions.
+if [ "$MODE" = "self" ] || [ "$MODE" = "oracle" ]; then
     PAIRING=(-games 1 -rounds "$GAMES")
 else
     PAIRING=(-games 2 -rounds $(( (GAMES + 1) / 2 )) -repeat)
 fi
 
-# Adjudication thresholds, ARCHON frame (see header). A pure-SF pair would need
-# these halved; we never generate one here, and the asymmetric pair is covered
-# by twosided=true.
+# Adjudication thresholds are in the PLAYERS' PRINTED FRAME, and ARCHON prints
+# ~2.07x Stockfish's printed cp. The constants below are ARCHON-frame: 1600
+# ARCHON-cp is ~773 SF-cp.
+#
+# ORACLE MODE IS THE PURE-SF PAIR THIS FILE USED TO SAY IT NEVER GENERATED.
+# Left uncorrected, `score=1600` would mean 1600 SF-cp — more than DOUBLE the
+# effective bar every other mode uses. Resign would fire far later, games would
+# run much longer, throughput would drop, and the resulting corpus would carry
+# a different endgame distribution from the rest of the mix while looking like
+# it was generated the same way. Halving restores the same effective threshold.
 ADJARGS=()
 if [ "$ADJ" = "1" ]; then
+    if [ "$MODE" = "oracle" ]; then
+        RESIGN_SCORE=773; DRAW_SCORE=10       # SF frame
+    else
+        RESIGN_SCORE=1600; DRAW_SCORE=20      # ARCHON frame
+    fi
     ADJARGS=(
-        -resign movecount=4 score=1600 twosided=true
-        -draw   movenumber=40 movecount=8 score=20
+        -resign movecount=4 score="$RESIGN_SCORE" twosided=true
+        -draw   movenumber=40 movecount=8 score="$DRAW_SCORE"
         -maxmoves 250
     )
 fi
 
 OPPNAME=$(basename "$OPP")
-[ "$MODE" != "self" ] && OPPNAME=$(echo "uci" | "$OPP" 2>/dev/null | grep -m1 -i '^id name' | cut -d' ' -f3- | tr ' ' '_')
+[ "$MODE" != "self" ] && [ "$MODE" != "oracle" ] && OPPNAME=$(echo "uci" | "$OPP" 2>/dev/null | grep -m1 -i '^id name' | cut -d' ' -f3- | tr ' ' '_')
 
 log "GEN mode=$MODE games=$GAMES nodes=$NODES conc=$CONC adj=$ADJ tag=$TAG"
 log "  book=$(basename "$BOOK") start=$BOOKSTART srand=$SRAND"
@@ -163,10 +187,16 @@ json.dump(m, open(sys.argv[1],"w"), indent=2)
 print("manifest ->", sys.argv[1])
 PYEOF
 
-ENGARGS=(-engine cmd="$ENGINE" name=archon proto=uci option.EvalFile="$(readlink -f "$NET")" option.Threads=1)
-if [ "$MODE" = "self" ]; then
-    OPPARGS=(-engine cmd="$OPP" name=archon2 proto=uci option.EvalFile="$(readlink -f "$NET")" option.Threads=1)
+if [ "$MODE" = "oracle" ]; then
+    # Both sides are the oracle binary and neither takes a .cenn. Distinct
+    # names so the PGN records which side moved.
+    ENGARGS=(-engine cmd="$ENGINE" name=oracleA proto=uci option.Threads=1)
+    OPPARGS=(-engine cmd="$OPP"    name=oracleB proto=uci option.Threads=1)
+elif [ "$MODE" = "self" ]; then
+    ENGARGS=(-engine cmd="$ENGINE" name=archon  proto=uci option.EvalFile="$(readlink -f "$NET")" option.Threads=1)
+    OPPARGS=(-engine cmd="$OPP"    name=archon2 proto=uci option.EvalFile="$(readlink -f "$NET")" option.Threads=1)
 else
+    ENGARGS=(-engine cmd="$ENGINE" name=archon proto=uci option.EvalFile="$(readlink -f "$NET")" option.Threads=1)
     OPPARGS=(-engine cmd="$OPP" name="$OPPNAME" proto=uci option.Threads=1)
 fi
 
