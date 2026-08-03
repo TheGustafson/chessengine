@@ -70,12 +70,20 @@ st_put() {  # st_put LOCAL REMOTE
     case "$2" in
         gs://*)
             if gcloud storage ls "$2" >/dev/null 2>&1; then
+                # Compare MD5, not SHA256. GCS stores crc32c and md5 for an
+                # object; there is no server-side sha256, and `gcloud storage
+                # hash` hashes LOCAL files. Asking it for a remote sha256
+                # silently returned nothing, which made the mismatch branch
+                # unreachable and turned this into "assume it matches".
                 local want got
-                want=$(sha256sum "$1" | cut -d" " -f1)
-                got=$(gcloud storage hash --sha256 "$2" 2>/dev/null \
-                      | awk "/[Ss]ha256/{print \$NF}" | tr -d "\r")
-                if [ -n "$got" ] && [ "$want" != "$got" ]; then
-                    say "FATAL: $2 exists with DIFFERENT bytes (want ${want:0:16}… got ${got:0:16}…)"
+                want=$(openssl dgst -md5 -binary "$1" | base64)
+                got=$(gcloud storage objects describe "$2" --format="value(md5_hash)" 2>/dev/null | tr -d "\r")
+                if [ -z "$got" ]; then
+                    say "FATAL: $2 exists but its md5 could not be read; refusing to assume it matches"
+                    return 1
+                fi
+                if [ "$want" != "$got" ]; then
+                    say "FATAL: $2 exists with DIFFERENT bytes (want $want got $got)"
                     return 1
                 fi
                 say "  already present, skipping: $(basename "$2")"

@@ -143,8 +143,22 @@ def main() -> int:
                     "container": {
                         "imageUri": a.image,
                         "entrypoint": "/bin/bash",
-                        "commands": ["-lc", (
+                        # `-c`, NOT `-lc`. A LOGIN shell sources /etc/profile,
+                        # which RESETS PATH and drops
+                        # /usr/lib/google-cloud-sdk/bin — so `gcloud` vanishes
+                        # and the entrypoint dies with exit 127 before it can
+                        # fetch the payload. Measured twice: a local docker
+                        # probe showed `bash -lc` reporting gcloud MISSING while
+                        # `bash -c` found it, and the first canary then failed
+                        # exactly this way. PATH is also set explicitly rather
+                        # than trusted, so the image's own default cannot move
+                        # this out from under us again.
+                        "commands": ["-c", (
                             "set -euo pipefail; "
+                            "export PATH=/usr/lib/google-cloud-sdk/bin:/usr/local/sbin:"
+                            "/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; "
+                            "command -v gcloud >/dev/null || "
+                            "{ echo 'FATAL: gcloud not on PATH'; exit 2; }; "
                             "apt-get update -qq && apt-get install -y -qq python3 zstd >/dev/null; "
                             "mkdir -p /opt/archon && cd /opt/archon; "
                             f"gcloud storage cp {a.payload_uri} payload.tar.gz; "
