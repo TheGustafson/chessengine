@@ -63,7 +63,16 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 # Binaries/books/nets are SHARED assets: resolve via asset(), which prefers
 # ARCHON_ROOT then falls back to ARCHON_MAIN. A worktree has its own (nearly
 # empty) engines/ dir, so $ARCHON_ROOT/engines/... silently misses.
-ENGINE=${ENGINE:-$(asset target-sota/release/chessengine || asset engines/canonical/archon)}
+# CANONICAL FIRST. This used to prefer target-sota/release/chessengine, a
+# scratch build whose ARCH is whatever was last compiled there. The moment
+# canonical moved to a different accumulator width that default could no longer
+# load the canonical net — and the failure is SILENT in the worst way: the
+# engine starts, the net load fails, it plays on PSQT, and fastchess happily
+# reports a full 1000-game result. Caught live on 2026-08-03 only because
+# ARCHON was losing every single game to SF16. engines/canonical/archon is
+# guaranteed to match engines/canonical/net.cenn — promote_net.sh verifies that
+# pairing on every promotion — so it is the only safe default.
+ENGINE=${ENGINE:-$(asset engines/canonical/archon || asset target-sota/release/chessengine)}
 NET=${NET:-$(asset engines/canonical/net.cenn)}
 SF=${SF:-$(asset engines/bin/stockfish18)}
 TC=${TC:-}
@@ -82,6 +91,25 @@ SF=$(asset "$SF" || echo "$SF")
 [ -s "$NET" ]       || { log "FATAL: net not found: $NET"; exit 2; }
 [ -x "$FASTCHESS" ] || { log "FATAL: fastchess not found: $FASTCHESS"; exit 2; }
 [ -s "$BOOK" ]      || { log "FATAL: book not found: $BOOK"; exit 2; }
+
+# PROVE the engine can load the net before spending games. An arch mismatch
+# does not stop fastchess: the engine runs, evaluates with PSQT, and the match
+# completes with a plausible-looking Elo that measures nothing anyone asked
+# about. cross_arch_screen.sh has always done this check; this tool did not,
+# and that gap produced a bogus SF16 anchor on 2026-08-03.
+#
+# DO NOT write this as `engine ... | grep -q ...`. common.sh sets
+# `set -o pipefail`, and on an arch mismatch the ENGINE exits non-zero — so
+# pipefail hands the pipeline the engine's failure and masks grep's SUCCESS.
+# The `if` then reads false and the guard passes exactly the case it exists to
+# catch. Measured: same pipeline, rc=1 with pipefail and rc=0 without. Capture
+# the output first, then match it.
+_probe=$( { "$ENGINE" nnue-eval "$NET" < "$ARCHON_ROOT/tools/nnue/calib/wl50.fens"; } 2>&1 )
+if printf '%s' "$_probe" | grep -qiE 'ERROR|mismatch|cannot'; then
+    log "FATAL: $(basename "$ENGINE") cannot load $(basename "$NET")"
+    printf '%s' "$_probe" | grep -iE 'ERROR|mismatch|cannot' | head -1 | sed 's/^/    /'
+    exit 3
+fi
 
 TAG=$(basename "$NET" .cenn)
 SFTAG=$(basename "$SF")
