@@ -72,19 +72,37 @@ machine does that millisecond — so the *same* opening yields a *different* gam
 every replay. That turns 2.6 M openings from a hard ceiling into a renewable
 supply and removes the position-sourcing problem entirely.
 
-Consequences to design for before the first timed campaign:
+**The variation IS the product, not a tolerance to be minimised** (owner,
+2026-08-03). A few percent of timing jitter changes which move gets played at a
+handful of decision points per game; downstream that is a different game, a
+different result, and a different set of positions. The engine is unchanged and
+still enormously strong at this budget, so every one of those games is still
+oracle-quality signal. Diversity of play is exactly what the corpus was short
+of, and this buys it for free.
 
-* `gen_games.sh` currently uses `nodes=N tc=inf` **deliberately**: its header
-  records that node-limited play is reproducible and load-immune, and that a
-  wall-clock run "would silently produce weaker games whenever the box got busy,
-  and the WDL labels would inherit that variation." On a dedicated cloud VM at
-  fixed parallelism that objection is much weaker than on this shared box, but
-  it is not zero and the campaign should pin parallelism per machine.
+Read `gen_games.sh`'s existing `nodes=N tc=inf` header note in that light. It
+warns that a wall-clock run "would silently produce weaker games whenever the
+box got busy, and the WDL labels would inherit that variation" — written for
+THIS shared box, where load swings by an order of magnitude and would push play
+strength around unpredictably. A Batch task owns its vCPUs at pinned
+parallelism, so the residual jitter is small, bounded, and the thing we want.
+
+Design points for the first timed campaign:
+
+* **Equivalent time control.** Measured 2026-08-03: eca43a97, 1 thread, on this
+  box under load = **368k nps**, which is close to what a cloud task sees with
+  16 SF processes on 16 vCPUs. The current 5,000-node operating point is
+  therefore **~13.6 ms/move**. An idle cloud vCPU will be faster, so re-measure
+  on the target machine and set the movetime to match 5k nodes there.
+* **Prefer `st=` (fixed time per move) over a full `tc=`.** `st=` keeps
+  positions-per-game and shard sizing predictable while still varying the node
+  count per move; a full time control adds the engine's own time management,
+  which is more realistic but makes yield harder to size.
 * Label quality is unaffected: labels come from the in-game score at whatever
   the engine actually searched, and `label_inline.py` records it either way.
 * Reproducibility moves from "same inputs, same corpus" to "same inputs, same
-  *distribution*". Shard-level equivalence checks (see job #3) stop being
-  byte-comparable and become statistical.
+  *distribution*". The shard-level byte-equivalence check in job #3 retires and
+  becomes a statistical comparison.
 
 **Investigated and then SCRAPPED per the ruling** — recorded so it is not
 re-derived later. Local `data/nnue/binpacks/uho_frs_filtered.tsv` holds
