@@ -227,7 +227,7 @@ if [ "${CHECK_NNUE_GATE:-0}" != "0" ]; then
     }
 
     eval_hash=$("$nnue_bin" nnue-eval "$nnue_net" < "$nnue_fens" | sha256sum | cut -d' ' -f1)
-    NNUE_EVAL_PIN="${NNUE_EVAL_PIN-f147080e9e52359be6392558fb53f9c195abde01dcd36c37d618e9591785c04d}"
+    NNUE_EVAL_PIN="${NNUE_EVAL_PIN-751d0f12055ece776468ddcc8301763563f13fc645cc19cc00a78178c38c7a1b}"
     printf '  eval hash  : %s\n' "$eval_hash"
     if [ -n "$NNUE_EVAL_PIN" ] && [ "$eval_hash" != "$NNUE_EVAL_PIN" ]; then
         printf '\nFAIL: NNUE eval hash is %s,\n      pin is %s\n' \
@@ -243,7 +243,7 @@ if [ "${CHECK_NNUE_GATE:-0}" != "0" ]; then
     # an empty string and a spurious pass-turned-failure.
     nnue_nodes=$("$nnue_bin" bench 16 1 13 "$nnue_fens" depth "$nnue_net" 2>&1 >/dev/null \
         | sed -n 's/^Nodes searched  : //p')
-    NNUE_NODE_PIN="${NNUE_NODE_PIN-1951295}"
+    NNUE_NODE_PIN="${NNUE_NODE_PIN-1815389}"
     printf '  d13 nodes  : %s\n' "$nnue_nodes"
     if [ -n "$NNUE_NODE_PIN" ] && [ "$nnue_nodes" != "$NNUE_NODE_PIN" ]; then
         printf '\nFAIL: NNUE d13 wl50 node total is %s, pin is %s\n' \

@@ -1,1 +1,1 @@
-sota,arch-d48x
+sota,arch-hka768

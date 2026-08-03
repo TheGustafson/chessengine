@@ -180,8 +180,8 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   wrong and leave 587683 untouched. The gate reads the CANONICAL net and arch
   from `engines/canonical/` (see below) and pins two numbers, both reproduced
   by a from-source non-PGO build: the **eval hash**
-  `f147080e…c04d` (sha256 of the forward-pass score for all 50
-  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1951295**
+  `751d0f12…7a1b` (sha256 of the forward-pass score for all 50
+  `tools/nnue/calib/wl50.fens`) and the **d13 node total 1815389**
   (`bench 16 1 13 <fens> depth <net>` — the net is the optional **6th arg**;
   omit it and you silently measure PSQT). The NODE pin was last moved on
   2026-08-01 by **search-simplification basket A** — the ARCHON-original null
