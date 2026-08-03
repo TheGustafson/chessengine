@@ -22,9 +22,9 @@
 #     MODE       self | sf18 | sf16        (default self)
 #     GAMES      games to play             (default 2000)
 #     GAMENODES  per-move budget in play   (default 25000)
-#     ORACLE     labelling engine          (default engines/bin/stockfish18)
-#     LABELNODES oracle budget per label   (default 25000)
-#     PERGAME    positions sampled/game    (default 14)
+#     ORACLE     labelling engine          (default engines/bin/stockfish-eca43a97)
+#     LABELNODES oracle budget per label   (default 10000)
+#     PERGAME    positions sampled/game    (default 80)
 #     CONC       fastchess concurrency     (default 3)
 #     WORKERS    label workers             (default 5)
 #     TAG        run label                 (default <mode>-<timestamp>)
@@ -41,9 +41,19 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 MODE=${MODE:-self}
 GAMES=${GAMES:-2000}
 GAMENODES=${GAMENODES:-25000}
-ORACLE=${ORACLE:-$(asset engines/bin/stockfish18)}
-LABELNODES=${LABELNODES:-25000}
-PERGAME=${PERGAME:-14}
+# These three are the STUDY'S RECOMMENDED OPERATING POINT, not the values the
+# pilots happened to run at. They diverged once already: the header claimed
+# "defaults are the measured operating point" while the code defaulted to
+# stockfish18 / 25000 / 14 — i.e. the pilot settings, kept because they were
+# typed first. That matters most for ORACLE, because the study went and
+# measured the two candidates head to head and found eca43a97 is
+# **+47.78 +/- 25.58 Elo stronger than stockfish18 at exactly this node
+# budget**, at equal cost (112.7 vs 107.3 pos/s). A production run launched
+# without explicit env would silently have labelled with the weaker engine, and
+# nothing downstream would ever have said so.
+ORACLE=${ORACLE:-$(asset engines/bin/stockfish-eca43a97)}
+LABELNODES=${LABELNODES:-10000}   # §1.1: 5k-25k all defensible; 10k recommended
+PERGAME=${PERGAME:-80}            # §6.1: largest cap that keeps the WDL mix unbiased
 CONC=${CONC:-3}
 WORKERS=${WORKERS:-5}
 TAG=${TAG:-${MODE}-$(date +%Y%m%d-%H%M%S)}
