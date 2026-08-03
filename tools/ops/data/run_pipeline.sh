@@ -76,6 +76,27 @@ log "PIPELINE tag=$TAG mode=$MODE games=$GAMES gamenodes=$GAMENODES"
 log "  oracle=$(basename "$ORACLE") labelnodes=$LABELNODES pergame=$PERGAME"
 
 # --- stage 1: play -----------------------------------------------------------
+# EXISTENCE IS NOT COMPLETENESS. fastchess cannot resume, so a killed run leaves
+# a PARTIAL games.pgn — and skipping on `-s` alone silently accepts however many
+# games happened to finish. Measured: a campaign shard was stopped mid-generation
+# to raise concurrency and restarted; stage 1 skipped, 18,742 of 34,782 games
+# survived, and the shard came out at 54% of its target size with nothing
+# reporting a problem. The per-game yield model was fine (58.04 kept/game against
+# a 57.5 estimate); the game COUNT was silently halved.
+#
+# So count the games and only skip a PGN that actually holds them all.
+if [ -s "$DIR/games.pgn" ]; then
+    HAVE=$(grep -c '^\[Event' "$DIR/games.pgn" 2>/dev/null || echo 0)
+    if [ "$HAVE" -lt "$GAMES" ]; then
+        log "stage 1: games.pgn has $HAVE/$GAMES games (partial) — regenerating"
+        rm -f "$DIR/games.pgn"
+        # Downstream outputs derived from the partial PGN are now stale.
+        rm -f "$DIR/positions.tsv" "$DIR/positions.tsv.stats.json" \
+              "$DIR/labelled.tsv" "$DIR/labelled.tsv.stats.json" \
+              "$DIR/labelled.tsv.dropped.tsv" "$DIR/corpus.txt" "$DIR/corpus.bin" \
+              "$DIR/corpus.shuf.bin" "$DIR/corpus.meta.json"
+    fi
+fi
 if [ ! -s "$DIR/games.pgn" ]; then
     MODE=$MODE GAMES=$GAMES NODES=$GAMENODES CONC=$CONC TAG=$TAG OUTDIR=$DIR \
         bash "$ARCHON_ROOT/tools/ops/data/gen_games.sh" || die "stage 1 failed"

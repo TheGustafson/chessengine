@@ -112,6 +112,19 @@ for b in engines/bin/stockfish-eca43a97 engines/bin/fastchess \
     # directly. Probing with `--help` or a `quit` on stdin instead conflates it
     # with CLI convention: nnue_convert exits non-zero on a usage error, so a
     # perfectly working binary failed this check on its first run.
+    # SIGILL (exit 132) means the binary needs CPU instructions this machine
+    # does not have. An `ldd` check cannot see it — links resolve fine — and
+    # this preflight originally DID execute each binary until I replaced that
+    # with ldd because nnue_convert exits non-zero on a usage error. Removing
+    # execution removed the only check that would have caught an AVX-512 binary
+    # on a Zen 3 VM, which is what the second canary died of. So execute again,
+    # but judge ONLY on 132 and ignore ordinary non-zero exits.
+    "$HERE/$b" --version >/dev/null 2>&1 || true
+    if [ $? -eq 132 ] || { "$HERE/$b" --help >/dev/null 2>&1; [ $? -eq 132 ]; }; then
+        say "FATAL: $b died with SIGILL — built for a CPU this machine is not"
+        say "  this host: $(grep -m1 '^flags' /proc/cpuinfo | grep -o 'avx512[a-z]*' | tr '\n' ' ')"
+        exit 2
+    fi
     if ldd "$HERE/$b" 2>/dev/null | grep -q 'not found'; then
         say "FATAL: $b has unresolved shared libraries on this image"
         ldd "$HERE/$b" 2>&1 | grep 'not found' | sed 's/^/    /'

@@ -60,13 +60,32 @@ mkdir -p "$STAGE/engines/bin" "$STAGE/engines/books" "$STAGE/tools/ops/data" \
          "$STAGE/tools/forensics" "$STAGE/vendor"
 
 # --- binaries --------------------------------------------------------------
+# PORTABLE builds, not the ones this box runs. Our local binaries are compiled
+# -march=native on a Zen 4 CPU WITH AVX-512; GCP c2d is Zen 3 and has none, so
+# they die instantly with SIGILL. That is exactly what killed the second canary:
+# `Illegal instruction (core dumped)`, rc=132, fastchess gone in under a second.
+# Rebuilt at engines/bin/portable/ with -march=x86-64-v3 (fastchess) and
+# ARCH=x86-64-avx2 (Stockfish eca43a97).
+#
+# NOTE this is the one class of defect a local `docker run` CANNOT catch: the
+# container uses the HOST cpu, so an AVX-512 binary works perfectly in a
+# container on this box and fails on any machine without it.
 for pair in \
-    "engines/bin/stockfish-eca43a97:engines/bin/stockfish-eca43a97" \
-    "engines/bin/fastchess:engines/bin/fastchess" \
+    "engines/bin/portable/stockfish-eca43a97:engines/bin/stockfish-eca43a97" \
+    "engines/bin/portable/fastchess:engines/bin/fastchess" \
     "tools/nnue/bf-convert/target/release/nnue_convert:tools/nnue/bf-convert/target/release/nnue_convert"
 do
     src=${pair%%:*}; dst=${pair#*:}
     [ -f "$ARCHON_ROOT/$src" ] || { log "FATAL: missing $src"; exit 2; }
+    # Fail HERE, not on a cloud VM. %zmm is the giveaway for AVX-512; match on
+    # that specifically — a looser pattern (kmov) false-positives on AVX2's
+    # vpmaskmovq and would reject a perfectly portable binary.
+    if [ "${ALLOW_AVX512:-0}" != "1" ] \
+       && objdump -d "$ARCHON_ROOT/$src" 2>/dev/null | grep -q '%zmm'; then
+        log "FATAL: $src contains AVX-512 (%zmm). GCP c2d is Zen 3 and will SIGILL."
+        log "  rebuild portable, or set ALLOW_AVX512=1 for an AVX-512 machine family."
+        exit 2
+    fi
     install -D -m755 "$ARCHON_ROOT/$src" "$STAGE/$dst"
 done
 

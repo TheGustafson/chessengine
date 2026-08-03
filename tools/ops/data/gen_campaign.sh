@@ -88,7 +88,11 @@ BASE=$(( 0x$(echo -n "$NAME" | sha256sum | cut -c1-8) % BOOKLINES ))
 
 total_kept=0
 completed=0
-for i in $(seq 0 $((NSHARDS - 1))); do
+# Iterate to a GENEROUS cap and stop on the target, rather than trusting the
+# shard count derived from KEPT_PER_GAME. If real yield comes in under the
+# estimate the run would otherwise end short of target with no complaint.
+MAX_SHARDS=$(( NSHARDS * 3 ))
+for i in $(seq 0 $((MAX_SHARDS - 1))); do
     SHARD=$(printf 'shard-%04d' "$i")
     SDIR=$ROOT/$SHARD
 
