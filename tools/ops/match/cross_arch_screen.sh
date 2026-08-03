@@ -79,6 +79,15 @@ for pair in "CAND:$CAND_BIN:$CAND_NET" "REF:$REF_BIN:$REF_NET"; do
     log "  $which ok: $(basename "$b") + $(basename "$n")  eval stdev ${sd:-?}"
 done
 
+# A match is 2*CONC engine processes plus fastchess, each mapping a net; the
+# d50-w768 gate runner measured a 1.8 GB peak at CONC=3. Starting that on a box
+# whose MemAvailable is a few hundred MB is how the trainer gets OOM-killed
+# mid-run, which costs far more than waiting. HOLD rather than fail: a gate that
+# aborts because the box was briefly busy silently drops a datapoint from the
+# series, and the series IS the experiment.
+HOLD_MB=${HOLD_MB:-$(( 700 * CONC ))}
+hold_for_mem "$HOLD_MB" 120
+
 # Build the mode as an ARRAY. `${TC:-nodes=...}` looks right and is not:
 # ${VAR:-word} yields $VAR when VAR is SET, so with TC=2+0.1 it expanded to
 # `tc=2+0.1 2+0.1` and fastchess rejected it.
