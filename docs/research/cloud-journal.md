@@ -77,8 +77,49 @@ supply and removes the position-sourcing problem entirely.
 handful of decision points per game; downstream that is a different game, a
 different result, and a different set of positions. The engine is unchanged and
 still enormously strong at this budget, so every one of those games is still
-oracle-quality signal. Diversity of play is exactly what the corpus was short
-of, and this buys it for free.
+oracle-quality signal.
+
+**MEASURED 2026-08-03, and it is a BOUNDED multiplier, not a renewable supply.**
+An earlier revision of this file claimed timed games "removes the
+position-sourcing problem entirely". That was written from the argument, before
+the measurement, and it is wrong. Replaying ONE UHO opening:
+
+| variant | replays | distinct games | new vs earlier variants |
+|---|---|---|---|
+| `st=0.05` both sides | 48 | **4** | 4 |
+| `st=0.05` v `st=0.04` | 32 | **9** | +5 |
+| `st=0.05` v `st=0.03` | 24 | 3 | **0** |
+| `st=0.04` v `st=0.045` | 24 | 4 | **0** |
+| `Threads=2`, `st=0.05` | 32 | 8 | (costs 2x CPU) |
+
+Three findings:
+
+1. **It saturates almost immediately.** Distinct games after N replays at
+   `st=0.05`: 4->3, 8->3, 16->3, 24->3, 32->4, 48->4. The most common line
+   appeared **25 times in 48 replays**.
+2. **Asymmetric time is the best single lever** (owner's suggestion) — 9
+   distinct from 32 replays against 4 from 48 symmetric, i.e. ~3.4x the
+   divergence per replay.
+3. **Different pairings do NOT stack.** The 3rd and 4th time pairings
+   contributed **zero** new games; every line they produced was already in the
+   union. There appears to be a small fixed set of reachable continuations per
+   opening that the time budget does not enlarge.
+
+Practical capacity: ~3 distinct games per opening at good efficiency (~80 %),
+~9 at very poor efficiency (~19 %). So the ceiling moves from ~150 M
+(deterministic) to roughly **450 M**, not to infinity. That is ample for an
+8-hour run (~215 M at `st=0.05`) but it is a ceiling and should be planned as
+one.
+
+**CAVEAT: the saturation curve is n=1 opening.** A 3-opening check at 8 replays
+gave 3/4/4 distinct, which is consistent, but the plateau height itself is
+measured on a single position and may vary with how forcing the opening is.
+
+If more headroom is needed later, the lever that is known to work is the one the
+PREVIOUS cloud generator used and this one dropped: **MultiPV with a temperature
+on move choice** (`native_game_generator.py` ran `--multipv 4 --temperature-cp
+80`). That samples among near-equal moves instead of hoping the clock flips one,
+and it is not bounded by search stability.
 
 Read `gen_games.sh`'s existing `nodes=N tc=inf` header note in that light. It
 warns that a wall-clock run "would silently produce weaker games whenever the
