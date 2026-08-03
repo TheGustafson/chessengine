@@ -70,10 +70,20 @@ The self-play corpus pipeline. Four stages, each resumable, each leaving its
 own stats file; `run_pipeline.sh` chains them. Design and the measured
 operating point: `docs/research/selfplay-data-design-2026-08-02.md`.
 
+**For a production run use `gen_campaign.sh`, not `run_pipeline.sh` directly.**
+A single long run that dies at hour 23 loses 23 hours, and the four-stage
+layout writes 0.45 GB per 1 M kept positions of which 0.03 GB is the
+deliverable — at 1.03 B positions that is 464 GB against 266 GB free. The
+campaign driver shards the work, reaps the intermediates, and keeps three files
+per shard (0.05 GB per 1 M).
+
 | script | purpose |
 |---|---|
-| `run_pipeline.sh` | **Start here.** Stages 1–4 for one mode → a trainer-ready corpus plus the provenance for every row. Stage boundaries are resumable. |
-| `gen_games.sh` | Stage 1. Plays games in three modes (`self` / `sf18` / `sf16`) at a fixed node budget, keeps the PGN as the provenance artifact, writes a manifest with sha256 of engine, net, opponent and book. `-repeat` only in the vs-Stockfish modes (self-play with it produces bit-identical duplicate games — measured); resign adjudication is `twosided` because our printed cp is ~2.07× Stockfish's and a one-sided threshold truncates asymmetrically. |
+| `gen_campaign.sh` | **Start here for anything at scale.** Oracle-vs-oracle generation in resumable shards with disjoint book slices, per-shard memory gating, intermediate reaping, and a running `campaign.json`. Restart skips every shard that already has its artifact. |
+| `merge_shards.py` | Campaign shards → one globally shuffled corpus. Two-pass external shuffle (scatter to K random buckets, shuffle each in memory), bucket count derived from byte count so it scales from a 3 MB smoke to a 30 GB campaign without an OOM knob. A `cat` would leave ~1.5 h of consecutive games from one book slice adjacent in the file. |
+| `label_inline.py` | Stage 3 **without running the oracle** — uses the score it already produced in play. Valid only when the oracle played both sides; reads the manifest and refuses any other mode. Removes the labelling stage: 5.85 → 2.90 core-h per 1 M. Justified by measurement, not assertion: in-game vs clean re-label over 3,437 paired positions is 0.027 σ biased, median \|Δ\| 19 cp — inside the bar §4.3 already accepted for shallow labels. |
+| `run_pipeline.sh` | Stages 1–4 for one mode → a trainer-ready corpus plus the provenance for every row. Stage boundaries are resumable. `INLINE=1` swaps stage 3 for `label_inline.py`. |
+| `gen_games.sh` | Stage 1. Plays games in four modes (`self` / `sf18` / `sf16` / `oracle`) at a fixed node budget, keeps the PGN as the provenance artifact, writes a manifest with sha256 of engine, net, opponent and book. `-repeat` only in the vs-Stockfish modes (self-play with it produces bit-identical duplicate games — measured); resign adjudication is `twosided` because our printed cp is ~2.07× Stockfish's and a one-sided threshold truncates asymmetrically. `oracle` mode is the pure-SF pair this file long said it never generated, so its thresholds are halved into the SF frame — left alone they would have been a 2× looser bar than every other mode. |
 | `pgn_positions.py` | Stage 2. PGN → candidate positions, sampled evenly across each game's plies so phases appear in the proportion we play them. Emits absolute game ply, the White-relative result, `plies_to_end` and `termination`. |
 | `label_positions.py` | Stage 3. **The D46 filter site** — the only layer holding both the raw score and the oracle best move. Filters, then clamps, never the reverse. `--null` relabels and diffs to prove labels are reproducible; `--no-filter` is audit-only and its output is refused by stage 4. |
 | `export_corpus.sh` | Stage 4. Labelled TSV → `FEN \| cp \| wdl` → 32-byte bulletformat, with the contract's §5 checks as hard aborts. WDL join hit-rate is 100% by construction here (the result rides with the position), so a miss is a bug, not an acceptable loss. |

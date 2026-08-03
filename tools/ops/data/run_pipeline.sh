@@ -85,11 +85,21 @@ else
 fi
 
 # --- stage 3: label + D46 filter --------------------------------------------
+# INLINE=1 uses the score the oracle already produced during play instead of
+# re-searching every position. Only valid when the ORACLE PLAYED BOTH SIDES
+# (MODE=oracle); label_inline.py reads the manifest and refuses otherwise, so
+# this cannot silently mislabel a mixed-engine run. It removes the whole
+# labelling stage: 5.85 -> 2.90 core-h per 1M kept, measured.
 if [ ! -s "$DIR/labelled.tsv" ]; then
-    hold_for_mem 2500 60
-    "$PY" "$ARCHON_ROOT/tools/ops/data/label_positions.py" "$DIR/positions.tsv" \
-        --out "$DIR/labelled.tsv" --oracle "$ORACLE" --nodes "$LABELNODES" \
-        --workers "$WORKERS" || die "stage 3 failed"
+    if [ "${INLINE:-0}" = "1" ]; then
+        "$PY" "$ARCHON_ROOT/tools/ops/data/label_inline.py" "$DIR" \
+            --out "$DIR/labelled.tsv" || die "stage 3 (inline) failed"
+    else
+        hold_for_mem 2500 60
+        "$PY" "$ARCHON_ROOT/tools/ops/data/label_positions.py" "$DIR/positions.tsv" \
+            --out "$DIR/labelled.tsv" --oracle "$ORACLE" --nodes "$LABELNODES" \
+            --workers "$WORKERS" || die "stage 3 failed"
+    fi
 else
     log "stage 3: labelled.tsv exists, skipping"
 fi
