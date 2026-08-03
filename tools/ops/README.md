@@ -30,6 +30,7 @@ depends on the caller's cwd.**
 | `guard/` | memory / OOM / watchdog daemons |
 | `build/` | PGO builds and merge gates |
 | `data/` | the self-play → labelled-corpus pipeline, and the studies that set its parameters |
+| `cloud/` | the same pipeline on GCP Batch: payload, worker, planner, one write-gated submitter. See `cloud/README.md`. |
 | `archive/` | superseded one-shots, kept for provenance, **not maintained** |
 
 ## Index

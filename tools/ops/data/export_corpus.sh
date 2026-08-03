@@ -160,9 +160,18 @@ log "  converted: $NREC records, 32B-aligned, text/bin match"
 
 # --- 4. global shuffle (the JAX loader reads contiguous windows) -------------
 FINAL="$OUT.bin"
-if [ "$SHUFFLE" = "1" ] && [ -s "$SHUF" ]; then
+# SHUFFLE=1 with a MISSING shuffler used to fall through this `if` silently and
+# publish an UNSHUFFLED corpus that looks complete in every downstream check —
+# same size, same record count, valid meta. The JAX loader reads contiguous
+# windows, so training on it would quietly see whole games in order. If the
+# caller asked for a shuffle, a missing tool is fatal, not a skip.
+if [ "$SHUFFLE" = "1" ] && [ ! -s "$SHUF" ]; then
+    die "SHUFFLE=1 but shuffler not found: $SHUF (pass SHUFFLE=0 to opt out deliberately)"
+fi
+if [ "$SHUFFLE" = "1" ]; then
     need_mem 2000 || die "not enough memory to shuffle"
-    .venv/bin/python "$SHUF" "$OUT.bin" "$OUT.shuf.bin" >/dev/null 2>&1 \
+    # $PY, not a hardcoded .venv path: the cloud worker has no virtualenv.
+    "${PY:-$ARCHON_ROOT/.venv/bin/python}" "$SHUF" "$OUT.bin" "$OUT.shuf.bin" >/dev/null 2>&1 \
         || die "shuffle failed"
     SSZ=$(stat -c%s "$OUT.shuf.bin")
     [ "$SSZ" -eq "$SZ" ] || die "shuffle size mismatch ($SSZ != $SZ)"

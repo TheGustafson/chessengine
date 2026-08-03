@@ -53,9 +53,18 @@ def main() -> int:
         print("FATAL: numpy required (use .venv/bin/python)", file=sys.stderr)
         return 2
 
-    shards = sorted(a.campaign.glob("shard-*/corpus.shuf.bin"))
+    # Local shards are shuffled per-shard (corpus.shuf.bin); CLOUD shards are
+    # not (corpus.bin), because the global shuffle below subsumes it and
+    # dropping it removes numpy from the cloud worker entirely. Either is valid
+    # input — this pass reshuffles everything regardless.
+    shards = []
+    for d in sorted(a.campaign.glob("shard-*")):
+        for name in ("corpus.shuf.bin", "corpus.bin"):
+            if (d / name).is_file():
+                shards.append(d / name)
+                break
     if not shards:
-        print(f"FATAL: no shard-*/corpus.shuf.bin under {a.campaign}", file=sys.stderr)
+        print(f"FATAL: no shard-*/corpus[.shuf].bin under {a.campaign}", file=sys.stderr)
         return 2
 
     total = 0

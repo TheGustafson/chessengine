@@ -57,8 +57,16 @@ PERGAME=${PERGAME:-80}            # §6.1: largest cap that keeps the WDL mix un
 CONC=${CONC:-3}
 WORKERS=${WORKERS:-5}
 TAG=${TAG:-${MODE}-$(date +%Y%m%d-%H%M%S)}
-DIR=$ARCHON_ROOT/data/nnue/selfplay/$TAG
-PY=$ARCHON_ROOT/.venv/bin/python
+# OUTDIR wins if given. This script used to compute DIR itself and forward
+# OUTDIR only to stage 1, so a caller that set OUTDIR got its GAMES in one place
+# and its CORPUS in another — and the caller's "did a corpus appear?" check then
+# failed on a run that had actually succeeded. The cloud worker needs the whole
+# run inside a scratch dir it can delete, so the whole run has to honour it.
+DIR=${OUTDIR:-$ARCHON_ROOT/data/nnue/selfplay/$TAG}
+# Interpreter is overridable so this script is not tied to THIS box. The cloud
+# worker has no .venv — it runs system python3 with python-chess vendored onto
+# PYTHONPATH — and a hardcoded path here is what made stage 2 die there.
+PY=${PY:-$ARCHON_ROOT/.venv/bin/python}
 
 mkdir -p "$DIR"
 OPS_LOG=${OPS_LOG:-$DIR/pipeline.log}; export OPS_LOG
