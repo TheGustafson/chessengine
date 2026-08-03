@@ -45,6 +45,11 @@ def main() -> int:
     ap.add_argument("--out", required=True, type=pathlib.Path)
     ap.add_argument("--bucket-mb", type=int, default=512)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--dedupe", action="store_true",
+                    help="Drop byte-identical records before shuffling. Timed "
+                         "replays of one opening converge on a small set of "
+                         "lines, so a high-replay campaign carries real "
+                         "duplication; this measures and removes it.")
     a = ap.parse_args()
 
     try:
@@ -80,6 +85,63 @@ def main() -> int:
 
     rng = np.random.default_rng(a.seed)
     tmpdir = pathlib.Path(tempfile.mkdtemp(prefix="merge_", dir=a.out.parent))
+
+    # --- optional pass 0: dedupe ------------------------------------------
+    # BYTE-identical records only, which is exactly the right key. Two rows for
+    # the SAME position with different results are not duplicates — that is the
+    # WDL distribution and a value net needs it. What carries zero information
+    # is a record identical in position, score AND result, which is what a
+    # replayed game produces.
+    #
+    # Partition by HASH so identical records always land together; a random
+    # scatter would spread them across buckets and see only a fraction of the
+    # collisions. The shuffle passes below then run on the deduped output, so
+    # hash-partitioning here does not bias the final order.
+    if a.dedupe:
+        dd = tmpdir / "dedupe"; dd.mkdir()
+        DK = max(1, math.ceil(total / (a.bucket_mb * 1024 * 1024)))
+        dparts = [dd / f"d{i:04d}" for i in range(DK)]
+        dh = [p.open("wb") for p in dparts]
+        try:
+            for sfile in shards:
+                with sfile.open("rb") as f:
+                    while True:
+                        blob = f.read(REC * 32768)
+                        if not blob:
+                            break
+                        arr = np.frombuffer(blob, dtype=np.uint8).reshape(-1, REC)
+                        # cheap stable hash over the whole record
+                        hv = (arr.astype(np.uint64) *
+                              np.arange(1, REC + 1, dtype=np.uint64)).sum(axis=1)
+                        which = (hv % DK).astype(np.int64)
+                        for b in range(DK):
+                            sel = arr[which == b]
+                            if sel.size:
+                                dh[b].write(sel.tobytes())
+        finally:
+            for h_ in dh:
+                h_.close()
+        kept_parts = []
+        n_before = nrec
+        n_after = 0
+        for i, p_ in enumerate(dparts):
+            if not p_.stat().st_size:
+                p_.unlink(); continue
+            arr = np.fromfile(p_, dtype=np.uint8).reshape(-1, REC)
+            uniq = np.unique(arr, axis=0)
+            q = dd / f"u{i:04d}"
+            uniq.tofile(q)
+            kept_parts.append(q)
+            n_after += uniq.shape[0]
+            del arr, uniq
+            p_.unlink()
+        print(f"dedupe: {n_before:,} -> {n_after:,} records "
+              f"({100*(n_before-n_after)/max(n_before,1):.2f}% duplicate)")
+        shards = kept_parts
+        total = n_after * REC
+        nrec = n_after
+        K = max(1, math.ceil(total / (a.bucket_mb * 1024 * 1024)))
+        bucket_paths = [tmpdir / f"b{i:04d}" for i in range(K)]
     bucket_paths = [tmpdir / f"b{i:04d}" for i in range(K)]
 
     # --- pass 1: scatter ----------------------------------------------------
@@ -129,8 +191,7 @@ def main() -> int:
         return 4
 
     meta = dict(records=written, bytes=written * REC, sha256=h.hexdigest(),
-                shards=[str(s.parent.name) for s in shards], seed=a.seed,
-                artifact=str(a.out))
+                seed=a.seed, artifact=str(a.out), deduped=bool(a.dedupe))
     a.out.with_suffix(a.out.suffix + ".meta.json").write_text(
         json.dumps(meta, indent=2) + "\n")
     print(f"\n{a.out}  {written:,} records  sha256:{h.hexdigest()[:16]}…")
