@@ -54,9 +54,35 @@ st_exists() {
         *)      [ -s "$1" ] ;;
     esac
 }
+# st_put LOCAL REMOTE — upload, tolerating an object that is already there.
+#
+# THE WORKER IDENTITY HOLDS objectCreator, NOT objectAdmin: it may CREATE an
+# object and may not OVERWRITE one. That is a deliberate safety property (a
+# runaway task cannot destroy a corpus) and it breaks the naive retry path. A
+# Spot task preempted after uploading shard.json but before corpus.bin comes
+# back, finds the shard incomplete, regenerates — and then gets 403 re-uploading
+# shard.json, failing forever on a shard it could have finished.
+#
+# So: if the object already exists, verify our bytes match what is there and
+# treat it as done. A genuine mismatch is loud, because that means two tasks
+# produced different data for the same shard and something is wrong upstream.
 st_put() {  # st_put LOCAL REMOTE
     case "$2" in
-        gs://*) gcloud storage cp "$1" "$2" >/dev/null 2>&1 ;;
+        gs://*)
+            if gcloud storage ls "$2" >/dev/null 2>&1; then
+                local want got
+                want=$(sha256sum "$1" | cut -d" " -f1)
+                got=$(gcloud storage hash --sha256 "$2" 2>/dev/null \
+                      | awk "/[Ss]ha256/{print \$NF}" | tr -d "\r")
+                if [ -n "$got" ] && [ "$want" != "$got" ]; then
+                    say "FATAL: $2 exists with DIFFERENT bytes (want ${want:0:16}… got ${got:0:16}…)"
+                    return 1
+                fi
+                say "  already present, skipping: $(basename "$2")"
+                return 0
+            fi
+            gcloud storage cp "$1" "$2" >/dev/null 2>&1
+            ;;
         *)      mkdir -p "$(dirname "$2")" && cp "$1" "$2" ;;
     esac
 }
@@ -125,9 +151,12 @@ rc=${PIPESTATUS[0]}
 [ -s "$SDIR/corpus.bin" ] || { say "FATAL: no corpus produced"; exit 3; }
 
 # --- merge metadata, compress the provenance source ------------------------
-python3 - "$SDIR" "$CAMPAIGN" "$SHARD" "$TASK_INDEX" "$BOOKSTART" <<'PYEOF'
-import json, pathlib, sys
-d, campaign, shard, idx, bookstart = sys.argv[1:6]
+# The payload manifest is the cloud equivalent of a git head: outside a
+# checkout there is no commit to record, but there IS an exact set of hashed
+# files that produced this shard. Carry it.
+python3 - "$SDIR" "$CAMPAIGN" "$SHARD" "$TASK_INDEX" "$BOOKSTART" "$HERE" <<'PYEOF'
+import hashlib, json, pathlib, sys
+d, campaign, shard, idx, bookstart, here = sys.argv[1:7]
 d = pathlib.Path(d)
 def load(n):
     try: return json.loads((d / n).read_text())
@@ -137,6 +166,9 @@ out = dict(campaign=campaign, shard=shard, task_index=int(idx),
            manifest=load("manifest.json"), extract=load("positions.tsv.stats.json"),
            label=load("labelled.tsv.stats.json"), corpus=load("corpus.meta.json"),
            census=load("census.json"))
+pm = pathlib.Path(here) / "payload_manifest.json"
+if pm.is_file():
+    out["payload_manifest_sha256"] = hashlib.sha256(pm.read_bytes()).hexdigest()
 out["records"] = (out.get("corpus") or {}).get("records", 0)
 out["sha256"] = (out.get("corpus") or {}).get("sha256")
 (d / "shard.json").write_text(json.dumps(out, indent=2) + "\n")

@@ -66,11 +66,25 @@ def main() -> int:
     p.add_argument("--payload-uri", required=True)
     p.add_argument("--payload-sha", required=True)
     p.add_argument("--campaign", required=True)
-    p.add_argument("--image", default="python:3.12",
-                   help="PUBLIC base image. Full Debian by default: the slim "
-                        "variants may lack libstdc++6, which Stockfish needs.")
+    p.add_argument("--image",
+                   default="gcr.io/google.com/cloudsdktool/google-cloud-cli:stable",
+                   help="PUBLIC base image. Probed locally with docker 2026-08-03 "
+                        "rather than guessed: python:3.12 has python3 and libstdc++6 "
+                        "but NO gcloud (the entrypoint needs it to fetch the payload), "
+                        "and this image has gcloud and libstdc++6 but NO python3. "
+                        "Neither is complete; this one is one apt line from complete "
+                        "(python3 + zstd, measured 9s) whereas adding gcloud to a "
+                        "python image means adding Google's apt repo.")
     p.add_argument("--nodes", type=int, default=5000)
     p.add_argument("--pergame", type=int, default=80)
+    p.add_argument("--service-account",
+                   default="archon-batch-worker@archon-502500.iam.gserviceaccount.com",
+                   help="Least-privileged runtime identity. Verified 2026-08-03 to hold "
+                        "exactly batch.agentReporter + logging.logWriter at project level "
+                        "and objectCreator + objectViewer on the bucket — it can create "
+                        "shard objects and cannot overwrite or delete a corpus. Omitting "
+                        "this field does NOT mean 'no identity': Batch falls back to the "
+                        "DEFAULT COMPUTE service account, which is broader.")
     p.add_argument("--out", default=None)
     a = p.parse_args()
 
@@ -125,7 +139,7 @@ def main() -> int:
                         "entrypoint": "/bin/bash",
                         "commands": ["-lc", (
                             "set -euo pipefail; "
-                            "apt-get update -qq && apt-get install -y -qq zstd >/dev/null; "
+                            "apt-get update -qq && apt-get install -y -qq python3 zstd >/dev/null; "
                             "mkdir -p /opt/archon && cd /opt/archon; "
                             f"gcloud storage cp {a.payload_uri} payload.tar.gz; "
                             f'echo "{a.payload_sha}  payload.tar.gz" | sha256sum -c -; '
@@ -150,6 +164,7 @@ def main() -> int:
         "allocationPolicy": {
             "instances": [{"policy": {"machineType": a.machine,
                                       "provisioningModel": "SPOT"}}],
+            "serviceAccount": {"email": a.service_account},
         },
         "logsPolicy": {"destination": "CLOUD_LOGGING"},
     }

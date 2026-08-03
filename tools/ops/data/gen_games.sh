@@ -164,6 +164,12 @@ log "  out=$PGN"
 # --- attributable. Hashes are of the exact bytes that played the games.
 python3 - "$OUTDIR/manifest.json" <<PYEOF
 import hashlib, json, subprocess, sys, os, datetime
+def _git_head():
+    try:
+        return subprocess.run(["git","-C","$ARCHON_ROOT","rev-parse","HEAD"],
+                              capture_output=True, text=True).stdout.strip() or None
+    except (FileNotFoundError, OSError):
+        return None
 def sha(p):
     if not p or not os.path.exists(p): return None
     h = hashlib.sha256()
@@ -180,8 +186,14 @@ m = dict(
               lines=$BOOKLINES),
     fastchess=subprocess.run(["$FASTCHESS","--version"],capture_output=True,
                              text=True).stdout.strip().split("\n")[0],
-    git_head=subprocess.run(["git","-C","$ARCHON_ROOT","rev-parse","HEAD"],
-                            capture_output=True,text=True).stdout.strip(),
+    # OPTIONAL field, and it must not be able to kill the manifest. Outside a
+    # git checkout `rev-parse` merely fails; with no git binary at all —
+    # e.g. a cloud worker running from the payload tarball — subprocess.run
+    # RAISES FileNotFoundError, the whole heredoc dies, and manifest.json is
+    # never written. That took down stage 3, which reads the manifest to
+    # confirm the oracle played both sides. Provenance degrades to null here;
+    # it does not take the run with it.
+    git_head=_git_head(),
 )
 json.dump(m, open(sys.argv[1],"w"), indent=2)
 print("manifest ->", sys.argv[1])
