@@ -58,12 +58,28 @@ raised_total=0
 while :; do
     # Candidates: compilers by name, anything referencing this repo, and the
     # node/npm family (external builds are the measured top cause of our OOMs).
+    # `-x` matches the process NAME (comm); `-f` matches the full cmdline. The
+    # node family has to be caught by NAME: a node process's cmdline is
+    # `/usr/bin/node /path/to/eslint ...`, so the thread name `node-MainThread`
+    # that `ps -o comm` prints appears in no cmdline at all. Matching it with
+    # `-f` therefore matched exactly one thing — this loop's own pgrep argv,
+    # which contains the literal string — while every real node process stayed
+    # at adj=200. That is the self-match trap this file's own header warns
+    # about, and it silently disarmed the guard against the measured top cause
+    # of our OOMs for as long as the pattern existed.
     for p in $(pgrep -x 'rustc|cargo|cc1|ld' 2>/dev/null; \
+               pgrep -x 'node|npm|npx|esbuild' 2>/dev/null; \
                pgrep -f "$ARCHON_ROOT" 2>/dev/null; \
-               pgrep -f 'node-MainThread|npm |npm$|esbuild|webpack|vite' 2>/dev/null); do
+               pgrep -f 'npm |npm$|esbuild|webpack|vite' 2>/dev/null); do
         [ "$p" = "$$" ] && continue
         [ "$p" = "$PPID" ] && continue
-        cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null) || continue
+        # A pid from pgrep can exit before we read it. `2>/dev/null` on `tr`
+        # does NOT silence this: the failing part is the SHELL's own `<`
+        # redirection, whose diagnostic is emitted before tr ever runs. Putting
+        # the redirect inside a subshell that redirects its own stderr is what
+        # actually suppresses it (this logged a spurious "No such file or
+        # directory" every few minutes otherwise).
+        cmd=$( { tr '\0' ' ' < "/proc/$p/cmdline"; } 2>/dev/null ) || continue
         [ -z "$cmd" ] && continue
 
         # never these
