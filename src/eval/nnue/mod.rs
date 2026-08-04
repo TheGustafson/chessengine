@@ -423,18 +423,64 @@ pub fn active_eval_kind() -> &'static str {
 
 pub fn active_net() -> Option<&'static Network> {
     let from_eval_file = *ACTIVE_NET.read().unwrap_or_else(|e| e.into_inner());
-    #[cfg(feature = "embed-net")]
+    // ONE `ARCHON_EMBED_NET`, resolved by the build's features. On a `sota`
+    // build those bytes are a CENN v5 sota net, and handing them to the v1
+    // loader panics — which is exactly what a `sota,embed-net` build did before
+    // this guard: `embedded_net()` ran first and killed the search thread. The
+    // sota fallback lives in `active_sota_net()`; this one is for v1-only builds.
+    #[cfg(all(feature = "embed-net", not(feature = "sota")))]
     {
         return from_eval_file.or_else(|| Some(embedded_net()));
+    }
+    #[cfg(not(all(feature = "embed-net", not(feature = "sota"))))]
+    from_eval_file
+}
+
+/// The active D40 SOTA net, or `None`. Read at each search's eval boundary.
+///
+/// With `embed-net`, an explicit `EvalFile` still wins, but when none is set the
+/// compile-time-embedded net is used instead of silently falling back to PSQT.
+/// `embed-net` previously covered only the v1 path (`active_net`), so a
+/// `sota` + `embed-net` build embedded bytes it then never consulted and played
+/// PSQT — the exact silent-PSQT failure `active_eval_kind` exists to catch.
+#[cfg(feature = "sota")]
+pub fn active_sota_net() -> Option<&'static sota_loader::SotaNetwork> {
+    let from_eval_file = *ACTIVE_SOTA_NET.read().unwrap_or_else(|e| e.into_inner());
+    #[cfg(feature = "embed-net")]
+    {
+        return from_eval_file.or_else(|| Some(embedded_sota_net()));
     }
     #[cfg(not(feature = "embed-net"))]
     from_eval_file
 }
 
-/// The active D40 SOTA net, or `None`. Read at each search's eval boundary.
-#[cfg(feature = "sota")]
-pub fn active_sota_net() -> Option<&'static sota_loader::SotaNetwork> {
-    *ACTIVE_SOTA_NET.read().unwrap_or_else(|e| e.into_inner())
+/// The compile-time-embedded SOTA net. Mirrors `embedded_net`, reading the same
+/// `ARCHON_EMBED_NET` path, so one env var serves both formats and the build
+/// cannot end up with a v1 net embedded and a sota net expected.
+///
+/// Panics on a net whose architecture does not match the build's cargo
+/// features. That is deliberate: the alternative is a binary that silently
+/// evaluates with PSQT, which is indistinguishable from a working engine in
+/// every output it produces.
+#[cfg(all(feature = "sota", feature = "embed-net"))]
+fn embedded_sota_net() -> &'static sota_loader::SotaNetwork {
+    use std::sync::OnceLock;
+    static EMBEDDED_SOTA: OnceLock<&'static sota_loader::SotaNetwork> = OnceLock::new();
+    *EMBEDDED_SOTA.get_or_init(|| {
+        const BYTES: &[u8] = include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/",
+            env!(
+                "ARCHON_EMBED_NET",
+                "embed-net builds require ARCHON_EMBED_NET=<path to .cenn, relative to the crate root>"
+            )
+        ));
+        let mut net = sota_loader::load_v2_bytes(BYTES)
+            .expect("embedded net is a valid CENN file matching this build's arch features");
+        sota_loader::load_uncertainty_sidecar(&mut net.head);
+        sota_loader::load_wdl_sidecar(&mut net.head);
+        Box::leak(Box::new(net)) as &'static sota_loader::SotaNetwork
+    })
 }
 
 #[cfg(feature = "sota")]
@@ -516,7 +562,7 @@ pub fn active_largenet() -> Option<&'static sota_loader::SotaNetwork> {
 /// build's `nnue-l1-*` feature, or the expect fires on first use). The
 /// variable is required whenever `embed-net` is on — an explicit choice
 /// beats a stale hardcoded default now that multiple widths ship.
-#[cfg(feature = "embed-net")]
+#[cfg(all(feature = "embed-net", not(feature = "sota")))]
 fn embedded_net() -> &'static Network {
     use std::sync::OnceLock;
     static EMBEDDED: OnceLock<&'static Network> = OnceLock::new();
