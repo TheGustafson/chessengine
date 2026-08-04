@@ -1547,8 +1547,7 @@ pub fn set_root_material(m: i32) {
 pub fn wdl_material(board: &Board) -> i32 {
     use crate::types::{Color, PieceType};
     let n = |pt: PieceType| -> i32 {
-        (board.pieces(Color::White, pt).count() + board.pieces(Color::Black, pt).count())
-            as i32
+        (board.pieces(Color::White, pt).count() + board.pieces(Color::Black, pt).count()) as i32
     };
     n(PieceType::Pawn)
         + 3 * n(PieceType::Knight)
@@ -1576,7 +1575,12 @@ pub fn wdl_material(board: &Board) -> i32 {
 /// applies our own frame ratio: our internal is 0.538 of SF's internal
 /// (`eval-frame` study), so sf_printed = 100 * (v / 0.538) / a.
 pub fn to_cp(v: Value, material: i32) -> Value {
-    const AS: [f64; 4] = [-72.325_658_36, 185.938_320_38, -144.588_621_93, 416.449_504_46];
+    const AS: [f64; 4] = [
+        -72.325_658_36,
+        185.938_320_38,
+        -144.588_621_93,
+        416.449_504_46,
+    ];
     const ARCHON_PER_SF_INTERNAL: f64 = 0.538;
     let m = material.clamp(17, 78) as f64 / 58.0;
     let a = ((AS[0] * m + AS[1]) * m + AS[2]) * m + AS[3];
@@ -2868,7 +2872,10 @@ option name EvalFile type string default <empty>
         // The anchor: SF fits at material 58, where a ~ 385, so 1 internal
         // point is ~1/2.07 printed cp.
         let anchor = to_cp(207, 58);
-        assert!((anchor - 100).abs() <= 2, "anchor mapped to {anchor}, expected ~100");
+        assert!(
+            (anchor - 100).abs() <= 2,
+            "anchor mapped to {anchor}, expected ~100"
+        );
     }
 
     #[test]
