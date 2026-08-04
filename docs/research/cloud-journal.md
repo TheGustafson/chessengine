@@ -47,8 +47,14 @@ wall-clock estimate **3x optimistic**. Pass `--vcpu-limit 96`, and confirm
 against a live job before trusting a new number.
 
 **Cost model** (worst case; prices are unverified list figures):
-`$0.012/vCPU-h` compute, `$0.12/GB` egress, **2.90 vCPU-h per 1M kept
-positions** measured locally. ~73 M positions/h at parallelism 18.
+`$0.012/vCPU-h` compute, `$0.12/GB` egress, and **6.49 vCPU-h per 1M kept
+positions MEASURED ON c2d** — a real uho1 shard produced 2,013,192 records in
+~49 min on 16 vCPU. The local figure is **2.90**, so a cloud vCPU costs
+**2.24x** what a core here does (Zen 3 ~2.45 GHz vs this box's Zen 4 at 5+ GHz).
+Planning cloud runs on the local number is a 2.24x optimism on top of the 3x
+vCPU-ceiling error below. **Benchmarks do not transfer across hardware.**
+
+At 96 vCPU that is **~14.8 M positions/hour**.
 
 **Known ceiling:** oracle-vs-oracle is deterministic, so a replayed opening
 yields a byte-identical game. The UHO book (2,632,036 lines) therefore caps a
@@ -63,7 +69,7 @@ campaign at **~150 M unique positions**. See "Opening supply" below.
 | 1 | `oracle-canary-canary-20260803-184238` | 18:42 | 1 task, 100k pos | prove Spot/quota/GCS/image | **FAILED** exit 127 — `gcloud: command not found`. Entrypoint used `bash -lc`; a login shell sources `/etc/profile`, resets PATH, drops `/usr/lib/google-cloud-sdk/bin`. Did prove Spot works under `PREEMPTIBLE_CPUS=0` (reached RUNNING). |
 | 2 | `oracle-canary2-canary-20260803-184735` | 18:47 | 1 task, 100k pos | same, with `-c` fix | **FAILED** exit 3 — `Illegal instruction (core dumped)`, rc=132 in stage 1. Binaries built `-march=native` on Zen 4 **with AVX-512**; c2d is Zen 3 with none. fastchess 5,302 AVX-512 insns, Stockfish 1,363. **A local `docker run` cannot catch this** — the container uses the host CPU. |
 | 3 | `oracle-canary3-canary-20260803-185921` | 18:59 | 1 task, 100k pos | same, with portable binaries | **SUCCEEDED** in ~4 min. 101,331 records, 58.27 rows/game, 22.58 % D46 drop. Fetched back, sha256 verified on arrival. |
-| 4 | `oracle-uho1-run-20260803-191039` | 19:10 | **73 tasks**, par 18 requested, 145 M target | ~2.1 h wall, **$6.86** worst case; 73 shards × ~2 M. Sized to 73 of the book's 75 available shards so it never wraps. | **RUNNING** — but only **6 tasks run at once** (96 vCPU cap), so the real wall clock is ~12 waves × 0.43 h ≈ **5.2 h**, ETA ~00:20. The 2.1 h estimate assumed parallelism 18 and was 3x optimistic. Cost is unchanged (same total vCPU-h). |
+| 4 | `oracle-uho1-run-20260803-191039` | 19:10 | **73 tasks**, par 18 requested, 145 M target | ~2.1 h wall, **$6.86** worst case | **RUNNING.** Estimate was wrong twice over. (a) only **6 tasks run at once** (96 vCPU, not the 288 the quota rows implied) = 3x; (b) a shard really takes **~49 min**, not 26, because c2d cores are ~half this box's speed = 2.24x. Real wall clock **~9.8 h**, ETA ~05:00. Cost is barely affected ($11 vs $7) since vCPU-h scale with the work, not the schedule. Shards land at **2,013,192 records** each, on target. **⚠ maxRunDuration is 3370 s = 56.2 min against a 49 min actual — 15 % margin.** A task that overruns is killed and retried from scratch, so a slow VM could burn all 3 retries. Watching; a resubmit is cheap because published shards are skipped. |
 
 ---
 

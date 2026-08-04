@@ -52,10 +52,18 @@ import json
 import math
 import sys
 
-# Measured on this box, 60-game oracle-vs-oracle smoke at 5k/5k:
-#   12,000 games/h at conc 2  ->  2.90 core-h per 1M kept positions (gen only,
-#   in-game labels). 57.5 kept positions per game after the D46 filter.
-CORE_H_PER_M = 2.90
+# MEASURED ON THE TARGET HARDWARE, not on this box.
+#   A real uho1 shard produced 2,013,192 records in ~49 min on 16 cloud vCPU =
+#   6.49 vCPU-h per 1M. The local figure is 2.90 (60-game smoke, 12,000 games/h
+#   at conc 2), so a c2d vCPU costs 2.24x what a core here does — Zen 3 at
+#   ~2.45 GHz against this box's Zen 4 at 5+ GHz.
+#
+#   Planning cloud runs on the LOCAL number made every estimate 2.24x
+#   optimistic, on top of the separate 3x error from reading the vCPU ceiling
+#   off the wrong quota row. Combined, uho1's "2.1 h" was really ~9.8 h.
+#   Benchmarks do not transfer across hardware; measure where the work runs.
+CORE_H_PER_M = 6.49
+LOCAL_CORE_H_PER_M = 2.90   # this box, for reference only
 KEPT_PER_GAME = 57.5
 BYTES_PER_POS = 32
 PGN_ZST_GB_PER_M = 0.019
@@ -73,6 +81,10 @@ def main() -> int:
                         "6 RUNNING / 67 PENDING and 6 live VMs, stable, not ramping.")
     p.add_argument("--machine", default="c2d-highcpu-16")
     p.add_argument("--vcpus-per-task", type=int, default=16)
+    p.add_argument("--core-h-per-m", type=float, default=CORE_H_PER_M,
+                   help="vCPU-h per 1M kept positions ON THE TARGET MACHINE. "
+                        f"Default {CORE_H_PER_M} measured on c2d; this box is "
+                        f"{LOCAL_CORE_H_PER_M}. Re-measure if the machine type changes.")
     p.add_argument("--vcpu-hour", type=float, default=0.012,
                    help="Spot $/vCPU-hour. UNVERIFIED default; pass the real one.")
     p.add_argument("--egress-gb", type=float, default=0.12, help="$/GB out of GCS")
@@ -105,8 +117,8 @@ def main() -> int:
     a = p.parse_args()
 
     shards = math.ceil(a.target / a.shard_pos)
-    core_h_total = a.target / 1e6 * CORE_H_PER_M
-    core_h_shard = a.shard_pos / 1e6 * CORE_H_PER_M
+    core_h_total = a.target / 1e6 * a.core_h_per_m
+    core_h_shard = a.shard_pos / 1e6 * a.core_h_per_m
     # A task owns a whole machine's vCPUs, so its wall clock is its core-hours
     # spread over them. Efficiency < 1 because fastchess concurrency does not
     # scale perfectly and a task also spends time on extract/export.
@@ -128,8 +140,12 @@ def main() -> int:
     # 107 MB payload download, and the untar. For a full 2M-position shard that
     # is a rounding error; for a canary it DOMINATES, and a cap derived from
     # compute alone (153 s for a 100k shard) would kill the task during setup.
+    # 2.5x on compute plus a flat setup allowance. 2.0x was too tight once the
+    # per-position cost was corrected: uho1's real shard took 49 min against a
+    # 56.2 min cap — 15% margin, and a task that overruns is KILLED and retried
+    # from scratch, so a slow VM can burn every retry it has.
     SETUP_S = 300
-    max_run_s = max(900, int(hours_per_task * 3600 * 2.0) + SETUP_S)
+    max_run_s = max(900, int(hours_per_task * 3600 * 2.5) + SETUP_S)
     compute = shards * hours_per_task * a.vcpus_per_task * a.vcpu_hour
     corpus_gb = a.target * BYTES_PER_POS / 1e9
     pgn_gb = a.target / 1e6 * PGN_ZST_GB_PER_M
