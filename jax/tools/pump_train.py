@@ -31,6 +31,7 @@ import sys
 import time
 from pathlib import Path
 
+import math
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -91,38 +92,58 @@ def heldout_value_loss(params, arch, ft_impl="pallas", batch_size=8192,
     return total / n
 
 
-def teacher_heldout_loss(t_params, t_arch, t_frame, batch_size=8192,
+def teacher_heldout_loss(t_params, t_arch, t_frame, teacher_kp, batch_size=8192,
                          target_offset=0.0, scale=None, ft_impl="pallas"):
-    """The TEACHER's own loss on the heldout set, in the run's frame.
+    """The TEACHER's own loss on the heldout set, in the RUN's frame.
 
-    This is the reference the cutover keys on: the student is compared against
-    it, and when the student comes within CUTOVER_EPS of it the teacher's
-    weight is decayed (BAM teacher annealing — once the student matches, the
-    teacher is a CEILING, not a tutor).
+    The reference the cutover keys on. THE TEACHER IS FROZEN, so this is a
+    constant — computed once at startup, not per superbatch.
 
-    THE TEACHER IS FROZEN, SO THIS IS A CONSTANT. Computed once at startup and
-    reused; recomputing it every superbatch would burn a full heldout pass for
-    a number that cannot move.
+    THIS MUST REPRODUCE THE TRAINING PATH EXACTLY (train.py teacher_target), and
+    a first attempt that did not read 0.117887 — eleven times WORSE than our own
+    nets score on the same set, which is not the teacher being bad but three
+    frame errors stacked:
+
+      1. the teacher emits raw internal units, not a logit to sigmoid. They go
+         through `k * (1 + material/EVAL_BLEND_BASE)**p` into our label frame,
+         per corpus AND per position (a scalar cannot do it: the multiplier
+         runs 0.319-0.604 over the corpus x material grid).
+      2. the result must then pass the SAME draw-aware transform the label
+         went through, or the two sides are different quantities.
+      3. AN SF NET'S OUTPUT BUCKETS ARE (pieces-1)/4, NOT OURS. Handing the
+         teacher our bucket index evaluates most positions on the wrong layer
+         stack — our bucket 0 alone spans their 0, 1 and 2.
+
+    The heldout set is uho-band0-5, so it takes the uho corpus's (k, p) —
+    teacher_kp entry 0, which is the corpus the heldout was drawn from.
     """
     import jax
+    import jax.numpy as jnp
     from archon_jax.model import forward
+    from archon_jax.spec import EVAL_BLEND_BASE
+
     cfg = TrainConfig()
     if scale is None:
         scale = cfg.scale
+    k_t, p_t = float(teacher_kp[0][0]), float(teacher_kp[0][1])
     recs = np.memmap(HELDOUT, dtype=RECORD_DTYPE, mode="r")
     n = (len(recs) // batch_size) * batch_size
     total = 0.0
     for off in range(0, n, batch_size):
         b = map_batch(np.array(recs[off:off + batch_size]), wdl=cfg.wdl,
                       score_multiplier=cfg.score_multiplier, scale=scale,
-                      policy=False, target_offset=target_offset)
-        b = {k: np.asarray(v) for k, v in b.items()}
-        out = forward(t_params, t_arch, b, ft_impl)[0]
-        if t_frame is not None:
-            from archon_jax.losses import expected_score
-            q = np.asarray(expected_score(out, t_frame[0], t_frame[1]))
-        else:
-            q = np.asarray(jax.nn.sigmoid(out))
+                      policy=False, target_offset=target_offset, sf_bucket=True)
+        mat = b.pop("material")
+        mult = (k_t * (1.0 + mat / EVAL_BLEND_BASE) ** p_t).astype(np.float32)
+        b = {kk: np.asarray(v) for kk, v in b.items()}
+        tb = dict(b)
+        if "t_bucket" in b:
+            tb["bucket"] = b["t_bucket"]
+        tv = forward(t_params, t_arch, tb, ft_impl)[0]
+        cp = tv * jnp.asarray(mult)
+        pw = jax.nn.sigmoid((cp - target_offset) / scale)
+        pl = jax.nn.sigmoid((-cp - target_offset) / scale)
+        q = np.asarray(0.5 * (1.0 + pw - pl))
         total += float(np.sum((q - b["target"]) ** 2))
     return total / n
 
@@ -321,13 +342,16 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
     CUT_HOLD = int(spec.get("cutover_hold_sb", 20))
     CUT_FLOOR = float(spec.get("cutover_floor", 0.05))
     CUT_PROGRESS = float(spec.get('cutover_progress', 0.02))
+    CUT_HORIZON = int(spec.get('cutover_horizon', 12))
     trig = 1.0
     last_cut_sb = -10**9
     cut_ref = None
+    n_cuts = 0
     teacher_hv = None
     _tref = getattr(step, "teacher_ref", None)
     if _tref is not None and _tref[0] is not None and float(getattr(cfg, "distill_alpha", 0.0) or 0.0) > 0.0:
         teacher_hv = teacher_heldout_loss(_tref[0], _tref[1], _tref[2],
+                                          spec.get("teacher_kp"),
                                           target_offset=HELDOUT_TARGET[0],
                                           scale=HELDOUT_TARGET[1])
         print(f"[pump {net_id}] TEACHER heldout {teacher_hv:.6f} (constant reference); "
@@ -372,10 +396,29 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
             # (LR -> 0): measured 2026-08-01, a mid-cycle checkpoint taken just
             # after a 5x LR jump was 13 Elo weaker than the anneal-end one
             # (sb1580 -3.94 vs sb1570 +9.27, 1500 games each).
+            # EXPORT and HELDOUT are DECOUPLED. They used to share one
+            # cadence, which forces a bad trade on a long run: exporting every
+            # 2 sb writes ~324 GB of checkpoints over 1000 superbatches (enough
+            # to fill this disk by sb500), but raising the cadence to fix that
+            # would also make the CUTOVER CHECK coarse, and the cutover needs a
+            # frequent heldout to fire when it is earned rather than 50
+            # superbatches later. So: `heldout_every` drives the metric and the
+            # cutover, `export_every` drives what is written to disk.
             _every = int(getattr(cfg, 'export_every', 10) or 10)
-            if sb % _every == 0 or sb == cfg.superbatches:
+            # From the SPEC DICT, not from cfg: `heldout_every` is not a
+            # declared TrainConfig field, so getattr(cfg, ...) silently
+            # returned the fallback and the metric ran on the EXPORT cadence
+            # (50) instead of 10 — which would have let the cutover fire at
+            # most once per 50 superbatches, gutting the mechanism this run
+            # exists to test. Caught because heldout stopped appearing in the
+            # log between exports.
+            _hevery = int(spec.get('heldout_every', _every) or _every)
+            _do_export = (sb % _every == 0 or sb == cfg.superbatches)
+            _do_heldout = _do_export or (sb % _hevery == 0)
+            if _do_heldout:
                 host = jax.tree.map(np.asarray, params)
-                save_pair(host, arch, out, f"{net_id}-sb{sb}")
+                if _do_export:
+                    save_pair(host, arch, out, f"{net_id}-sb{sb}")
                 hv = heldout_value_loss(host, arch,
                                         target_offset=HELDOUT_TARGET[0],
                                         scale=HELDOUT_TARGET[1],
@@ -383,7 +426,8 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
                                         net_scale=cfg.net_scale)
                 if ema_on:
                     ema_host = jax.tree.map(np.asarray, ema)
-                    save_pair(ema_host, arch, out, f"{net_id}-sb{sb}-ema")
+                    if _do_export:
+                        save_pair(ema_host, arch, out, f"{net_id}-sb{sb}-ema")
                     he = heldout_value_loss(ema_host, arch,
                                             target_offset=HELDOUT_TARGET[0],
                                             scale=HELDOUT_TARGET[1],
@@ -417,7 +461,21 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
                         why = f"student {hv:.6f} <= {cut_ref * (1.0 - CUT_PROGRESS):.6f} ({CUT_PROGRESS:.1%} better than the last cutover's {cut_ref:.6f})"
                     if earned:
                         old = trig
-                        trig = max(CUT_FLOOR, trig * CUT_FACTOR)
+                        n_cuts += 1
+                        # COSINE decay in the CUTOVER INDEX, not geometric.
+                        # CAW-KD (dl.acm.org/doi/full/10.1145/3746709.3746749)
+                        # measured exponential teacher-weight decay reducing
+                        # guidance too fast and overfitting the student, with
+                        # cosine annealing better. Cosine is also gentle at
+                        # BOTH ends: the first cutovers barely move alpha (the
+                        # student has only just reached the teacher and still
+                        # has most to learn), the middle ones move it fast, and
+                        # it flattens into the floor rather than crashing there.
+                        # Geometric does the opposite — its biggest absolute
+                        # cut is the very first one.
+                        k = min(n_cuts, CUT_HORIZON)
+                        trig = CUT_FLOOR + (1.0 - CUT_FLOOR) * 0.5 * (
+                            1.0 + math.cos(math.pi * k / CUT_HORIZON))
                         last_cut_sb, cut_ref = sb, hv
                         print(f"[pump {net_id}] CUTOVER sb {sb}: {why} "
                               f"-> trig {old:.4f} -> {trig:.4f}", flush=True)
