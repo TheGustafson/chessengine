@@ -219,3 +219,28 @@ frame plus the wl50 eval hash — quantities that do not carry build metadata.
 Provenance by artifact — mtime, filename, or "I remember building it" — is not
 provenance. The same failure produced a phantom −0.473% measurement on
 2026-07-31 that a rebuild corrected to −3.056%.
+
+## External ladder — d50w768-sb1030-s600 (measured 2026-08-03, 2+0.1, PGO both sides)
+
+| opponent | Elo | n |
+|---|---|---|
+| Stockfish 16 | **+28.20 ± 11.14** | 1000 |
+| Stockfish 18 (release tag) | **−64.66 ± 11.72** | 1000 |
+| **stockfish-eca43a97** (current SF) | **−122.46 ± 13.31** | 700 |
+
+**Quote the eca43a97 row.** `engines/bin/stockfish18` is the release-tag build,
+223 commits older than eca43a97 (2026-01-31 vs 2026-07-06) and a different
+architecture — two nets (`EvalFile` + `EvalFileSmall`, 102,384 inputs) against
+eca43a97's one (83,248). Our standing against *current* Stockfish is −122.46,
+not −64.66, and every older "vs Stockfish 18" figure in this repo is against the
+weaker binary.
+
+The gap between the two Stockfish versions is confirmed by two independent
+instruments: **+47.78 ± 25.58** head-to-head at 25k fixed nodes (n=300,
+selfplay-data-design §5.3) and **+57.80** transitively through ARCHON at 2+0.1.
+10 Elo apart, inside the head-to-head bar.
+
+Caveat: both instruments sit at fast/shallow settings, which is not Stockfish's
+regime. A dual-net eval costs more per node, so 2+0.1 plausibly overstates the
+version gap at long time controls; the node-equalised +47.78 shows most of it is
+genuine quality rather than speed.
