@@ -215,6 +215,11 @@ pub(crate) const fn threat_quant_for(shift: u32) -> i32 {
 /// `(1 << FT_SHIFT) / (FT_QUANT² · L1_QUANT)` — the i32→f32 bridge at L1
 /// (design/11 §12.6).
 const DEQUANT: f32 = (1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT * L1_QUANT) as f32;
+/// `(1 << FT_SHIFT) / FT_QUANT²` — the u8 pairwise activation back to the
+/// trainer's float `hl1 ∈ [0,1]` (`ft_u8 = hl1 · FT_QUANT²/2^FT_SHIFT`, the
+/// factor the D47V skip lane already dequantises by). Any head that reads the
+/// FT vector as floats reads it through this.
+pub(crate) const FT_DEQUANT: f32 = (1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT) as f32;
 
 /// Piece-count → output bucket (non-uniform: fine at mid-material, coarse at the
 /// extremes — copy Reckless's *shape*, retune boundaries on our data later).
@@ -278,6 +283,84 @@ pub struct SkipLane {
     pub scale: Box<[f32]>,
 }
 
+/// Columns the disagreement head emits. Column 0 is the SIGNED residual
+/// `E[target − sigmoid(value) | features]` (which way to correct the eval);
+/// column 1 is the MAGNITUDE `E[|residual| | features]` (whether to trust it at
+/// all). Both live in PROBABILITY space, not centipawns — the trainer fits them
+/// against `target − sigmoid(value_logit)` (`jax/archon_jax/losses.py`), so a
+/// consumer that wants cp must map through the same sigmoid the value head's
+/// `network_scale` implies. Pinned here because the container's `outs` field is
+/// validated against it.
+pub const DIS_OUTS: usize = 2;
+
+/// The OPTIONAL disagreement head — a two-layer probe of the SAME pairwise
+/// activation `hl1` the value path's L1 consumes:
+/// `crelu(hl1 · proj_w + proj_b) · out_w + out_b`
+/// (`jax/archon_jax/model.py::head_forward`, the `arch.dis_proj` branch).
+///
+/// **Deliberately NOT on the per-node eval path.** `forward_into` never touches
+/// this; the only entry is [`SotaHead::disagreement`], which re-runs
+/// `activate_ft` itself. That is the whole design premise — the head is polled
+/// SELECTIVELY (root, a candidate node, a diagnostic dump), so its cost is
+/// bounded by the caller rather than multiplied by the node count, and adding
+/// it changed nothing about the value pipeline's instruction count.
+///
+/// Stored f32 rather than i8 for the reason the jax-side contract gives: off
+/// the hot path there is no cycle argument for a quantisation frame nobody has
+/// calibrated, and f32 makes the deployed function the one the trainer fitted,
+/// which is what the JAX↔Rust parity check needs to be able to see plumbing
+/// bugs rather than rounding.
+#[derive(Debug)]
+pub struct DisHead {
+    /// Projection width (`dis_proj`) — a per-net width, not a build constant.
+    pub proj: usize,
+    /// `[L1][proj]` f32, row-major: `proj_w[i · proj + j]`.
+    pub proj_w: Box<[f32]>,
+    /// `[proj]` f32.
+    pub proj_b: Box<[f32]>,
+    /// `[proj][DIS_OUTS]` f32, row-major: `out_w[j · DIS_OUTS + k]`.
+    pub out_w: Box<[f32]>,
+    /// `[DIS_OUTS]` f32.
+    pub out_b: [f32; DIS_OUTS],
+}
+
+impl DisHead {
+    /// The head's forward pass over an activated FT vector.
+    ///
+    /// `ft` is the u8 pairwise activation in the `FT_QUANT²/2^FT_SHIFT` frame
+    /// ([`FT_DEQUANT`] takes it back to the trainer's `hl1 ∈ [0,1]`).
+    ///
+    /// The zero skip is not an optimisation with a correctness caveat: 85–95 %
+    /// of lanes are zero after the clamp, and dropping a term whose value is
+    /// exactly `0.0 · w` leaves the ORDER of every surviving term untouched, so
+    /// the result is bit-identical to the dense loop for all finite weights.
+    pub fn forward(&self, ft: &[u8; L1]) -> [f32; DIS_OUTS] {
+        let mut hidden = self.proj_b.to_vec();
+        for (i, &a) in ft.iter().enumerate() {
+            if a == 0 {
+                continue;
+            }
+            let x = f32::from(a) * FT_DEQUANT;
+            let row = &self.proj_w[i * self.proj..(i + 1) * self.proj];
+            for (h, &w) in hidden.iter_mut().zip(row) {
+                *h = x.mul_add(w, *h);
+            }
+        }
+        let mut out = self.out_b;
+        for (j, &h) in hidden.iter().enumerate() {
+            // CReLU — clamp(h, 0, 1), the trainer's `_crelu`. `f32::clamp`
+            // panics on a NaN bound, never on a NaN value; a NaN activation
+            // propagates, which is what the caller's finite check catches.
+            let x = h.clamp(0.0, 1.0);
+            let row = &self.out_w[j * DIS_OUTS..(j + 1) * DIS_OUTS];
+            for (o, &w) in out.iter_mut().zip(row) {
+                *o = x.mul_add(w, *o);
+            }
+        }
+        out
+    }
+}
+
 /// The head's per-bucket weights + the net's output scale. Format-agnostic: the
 /// CENN-v2 loader (task #29) fills these from disk; tests fill them synthetically.
 /// Layouts are bucket-major, flattened.
@@ -331,6 +414,11 @@ pub struct SotaHead {
     /// D47V output-skip lane, QUANTISED TO i8 at load ([`SkipLane`]).
     /// `None` = pre-skip net: the eval path is bit-identical to before.
     pub skip_weights: Option<SkipLane>,
+    /// The OPTIONAL disagreement head ([`DisHead`]), from the container's DIS1
+    /// section. `None` for every net without one — and for a net WITH one the
+    /// value path is still bit-identical, because nothing on it reads this
+    /// field: [`SotaHead::disagreement`] is the only accessor.
+    pub dis_head: Option<DisHead>,
     /// Per-accumulator-lane dequantisation multiplier for the **i8 HalfKA
     /// feature transformer** (perf study 32), `[L1]`.
     ///
@@ -613,6 +701,51 @@ impl SotaHead {
         let mut l1 = [0.0f32; L2];
         let mut scratch = HeadScratch::new();
         self.forward_into(pst, threat, stm, piece_count, psqt, &mut scratch, &mut l1)
+    }
+
+    /// The disagreement head's prediction for a position, `None` when the net
+    /// carries no DIS1 section (every net before 2026-08-03) or when the head
+    /// produced a non-finite value.
+    ///
+    /// **This is an on-demand poll and is NOT called by [`forward`] or
+    /// [`forward_into`].** It re-runs `activate_ft` from the caller's
+    /// accumulators instead of borrowing the value pass's FT vector, which
+    /// costs one extra activation per poll and buys the property the design
+    /// wants: the per-node eval path does not change, at all, whether or not a
+    /// net has this head. A caller polling it on a large fraction of nodes has
+    /// misunderstood it — the accumulators it needs are already there, so the
+    /// FT vector could be shared if we ever wanted that, and the deliberate
+    /// choice is not to.
+    ///
+    /// The `[0u8; L1]` local is exactly the memset perf study 15 arm 4 removed
+    /// from the hot path. It stays here on purpose: at poll rates this head is
+    /// meant for, 768 bytes of `memset` is free, and NOT threading a second
+    /// scratch through every caller keeps the hot-path types unchanged.
+    ///
+    /// [`forward`]: Self::forward
+    /// [`forward_into`]: Self::forward_into
+    #[cold]
+    #[inline(never)]
+    pub fn disagreement(
+        &self,
+        pst: &[[i16; L1]; 2],
+        threat: &[[i16; L1]; 2],
+        stm: Color,
+    ) -> Option<[f32; DIS_OUTS]> {
+        let dis = self.dis_head.as_ref()?;
+        let mut ft = [0u8; L1];
+        activate_ft(
+            pst,
+            threat,
+            self.ft_scale.block(0),
+            stm,
+            self.threat_shift,
+            &mut ft,
+        );
+        let out = dis.forward(&ft);
+        // Same guard, and the same rationale, as `sigma`: a consumer must get
+        // `None` rather than a NaN that silently poisons a search margin.
+        out.iter().all(|v| v.is_finite()).then_some(out)
     }
 
     /// [`forward`](Self::forward), writing the shared-bottleneck activation
@@ -1028,6 +1161,7 @@ mod tests {
             l3_wdl_weights: None,
             l3_wdl_biases: None,
             skip_weights: None,
+            dis_head: None,
             ft_scale: FtScale::from_flat_iter(std::iter::repeat_n(1u8, L1)),
         }
     }
@@ -1195,6 +1329,143 @@ mod tests {
             sigma.is_finite() && sigma > 0.0,
             "sigma finite & positive, got {sigma}"
         );
+    }
+
+    /// The disagreement head reproduces a HAND-WRITTEN dense reference of the
+    /// trainer's expression — `crelu(hl1 · W + b) · Wo + bo` with
+    /// `hl1 = ft · FT_DEQUANT` — over the real activation of a synthetic
+    /// position. This is what pins the layout (`proj_w[i·proj + j]`,
+    /// `out_w[j·DIS_OUTS + k]`): a transposed read still produces plausible
+    /// numbers, and only an independent index expression catches it.
+    ///
+    /// The zero skip must be EXACT, not approximate, which is why this asserts
+    /// bit equality rather than a tolerance.
+    #[test]
+    fn dis_head_matches_a_dense_hand_reference() {
+        let proj = 6usize;
+        let mut head = synth_head();
+        head.dis_head = Some(DisHead {
+            proj,
+            proj_w: (0..L1 * proj)
+                .map(|i| ((i % 17) as f32 - 8.0) * 0.011)
+                .collect(),
+            proj_b: (0..proj).map(|j| (j as f32 - 2.0) * 0.05).collect(),
+            out_w: (0..proj * DIS_OUTS)
+                .map(|i| ((i % 5) as f32 - 2.0) * 0.3)
+                .collect(),
+            out_b: [0.125, -0.25],
+        });
+        let (pst, threat) = synth_accs();
+
+        // The activation the head will see, recomputed here independently.
+        let mut ft = [0u8; L1];
+        activate_ft(
+            &pst,
+            &threat,
+            head.ft_scale.block(0),
+            Color::White,
+            head.threat_shift,
+            &mut ft,
+        );
+        assert!(ft.iter().any(|&a| a != 0), "synthetic ft is all zero");
+
+        let d = head.dis_head.as_ref().unwrap();
+        let mut hidden = vec![0.0f32; proj];
+        for (j, h) in hidden.iter_mut().enumerate() {
+            let mut acc = d.proj_b[j];
+            for (i, &a) in ft.iter().enumerate() {
+                // DENSE: every lane, including the zeros the shipped loop skips.
+                acc = (f32::from(a) * FT_DEQUANT).mul_add(d.proj_w[i * proj + j], acc);
+            }
+            *h = acc;
+        }
+        let mut want = [0.0f32; DIS_OUTS];
+        for (k, w) in want.iter_mut().enumerate() {
+            let mut acc = d.out_b[k];
+            for (j, &h) in hidden.iter().enumerate() {
+                acc = h.clamp(0.0, 1.0).mul_add(d.out_w[j * DIS_OUTS + k], acc);
+            }
+            *w = acc;
+        }
+
+        let got = head
+            .disagreement(&pst, &threat, Color::White)
+            .expect("head present and finite");
+        // The hidden-lane accumulation order differs (dense j-outer vs the
+        // shipped i-outer), so the two agree to float rounding, not to the bit.
+        for k in 0..DIS_OUTS {
+            assert!(
+                (got[k] - want[k]).abs() <= 1e-5 * (1.0 + want[k].abs()),
+                "column {k}: got {} want {}",
+                got[k],
+                want[k]
+            );
+        }
+
+        // The zero SKIP, on the other hand, must be exact: same order, terms
+        // that are identically zero simply not added.
+        let dense_order = {
+            let mut hidden = d.proj_b.to_vec();
+            for (i, &a) in ft.iter().enumerate() {
+                let x = f32::from(a) * FT_DEQUANT;
+                for (j, h) in hidden.iter_mut().enumerate() {
+                    *h = x.mul_add(d.proj_w[i * proj + j], *h);
+                }
+            }
+            let mut out = d.out_b;
+            for (j, &h) in hidden.iter().enumerate() {
+                let x = h.clamp(0.0, 1.0);
+                for (k, o) in out.iter_mut().enumerate() {
+                    *o = x.mul_add(d.out_w[j * DIS_OUTS + k], *o);
+                }
+            }
+            out
+        };
+        assert_eq!(
+            got, dense_order,
+            "skipping zero lanes must be bit-exact, not approximate"
+        );
+    }
+
+    /// The head is OFF the eval path, and this is the assertion that says so:
+    /// installing one must not move `forward`'s value, sigma or WDL by a bit.
+    /// A net without a head returns `None` rather than a default.
+    #[test]
+    fn dis_head_does_not_touch_the_value_forward() {
+        let (pst, threat) = synth_accs();
+        let plain = synth_head();
+        assert!(plain.disagreement(&pst, &threat, Color::White).is_none());
+        let base = plain.forward(&pst, &threat, Color::White, 24, &ZERO_PSQT);
+
+        let mut head = synth_head();
+        head.dis_head = Some(DisHead {
+            proj: 4,
+            proj_w: (0..L1 * 4).map(|i| (i % 9) as f32 * 0.07 - 0.3).collect(),
+            proj_b: vec![0.1, -0.2, 0.3, 0.0].into_boxed_slice(),
+            out_w: (0..8).map(|i| (i as f32) * 0.11 - 0.4).collect(),
+            out_b: [1.5, -1.5],
+        });
+        let with = head.forward(&pst, &threat, Color::White, 24, &ZERO_PSQT);
+        assert_eq!(base.0, with.0);
+        assert_eq!(base.1, with.1);
+        assert_eq!(base.2, with.2);
+        assert!(head.disagreement(&pst, &threat, Color::White).is_some());
+    }
+
+    /// A NaN weight must yield `None`, not a NaN a consumer folds into a search
+    /// margin — the same guard, and the same reason, as `sigma`.
+    #[test]
+    fn dis_head_rejects_a_non_finite_result() {
+        let (pst, threat) = synth_accs();
+        let mut head = synth_head();
+        head.dis_head = Some(DisHead {
+            proj: 2,
+            proj_w: (0..L1 * 2).map(|_| 0.001f32).collect(),
+            proj_b: vec![0.0, 0.0].into_boxed_slice(),
+            out_w: vec![f32::NAN, 1.0, 1.0, 1.0].into_boxed_slice(),
+            out_b: [0.0, 0.0],
+        });
+        assert!(head.disagreement(&pst, &threat, Color::White).is_none());
     }
 
     /// EXP-UNC-1 (D33 review, reviewer C): propagate_l3_var must be a faithful

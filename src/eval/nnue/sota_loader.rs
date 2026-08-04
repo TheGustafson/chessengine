@@ -134,6 +134,25 @@ pub const SKIP_MAGIC: [u8; 4] = *b"SKP1";
 /// still carry a TRM1 (the identity/shuffle instrumentation arms); a net whose
 /// header says less MUST.
 pub const REMAP_MAGIC: [u8; 4] = *b"TRM1";
+/// DIS1 magic — the OPTIONAL disagreement head (contract: jax
+/// `checkpoint.py::dis_section_bytes`), riding after the TRM1 section (or
+/// after SKP1 / PSQ1 / the payload when the earlier sections are absent):
+/// ```text
+/// b"DIS1" | u32 hl | u32 proj | u32 outs
+///         | f32[hl·proj]   proj_w  row-major (hl, proj)
+///         | f32[proj]      proj_b
+///         | f32[proj·outs] out_w   row-major (proj, outs)
+///         | f32[outs]      out_b
+/// ```
+/// `hl` must equal this build's [`sota_head::L1`] and `outs` must be
+/// [`sota_head::DIS_OUTS`]; `proj` is free (it is a per-net width). f32 rather
+/// than i8 deliberately: the head is polled selectively and never runs on the
+/// per-node eval path, so there is no cycle argument for a quantisation frame
+/// nobody has calibrated — see the jax-side comment for the full reasoning.
+/// Every net without the section loads and evaluates exactly as before.
+pub const DIS_MAGIC: [u8; 4] = *b"DIS1";
+/// DIS1 section header length: magic + u32 hl + u32 proj + u32 outs.
+const DIS_HEADER_LEN: usize = 16;
 /// PSQ1 section header length: magic + u32 num_buckets + u32 rows.
 const PSQT_HEADER_LEN: usize = 12;
 
@@ -237,6 +256,25 @@ impl PartialEq for SotaNetwork {
             && self.head.l2_biases == other.head.l2_biases
             && self.head.l3_weights == other.head.l3_weights
             && self.head.l3_biases == other.head.l3_biases
+            && dis_heads_equal(&self.head.dis_head, &other.head.dis_head)
+    }
+}
+
+/// Compare two OPTIONAL disagreement heads. Included in the net's `eq` — and so
+/// in the four round-trip tests — because unlike the SKP1 lane, DIS1 is f32 on
+/// disk and f32 in memory, so `load ∘ serialize` really is the identity here
+/// and there is no reason to exempt it.
+fn dis_heads_equal(a: &Option<sota_head::DisHead>, b: &Option<sota_head::DisHead>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(x), Some(y)) => {
+            x.proj == y.proj
+                && x.proj_w == y.proj_w
+                && x.proj_b == y.proj_b
+                && x.out_w == y.out_w
+                && x.out_b == y.out_b
+        }
+        _ => false,
     }
 }
 
@@ -335,6 +373,9 @@ pub enum SotaNnueError {
     /// A TRM1 remap entry points past the net's threat row count, or a
     /// compressed threat table arrived without its TRM1 section.
     BadRemap { detail: &'static str },
+    /// A DIS1 section declared a projection width of zero (nothing to load) or
+    /// one so large the section length overflows.
+    BadDisProj(u32),
     /// Payload checksum mismatch.
     ChecksumMismatch { expected: u64, found: u64 },
 }
@@ -380,6 +421,9 @@ impl fmt::Display for SotaNnueError {
             ),
             SotaNnueError::BadRemap { detail } => {
                 write!(f, "CENN TRM1 threat remap invalid: {detail}")
+            }
+            SotaNnueError::BadDisProj(p) => {
+                write!(f, "CENN DIS1 projection width {p} is not in 1..=65536")
             }
             SotaNnueError::ChecksumMismatch { expected, found } => write!(
                 f,
@@ -719,15 +763,28 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     // Recode POC: optional TRM1 trailer after SKP1 (or directly after PSQ1 /
     // the payload). Mandatory when the header's threat row count is
     // compressed; `None` = the identity code = every net before this change.
-    let threat_remap = {
-        let skip_len = if skip_weights.is_empty() {
-            0
-        } else {
-            12 + skip_weights.len() * 4
+    let skip_len = if skip_weights.is_empty() {
+        0
+    } else {
+        12 + skip_weights.len() * 4
+    };
+    let tail2 = &tail[skip_len.min(tail.len())..];
+    let threat_remap = if tail2.len() >= 4 && tail2[0..4] == REMAP_MAGIC {
+        Some(parse_remap_section(tail2, threat_rows)?)
+    } else {
+        None
+    };
+    // Disagreement head: optional DIS1 trailer after TRM1 (or directly after
+    // SKP1 / PSQ1 / the payload). `None` = every net before 2026-08-03, whose
+    // load and eval are bit-identical to before.
+    let dis_head = {
+        let remap_len = match &threat_remap {
+            Some(_) => 12 + THREAT_DIMS * 2,
+            None => 0,
         };
-        let tail2 = &tail[skip_len.min(tail.len())..];
-        if tail2.len() >= 4 && tail2[0..4] == REMAP_MAGIC {
-            Some(parse_remap_section(tail2, threat_rows)?)
+        let tail3 = &tail2[remap_len.min(tail2.len())..];
+        if tail3.len() >= 4 && tail3[0..4] == DIS_MAGIC {
+            Some(parse_dis_section(tail3)?)
         } else {
             None
         }
@@ -752,6 +809,7 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         l3_wdl_weights: None,
         l3_wdl_biases: None,
         skip_weights: (!skip_weights.is_empty()).then(|| quantise_skip_lane(&skip_weights)),
+        dis_head,
         ft_scale,
     };
 
@@ -1268,6 +1326,68 @@ fn parse_skip_section(sec: &[u8]) -> Result<Box<[f32]>, SotaNnueError> {
     Ok(out.into_boxed_slice())
 }
 
+/// Parse a DIS1 section (starting at its magic): the optional disagreement
+/// head. Strict on this build's architecture — `hl` must be [`L1`] and `outs`
+/// must be [`sota_head::DIS_OUTS`] — but `proj` is a free per-net width, so it
+/// is only range-checked. Tolerant of further trailing bytes (future sections).
+fn parse_dis_section(sec: &[u8]) -> Result<sota_head::DisHead, SotaNnueError> {
+    if sec.len() < DIS_HEADER_LEN {
+        return Err(SotaNnueError::TooShort {
+            need: DIS_HEADER_LEN,
+            got: sec.len(),
+        });
+    }
+    let hl = read_u32(sec, 4);
+    if hl as usize != L1 {
+        return Err(SotaNnueError::WrongDim {
+            field: "dis_hl",
+            expected: L1 as u32,
+            found: hl,
+        });
+    }
+    let proj = read_u32(sec, 8);
+    // 1..=65536: zero is a head with nothing in it, and the upper bound is what
+    // makes `hl · proj` un-overflowable on the usize arithmetic below (L1 is at
+    // most 2048 in any shipped arch, so this is ~7 orders of margin over any
+    // real width — it exists to bound untrusted bytes, not to express a design
+    // limit).
+    if proj == 0 || proj > 65536 {
+        return Err(SotaNnueError::BadDisProj(proj));
+    }
+    let outs = read_u32(sec, 12);
+    if outs as usize != sota_head::DIS_OUTS {
+        return Err(SotaNnueError::WrongDim {
+            field: "dis_outs",
+            expected: sota_head::DIS_OUTS as u32,
+            found: outs,
+        });
+    }
+    let proj = proj as usize;
+    let outs = outs as usize;
+    let counts = [L1 * proj, proj, proj * outs, outs];
+    let need = DIS_HEADER_LEN + 4 * counts.iter().sum::<usize>();
+    if sec.len() < need {
+        return Err(SotaNnueError::TooShort {
+            need,
+            got: sec.len(),
+        });
+    }
+    let mut cur = DIS_HEADER_LEN;
+    let proj_w = read_f32s(sec, &mut cur, counts[0]);
+    let proj_b = read_f32s(sec, &mut cur, counts[1]);
+    let out_w = read_f32s(sec, &mut cur, counts[2]);
+    let out_b_vec = read_f32s(sec, &mut cur, counts[3]);
+    let mut out_b = [0.0f32; sota_head::DIS_OUTS];
+    out_b.copy_from_slice(&out_b_vec);
+    Ok(sota_head::DisHead {
+        proj,
+        proj_w,
+        proj_b,
+        out_w,
+        out_b,
+    })
+}
+
 /// Parse a PSQ1 section (starting at its magic). Strict: the bucket count must
 /// equal this build's [`BUCKETS`], the row count must equal the net's feature
 /// space (`HALFKA_DIMS` plus `THREAT_DIMS` iff threats), and the full
@@ -1548,6 +1668,26 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
             out.extend_from_slice(&r.to_le_bytes());
         }
     }
+    // Optional DIS1 trailer (the disagreement head). Round-trips EXACTLY —
+    // unlike the SKP1 lane, which this serializer drops because it is
+    // quantised at load and cannot be reconstructed. Being f32 on disk and f32
+    // in memory is what makes `serialize ∘ load` the identity here, and it is
+    // the second reason (after parity) not to quantise it.
+    if let Some(dis) = &net.head.dis_head {
+        out.extend_from_slice(&DIS_MAGIC);
+        out.extend_from_slice(&(L1 as u32).to_le_bytes());
+        out.extend_from_slice(&(dis.proj as u32).to_le_bytes());
+        out.extend_from_slice(&(sota_head::DIS_OUTS as u32).to_le_bytes());
+        for w in dis
+            .proj_w
+            .iter()
+            .chain(dis.proj_b.iter())
+            .chain(dis.out_w.iter())
+            .chain(dis.out_b.iter())
+        {
+            out.extend_from_slice(&w.to_le_bytes());
+        }
+    }
     out
 }
 
@@ -1789,6 +1929,7 @@ pub(crate) mod tests {
                 l3_wdl_weights: None,
                 l3_wdl_biases: None,
                 skip_weights: None,
+                dis_head: None,
                 ft_scale: sota_head::FtScale::from_flat_iter(std::iter::repeat_n(1u8, ACC)),
             },
         }
@@ -2123,6 +2264,129 @@ pub(crate) mod tests {
             back.threat_psqt()[3],
             net.psqt_weights[HALFKA_DIMS * BUCKETS + 3]
         );
+    }
+
+    /// A deterministic DIS1 head for the tests: `proj = 5`, weights from the
+    /// same `Prng` the other synthetic tables use, so nothing is symmetric and
+    /// a transposed / mis-sliced read cannot pass.
+    fn test_dis_head(proj: usize) -> sota_head::DisHead {
+        let mut rng = Prng::new(0x00D15EA5E);
+        let mut draw = |n: usize| -> Box<[f32]> {
+            (0..n)
+                .map(|_| ((rng.rand64() % 2001) as f32 - 1000.0) / 1000.0)
+                .collect()
+        };
+        let proj_w = draw(L1 * proj);
+        let proj_b = draw(proj);
+        let out_w = draw(proj * sota_head::DIS_OUTS);
+        let ob = draw(sota_head::DIS_OUTS);
+        let mut out_b = [0.0f32; sota_head::DIS_OUTS];
+        out_b.copy_from_slice(&ob);
+        sota_head::DisHead {
+            proj,
+            proj_w,
+            proj_b,
+            out_w,
+            out_b,
+        }
+    }
+
+    /// The DIS1 section round-trips byte-exactly, sits AFTER every other
+    /// trailer, and — the property that matters most — a net without one is
+    /// unaffected: `serialize` emits nothing and `load` returns `None`.
+    #[test]
+    fn round_trip_with_dis_head() {
+        let plain = test_net_with_psqt_pub();
+        let plain_len = serialize(&plain).len();
+        let mut net = test_net_with_psqt_pub();
+        let proj = 5;
+        net.head.dis_head = Some(test_dis_head(proj));
+
+        let bytes = serialize(&net);
+        assert_eq!(&bytes[plain_len..plain_len + 4], b"DIS1");
+        assert_eq!(read_u32(&bytes, plain_len + 4), L1 as u32);
+        assert_eq!(read_u32(&bytes, plain_len + 8), proj as u32);
+        assert_eq!(read_u32(&bytes, plain_len + 12), sota_head::DIS_OUTS as u32);
+        assert_eq!(
+            bytes.len(),
+            plain_len
+                + 16
+                + 4 * (L1 * proj + proj + proj * sota_head::DIS_OUTS + sota_head::DIS_OUTS)
+        );
+
+        let back = load_v2_bytes(&bytes).expect("dis net loads");
+        assert_eq!(net, back);
+        let d = back.head.dis_head.as_ref().expect("head present");
+        assert_eq!(d.proj, proj);
+        assert_eq!(
+            &d.proj_w[..],
+            &net.head.dis_head.as_ref().unwrap().proj_w[..]
+        );
+
+        // The whole compatibility claim, asserted rather than argued: the same
+        // net without the section is byte-identical to a pre-DIS1 build's
+        // output, and loads with no head.
+        assert_eq!(serialize(&plain), bytes[..plain_len]);
+        assert!(
+            load_v2_bytes(&bytes[..plain_len])
+                .expect("psqt net still loads")
+                .head
+                .dis_head
+                .is_none()
+        );
+    }
+
+    /// Every field of the DIS1 header is validated, and a truncated section is
+    /// an error rather than a panic — this loader takes untrusted files.
+    #[test]
+    fn rejects_bad_dis_section() {
+        let mut net = test_net_with_psqt_pub();
+        net.head.dis_head = Some(test_dis_head(3));
+        let good = serialize(&net);
+        let base = serialize(&test_net_with_psqt_pub()).len();
+
+        let mut bytes = good.clone();
+        bytes[base + 4..base + 8].copy_from_slice(&(L1 as u32 + 1).to_le_bytes());
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::WrongDim {
+                field: "dis_hl",
+                ..
+            })
+        ));
+
+        let mut bytes = good.clone();
+        bytes[base + 8..base + 12].copy_from_slice(&0u32.to_le_bytes());
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::BadDisProj(0))
+        ));
+
+        let mut bytes = good.clone();
+        bytes[base + 12..base + 16].copy_from_slice(&3u32.to_le_bytes());
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::WrongDim {
+                field: "dis_outs",
+                ..
+            })
+        ));
+
+        // Truncated payload: an error, not an out-of-bounds slice.
+        let bytes = &good[..good.len() - 4];
+        assert!(matches!(
+            load_v2_bytes(bytes),
+            Err(SotaNnueError::TooShort { .. })
+        ));
+
+        // A proj wide enough to overflow the length arithmetic on a 32-bit
+        // read is rejected on the header alone, before any slicing.
+        let mut bytes = good.clone();
+        bytes[base + 8..base + 12].copy_from_slice(&0xFFFF_FFFFu32.to_le_bytes());
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::BadDisProj(_))
+        ));
     }
 
     #[test]

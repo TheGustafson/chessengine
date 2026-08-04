@@ -1411,6 +1411,7 @@ mod tests {
             l3_wdl_weights: None,
             l3_wdl_biases: None,
             skip_weights: None,
+            dis_head: None,
             ft_scale: crate::eval::nnue::sota_head::FtScale::from_flat_iter(std::iter::repeat_n(
                 1u8, ACC,
             )),

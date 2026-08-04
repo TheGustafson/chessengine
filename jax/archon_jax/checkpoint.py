@@ -130,21 +130,109 @@ def load_warm(path: str | Path, arch) -> dict[str, np.ndarray]:
         if extra <= droppable:
             print(f"warm-start: halfka_only — dropping {sorted(extra)}")
             extra = set()
+    if extra & set(DIS_TENSORS) and not getattr(arch, "dis_proj", 0):
+        # Same argument as the fresh-init below, in the other direction: the
+        # dis head cannot influence the value function, so a checkpoint that
+        # carries one and an arch that does not want one is a probe being
+        # switched OFF, not a wrong-arch load.
+        print(f"warm-start: dis_proj=0 — dropping {sorted(extra & set(DIS_TENSORS))}")
+        extra = extra - set(DIS_TENSORS)
     if extra:
         raise ValueError(f"checkpoint has tensors the arch lacks: {extra}")
+    # ---- Is the checkpoint's dis head THE SAME HEAD this arch wants? --------
+    # Decided ONCE, from `dis_projw`, before any tensor is read — because
+    # element COUNTS collide and a per-tensor size check silently accepts a
+    # different head. Caught on the real canonical checkpoint, 2026-08-03:
+    # it carries the pre-d7582485 head at `dis_proj = 64`, so its `dis_outw` is
+    # 64 values (one lane per hidden unit); an arch asking for `dis_proj = 32`
+    # wants `(32, 2)` — ALSO 64 values. `prod(want) == arr.size` passed, and the
+    # load reshaped one net's 64-unit magnitude lane into another net's 32x2
+    # output matrix without a word. `dis_projw` cannot collide the same way:
+    # its count is `hl · proj` and `hl` is fixed by the arch, so it pins `proj`.
+    dis_proj = int(getattr(arch, "dis_proj", 0) or 0)
+    dis_reuse = False
+    if dis_proj:
+        pw, ow = flat.get("dis_projw"), flat.get("dis_outw")
+        dis_reuse = (pw is not None and pw.size == arch.hl * dis_proj
+                     and ow is not None
+                     and ow.size in (dis_proj, dis_proj * DIS_OUTS))
+        if pw is not None and not dis_reuse:
+            print(f"warm-start: checkpoint dis head is a DIFFERENT head "
+                  f"(dis_projw {pw.size} values vs {arch.hl}x{dis_proj}) — "
+                  f"re-initialising all of {sorted(DIS_TENSORS)}")
+
     out = {}
+    dis_rng = np.random.default_rng(0xD15)
     for name, want in shapes.items():
+        if name in DIS_TENSORS and not dis_reuse:
+            # THE DISAGREEMENT HEAD IS FRESH-INIT, NEVER ZERO-INIT, and the
+            # distinction is functional. `dis_h = crelu(hl1 @ W + b)`: with W
+            # and b both zero every unit sits exactly on the clamp's lower
+            # kink, so the head emits a constant and its gradient is at best
+            # ill-defined there. Zero-init is the right answer for l0_factw /
+            # the PSQT columns because zero makes them an exact NO-OP on a
+            # function that must not move; the dis head has no such duty — it
+            # is stop_gradient'ed away from the trunk on both sides
+            # (model.py h_in, losses.py resid), so re-initialising it CANNOT
+            # change the value function, which is precisely what makes it
+            # warm-start safe at any shape.
+            print(f"warm-start: fresh-init dis tensor {name} {want}")
+            out[name] = _init_dis(name, want, dis_rng)
+            continue
         if name in flat:
             arr = flat[name]
-            if int(np.prod(want)) != arr.size:
+            if int(np.prod(want)) == arr.size:
+                out[name] = arr.reshape(want)
+                continue
+            # A dis tensor whose SHAPE moved is not a wrong-arch load — see the
+            # fresh-init note above for why the head is re-initialisable at
+            # will. Every other tensor keeps the hard error.
+            if name not in DIS_TENSORS:
                 raise ValueError(f"{name}: file count {arr.size} != shape {want}")
-            out[name] = arr.reshape(want)
+            if (name == "dis_outw" and arr.size == want[0]
+                    and want[1] == DIS_OUTS):
+                # The 1-column -> 2-column widening (d7582485). The old lane
+                # predicted |residual|, which is TODAY'S COLUMN 1, so it is
+                # carried there and column 0 (signed) starts fresh. No net in
+                # the tree has a trained one — every run so far set
+                # dis_lambda = 0 — but the migration is six lines and putting
+                # a magnitude lane in the signed column would be silent.
+                col0 = np.sqrt(2.0 / max(want[0], 1)) * dis_rng.standard_normal(want[0])
+                mig = np.stack([col0, arr.reshape(want[0])], axis=1)
+                print(f"warm-start: dis_outw widened 1 -> {DIS_OUTS} columns "
+                      f"(old lane -> col 1 = magnitude, col 0 re-init)")
+                out[name] = mig.astype(np.float32)
+                continue
+            if name == "dis_outb" and arr.size == 1 and want == (DIS_OUTS,):
+                out[name] = np.array([0.0, float(arr.reshape(1)[0])], np.float32)
+                continue
+            print(f"warm-start: dis tensor {name} re-init "
+                  f"(checkpoint {arr.size} values, arch wants {want})")
+            out[name] = _init_dis(name, want, dis_rng)
+        elif name in DIS_TENSORS:
+            # Reuse was on (`dis_projw` matched) but this tensor is absent —
+            # a half-written head. Fresh, same rationale as above.
+            print(f"warm-start: fresh-init dis tensor {name} {want}")
+            out[name] = _init_dis(name, want, dis_rng)
         else:
             if name not in ("l0_factw", "l0_psqt_hkw", "l0_psqt_thw"):
                 raise ValueError(f"checkpoint missing non-additive tensor {name}")
             print(f"warm-start: zero-init new tensor {name} {want}")
             out[name] = np.zeros(want, dtype=np.float32)
     return out
+
+
+def _init_dis(name: str, shape: tuple[int, ...], rng) -> np.ndarray:
+    """model.init_params' distribution for one dis tensor, on numpy.
+
+    Weights ~ Normal(0, sqrt(2/fan_in)) with fan_in = shape[0]; biases zero.
+    Kept here rather than calling model.init_params because load_warm is the
+    one checkpoint path that must not import jax (tools read raw checkpoints
+    on hosts with no accelerator, and jax's import is the expensive part)."""
+    if name.endswith("b"):
+        return np.zeros(shape, dtype=np.float32)
+    return (np.sqrt(2.0 / max(shape[0], 1))
+            * rng.standard_normal(shape)).astype(np.float32)
 
 
 def fold_for_export(params: dict[str, np.ndarray], arch) -> dict[str, np.ndarray]:
@@ -178,6 +266,79 @@ PSQT_FIXED_MULT = 0.5 * 400.0 * 256.0
 # f32[hl * num_buckets] row-major — the skipw lane in raw f32 (the engine
 # tail is f32; no quant gymnastics, mirrors SF's fwdOut semantics).
 SKIP_MAGIC = b"SKP1"
+
+# DIS1 section (the disagreement head, 2026-08-03), appended after SKP1:
+#
+#   b"DIS1" | u32 hl | u32 dis_proj | u32 outs
+#           | f32[hl · dis_proj]      dis_projw, row-major (hl, dis_proj)
+#           | f32[dis_proj]           dis_projb
+#           | f32[dis_proj · outs]    dis_outw,  row-major (dis_proj, outs)
+#           | f32[outs]               dis_outb
+#
+# The head reads `hl1` — the concatenated pairwise activation, stm half first
+# — so the engine's `[u8; L1]` FT vector IS its input, in the reduced frame
+# `FT_QUANT² / 2^FT_SHIFT`. Column 0 is the SIGNED residual, column 1 the
+# MAGNITUDE (losses.py).
+#
+# **f32, NOT quantised, and that is a decision with a reason.** Everything in
+# the CENN that is integer is integer because it is on the per-node eval path;
+# this head is polled SELECTIVELY and by design never runs there. Three
+# consequences: the section is 98.7 kB at hl=768/proj=32 against an 84 MB net
+# (0.12 %), one evaluation is ~25 k MACs against the ~640 k the value path
+# already pays, and — the reason that actually decides it — the engine then
+# computes the SAME function the trainer fitted, so a JAX↔Rust parity check
+# measures the deployment plumbing instead of a quantisation frame nobody has
+# calibrated. Identical reasoning and identical encoding to the SKP1 lane.
+DIS_MAGIC = b"DIS1"
+DIS_HEADER_LEN = 16
+# Tensor names, in section order. `dis_outw` is (dis_proj, DIS_OUTS).
+DIS_TENSORS = ("dis_projw", "dis_projb", "dis_outw", "dis_outb")
+DIS_OUTS = 2
+
+
+def dis_section_bytes(params: dict[str, np.ndarray], arch) -> bytes:
+    import struct as _s
+    proj = int(arch.dis_proj)
+    pw = np.asarray(params["dis_projw"], dtype=np.float32).reshape(arch.hl, proj)
+    pb = np.asarray(params["dis_projb"], dtype=np.float32).reshape(proj)
+    ow = np.asarray(params["dis_outw"], dtype=np.float32).reshape(proj, DIS_OUTS)
+    ob = np.asarray(params["dis_outb"], dtype=np.float32).reshape(DIS_OUTS)
+    return (DIS_MAGIC + _s.pack("<III", arch.hl, proj, DIS_OUTS)
+            + pw.astype("<f4").tobytes() + pb.astype("<f4").tobytes()
+            + ow.astype("<f4").tobytes() + ob.astype("<f4").tobytes())
+
+
+def parse_dis_section(sec: bytes) -> dict[str, np.ndarray]:
+    """Inverse of :func:`dis_section_bytes`, starting at the DIS1 magic.
+
+    Tolerant of trailing bytes (future sections); raises on anything it cannot
+    read. Returns the four tensors in OUR storage convention (in, out)."""
+    if len(sec) < DIS_HEADER_LEN or sec[:4] != DIS_MAGIC:
+        raise ValueError("not a DIS1 section")
+    hl = int.from_bytes(sec[4:8], "little")
+    proj = int.from_bytes(sec[8:12], "little")
+    outs = int.from_bytes(sec[12:16], "little")
+    counts = [hl * proj, proj, proj * outs, outs]
+    need = DIS_HEADER_LEN + 4 * sum(counts)
+    if len(sec) < need:
+        raise ValueError(f"DIS1 section truncated: need {need}, got {len(sec)}")
+    flat = np.frombuffer(sec, dtype="<f4", count=sum(counts), offset=DIS_HEADER_LEN)
+    off, out = 0, {}
+    for name, n, shape in zip(DIS_TENSORS, counts,
+                              [(hl, proj), (proj,), (proj, outs), (outs,)]):
+        out[name] = flat[off:off + n].reshape(shape).astype(np.float32)
+        off += n
+    return out
+
+
+def dis_section_len(sec: bytes) -> int:
+    """Byte length of the DIS1 section at the head of ``sec`` (0 if absent)."""
+    if len(sec) < DIS_HEADER_LEN or sec[:4] != DIS_MAGIC:
+        return 0
+    hl = int.from_bytes(sec[4:8], "little")
+    proj = int.from_bytes(sec[8:12], "little")
+    outs = int.from_bytes(sec[12:16], "little")
+    return DIS_HEADER_LEN + 4 * (hl * proj + proj + proj * outs + outs)
 
 
 def skip_section_bytes(params: dict[str, np.ndarray], arch) -> bytes:
@@ -256,6 +417,10 @@ def write_quant(path: str | Path, params: dict[str, np.ndarray], arch) -> int:
             sec = skip_section_bytes(params, arch)
             f.write(sec)
             total += len(sec)
+        if getattr(arch, "dis_proj", 0):
+            sec = dis_section_bytes(params, arch)
+            f.write(sec)
+            total += len(sec)
     return total
 
 
@@ -293,6 +458,6 @@ def dequantise_quant(path: str | Path, arch) -> dict[str, np.ndarray]:
     if bytes(padding) != spec_pad(pad_len):
         raise ValueError(f"invalid quant padding ({len(padding)} bytes)")
     rest = bytes(raw[off + pad_len:])
-    if rest and rest[:4] not in (b"PSQ1", b"SKP1"):
+    if rest and rest[:4] not in (PSQT_MAGIC, SKIP_MAGIC, DIS_MAGIC):
         raise ValueError(f"unrecognized quant trailer ({len(rest)} bytes)")
     return out

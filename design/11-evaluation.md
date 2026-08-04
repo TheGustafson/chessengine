@@ -1550,6 +1550,51 @@ header checksum, mirroring its position after the padded bullet quant stream
 (`netpack.py` passes it through verbatim); nets without it — and engines
 predating it — are byte-identical/bit-identical to pre-T6c behavior.
 
+**Optional DIS1 trailer (the disagreement head, 2026-08-03; authoritative
+contract: `jax/archon_jax/checkpoint.py::dis_section_bytes`).** Riding after
+PSQ1 / SKP1 / TRM1, a container MAY carry
+
+```text
+b"DIS1" | u32 hl | u32 proj | u32 outs
+        | f32[hl·proj]   proj_w  row-major (hl, proj)
+        | f32[proj]      proj_b
+        | f32[proj·outs] out_w   row-major (proj, outs)
+        | f32[outs]      out_b
+```
+
+computing `crelu(hl1 · proj_w + proj_b) · out_w + out_b`, where `hl1` is the u8
+pairwise activation §12.3 step 1 produces (so the head reads the SAME vector the
+value path's L1 consumes, dequantised by `2^FT_SHIFT / FT_QUANT²`). `hl` must
+equal `ACC` and `outs` must be 2; `proj` is a free per-net width. **Column 0 is
+the SIGNED residual** `E[target − sigmoid(value) | features]` and **column 1 the
+MAGNITUDE** `E[|residual|]`, both in probability space — the trainer fits them
+against `target − sigmoid(value_logit)` (`jax/archon_jax/losses.py`), so a
+centipawn consumer must map through the value head's own sigmoid frame.
+
+Three properties, each deliberate:
+
+* **It is NOT on the per-node eval path.** `SotaHead::forward_into` never reads
+  it; the only entry is `SotaHead::disagreement`, which re-runs `activate_ft`
+  from the caller's accumulators. A net with the head evaluates
+  bit-identically to one without, and the head's cost is bounded by the polling
+  caller rather than multiplied by the node count. That is the design premise —
+  it is meant to be consulted at selected nodes, not everywhere.
+* **f32, not quantised.** Off the hot path there is no cycle argument for an
+  uncalibrated quantisation frame; the section is 98.7 kB at `hl=768/proj=32`
+  against an 84 MB net (0.12 %), the deployed function is the one the trainer
+  fitted, and — unlike the SKP1 lane, which the serializer drops because it is
+  i8-quantised at load — `serialize ∘ load` is the identity on it.
+* **Outside the header checksum**, like its neighbours, so a net without the
+  section packs and loads byte-identically to before.
+
+Parity is verified end to end by `jax/tools/dis_parity.py` (export → `netpack`
+→ loader → `nnue-eval`, against the JAX graph and two wrong-wiring nulls).
+Measured 2026-08-03 on `d50w768-sb1030-ema` @ wl50 / proj 32: the engine
+reproduces an exact int64 model of its own fixed-point pipeline to **2.98e-07**,
+while that pipeline differs from the trainer's float graph by **2.4e-02** — the
+int8 substrate's own cost, ~6 % of the head's mean output, which any consumer
+calibrated on training-time residuals must account for.
+
 ### 12.7 Trainer — bullet, extended
 
 bullet natively covers HalfKA + output buckets + pairwise + the mixed int8-FT/f32

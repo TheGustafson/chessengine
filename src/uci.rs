@@ -291,20 +291,29 @@ fn cmd_nnue_eval_argv(args: &[String]) {
                 let ctx = sota_ctx.as_mut().unwrap();
                 ctx.refresh_root(&board);
                 let val = ctx.evaluate(&board, 0);
+                // The disagreement head, when the net carries a DIS1 section.
+                // `None` for every net that does not, so the columns below —
+                // and therefore the NNUE gate's eval hash — are unchanged for
+                // every existing net. Nine significant digits: the JAX↔Rust
+                // parity check reads these, and f32 round-trips exactly at 9.
+                let dis = ctx
+                    .disagreement(&board, 0)
+                    .map(|d| format!("\tdis {:.9e} {:.9e}", d[0], d[1]))
+                    .unwrap_or_default();
                 // D47 learnability probe: with a CPL1 sidecar beside the net,
                 // append the policy-argmax move (plain cp output is unchanged
                 // for sidecar-less nets, so existing probe scripts keep parsing).
                 match (nnue::active_policy_head(), ctx.last_l2()) {
                     (Some(head), Some(l2)) => match head.best_move(&board, l2) {
                         Some(m) => {
-                            let _ = writeln!(out, "{val}\t{m}");
+                            let _ = writeln!(out, "{val}\t{m}{dis}");
                         }
                         None => {
-                            let _ = writeln!(out, "{val}\t0000");
+                            let _ = writeln!(out, "{val}\t0000{dis}");
                         }
                     },
                     _ => {
-                        let _ = writeln!(out, "{val}");
+                        let _ = writeln!(out, "{val}{dis}");
                     }
                 }
             }

@@ -431,6 +431,36 @@ impl SotaContext {
         self.net
     }
 
+    /// Poll the OPTIONAL disagreement head for the position at `ply`, `None`
+    /// when the net has no DIS1 section. `[signed, magnitude]`, both in
+    /// PROBABILITY space (see [`super::sota_head::DIS_OUTS`]).
+    ///
+    /// **On-demand only, and deliberately not cached.** Unlike `last_sigma` /
+    /// `last_wdl`, which ride out of `evaluate` because their heads are on the
+    /// value path anyway, nothing here runs during a normal eval: this method
+    /// is the entire cost, paid by whoever asks. It reuses the accumulators the
+    /// search already maintains, so a poll is one FT activation plus the two
+    /// small dense layers — no refresh, no re-fold.
+    ///
+    /// `ply` must be the ply whose accumulators are live (the same value the
+    /// matching [`evaluate`](Self::evaluate) would be given), and `board` the
+    /// position at it.
+    pub fn disagreement(
+        &mut self,
+        board: &Board,
+        ply: usize,
+    ) -> Option<[f32; super::sota_head::DIS_OUTS]> {
+        // Early-out BEFORE any accumulator work: on a net without the head this
+        // costs one null check, so a caller may poll unconditionally.
+        if self.net.head.dis_head.is_none() {
+            return None;
+        }
+        let stm = board.side_to_move();
+        let (pst, _) = self.halfka.current_full(board, ply);
+        let (threat, _) = self.threats.at_full(ply);
+        self.net.head.disagreement(pst, threat, stm)
+    }
+
     /// Seed both accumulator stacks from `board` at ply zero (plus the cheap
     /// net's stack when the smallnet gate is armed).
     pub fn refresh_root(&mut self, board: &Board) {

@@ -258,13 +258,33 @@ def _split_psq1_trailer(raw: bytes, stream_end: int):
     # b"SKP1" | u32 num_buckets | u32 hl | f32[hl*num_buckets]. Passed
     # through verbatim with PSQ1; absent on pre-skip nets.
     tail = rest[psq_len:]
-    if tail:
-        if len(tail) < 12 or tail[:4] != b"SKP1":
+    if tail and tail[:4] == b"SKP1":
+        if len(tail) < 12:
             return None
         snb = int.from_bytes(tail[4:8], "little")
         shl = int.from_bytes(tail[8:12], "little")
-        if len(tail) != 12 + snb * shl * 4:
+        skp_len = 12 + snb * shl * 4
+        if len(tail) < skp_len:
             return None
+        tail = tail[skp_len:]
+    # Disagreement head (2026-08-03): optional DIS1 section after SKP1 —
+    # b"DIS1" | u32 hl | u32 proj | u32 outs | f32[hl*proj + proj +
+    # proj*outs + outs]. Contract: jax/archon_jax/checkpoint.py
+    # dis_section_bytes. Passed through verbatim like its neighbours; the
+    # CENN payload + checksum are untouched, so a net without it packs
+    # byte-identically to before.
+    if tail and tail[:4] == b"DIS1":
+        if len(tail) < 16:
+            return None
+        dhl = int.from_bytes(tail[4:8], "little")
+        dproj = int.from_bytes(tail[8:12], "little")
+        douts = int.from_bytes(tail[12:16], "little")
+        dis_len = 16 + 4 * (dhl * dproj + dproj + dproj * douts + douts)
+        if len(tail) < dis_len:
+            return None
+        tail = tail[dis_len:]
+    if tail:
+        return None
     return bytes(rest)
 
 
@@ -522,6 +542,12 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None,
         print(f"  psqt        PSQ1 section passed through ({len(psq1):,} bytes, "
               f"{int.from_bytes(psq1[8:12], 'little')} rows x "
               f"{int.from_bytes(psq1[4:8], 'little')} buckets)")
+        d = psq1.find(b"DIS1")
+        if d >= 0:
+            print(f"  dis         DIS1 section passed through (hl="
+                  f"{int.from_bytes(psq1[d+4:d+8], 'little')} proj="
+                  f"{int.from_bytes(psq1[d+8:d+12], 'little')} outs="
+                  f"{int.from_bytes(psq1[d+12:d+16], 'little')}, f32)")
 
     # D47: emit the .cpol companion (policy rows OUTSIDE the CENN so every
     # value-net tool — scale-check, gates, loaders — is untouched).
