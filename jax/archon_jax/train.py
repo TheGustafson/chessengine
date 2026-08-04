@@ -293,15 +293,29 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
         return new, opt_state
 
     @partial(jax.jit, donate_argnums=(0, 1))
-    def step(params, opt_state, batch):
+    def step(params, opt_state, batch, trig=1.0):
         # opt_state = (BulletAdamWState, count) — the same step counter the
         # LR schedule keys on (optim.py init/update).
+        #
+        # `trig` is the CUTOVER multiplier: a runtime scalar the caller decays
+        # when the student catches the teacher (BAM-style teacher annealing,
+        # arXiv 1907.04829 — the student must stop imitating or it inherits the
+        # teacher's ceiling). It multiplies the SCHEDULED alpha rather than
+        # replacing it, so the schedule stays a hard backstop: if the trigger
+        # never fires, the ramp still retires the teacher on its own.
+        # A traced scalar, so decaying it does not retrigger compilation.
         lam = sparsity_lambda(opt_state[1])
-        da = distill_alpha_at(opt_state[1])
+        da = distill_alpha_at(opt_state[1]) * trig
         (_, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(
             params, batch, lam, da)
         params, opt_state = masked_update(params, opt_state, grads)
         return params, opt_state, metrics
+
+    # Hand the prepared teacher back so the caller can score it on the SAME
+    # heldout set as the student — the comparison the cutover keys on. The
+    # teacher is frozen, so that loss is a CONSTANT: computed once, not per
+    # superbatch.
+    step.teacher_ref = (t_params, t_arch, t_frame)
 
     if cfg.ema_decay <= 0.0:
         return opt, step
@@ -309,15 +323,16 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
     d = cfg.ema_decay
 
     @partial(jax.jit, donate_argnums=(0, 1, 2))
-    def step_ema(params, ema, opt_state, batch):
+    def step_ema(params, ema, opt_state, batch, trig=1.0):
         lam = sparsity_lambda(opt_state[1])
-        da = distill_alpha_at(opt_state[1])
+        da = distill_alpha_at(opt_state[1]) * trig
         (_, metrics), grads = jax.value_and_grad(loss_fn, has_aux=True)(
             params, batch, lam, da)
         params, opt_state = masked_update(params, opt_state, grads)
         ema = jax.tree.map(lambda e, p: d * e + (1.0 - d) * p, ema, params)
         return params, ema, opt_state, metrics
 
+    step_ema.teacher_ref = (t_params, t_arch, t_frame)
     return opt, step_ema
 
 

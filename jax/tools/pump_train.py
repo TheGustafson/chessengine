@@ -91,6 +91,42 @@ def heldout_value_loss(params, arch, ft_impl="pallas", batch_size=8192,
     return total / n
 
 
+def teacher_heldout_loss(t_params, t_arch, t_frame, batch_size=8192,
+                         target_offset=0.0, scale=None, ft_impl="pallas"):
+    """The TEACHER's own loss on the heldout set, in the run's frame.
+
+    This is the reference the cutover keys on: the student is compared against
+    it, and when the student comes within CUTOVER_EPS of it the teacher's
+    weight is decayed (BAM teacher annealing — once the student matches, the
+    teacher is a CEILING, not a tutor).
+
+    THE TEACHER IS FROZEN, SO THIS IS A CONSTANT. Computed once at startup and
+    reused; recomputing it every superbatch would burn a full heldout pass for
+    a number that cannot move.
+    """
+    import jax
+    from archon_jax.model import forward
+    cfg = TrainConfig()
+    if scale is None:
+        scale = cfg.scale
+    recs = np.memmap(HELDOUT, dtype=RECORD_DTYPE, mode="r")
+    n = (len(recs) // batch_size) * batch_size
+    total = 0.0
+    for off in range(0, n, batch_size):
+        b = map_batch(np.array(recs[off:off + batch_size]), wdl=cfg.wdl,
+                      score_multiplier=cfg.score_multiplier, scale=scale,
+                      policy=False, target_offset=target_offset)
+        b = {k: np.asarray(v) for k, v in b.items()}
+        out = forward(t_params, t_arch, b, ft_impl)[0]
+        if t_frame is not None:
+            from archon_jax.losses import expected_score
+            q = np.asarray(expected_score(out, t_frame[0], t_frame[1]))
+        else:
+            q = np.asarray(jax.nn.sigmoid(out))
+        total += float(np.sum((q - b["target"]) ** 2))
+    return total / n
+
+
 def save_pair(host, arch, out: Path, name: str) -> None:
     ck.write_raw(out / f"{name}-raw.bin", host)
     ck.write_quant(out / f"{name}-quant.bin", host, arch)
@@ -265,15 +301,49 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
     if ema_on:
         ema = {k: jax.numpy.asarray(v) for k, v in ema.items()}
 
+    # ---- CUTOVER STATE (BAM-style teacher annealing, performance-triggered)
+    # alpha_eff = scheduled_alpha(sb) * TRIG. TRIG starts at 1.0 and is
+    # multiplied by CUTOVER_FACTOR every time the student's heldout loss comes
+    # within CUTOVER_EPS of the teacher's. Rationale: while the student is
+    # behind, the teacher is a tutor; once it catches up the teacher is a
+    # CEILING, and a student still imitating it can never pass it.
+    #
+    # The SCHEDULE is the backstop and it is not optional. A pure trigger can
+    # fail closed — if the student never catches the teacher, alpha stays at
+    # 1.0 for the whole run and surpassing becomes impossible by construction.
+    # The ramp guarantees the teacher retires regardless.
+    #
+    # HYSTERESIS: a cutover cannot fire again for CUTOVER_HOLD superbatches.
+    # Heldout is noisy at the 1e-4 level and without this a single lucky
+    # evaluation would cascade several decays in a row.
+    CUT_EPS = float(spec.get("cutover_eps", 0.05))
+    CUT_FACTOR = float(spec.get("cutover_factor", 0.8))
+    CUT_HOLD = int(spec.get("cutover_hold_sb", 20))
+    CUT_FLOOR = float(spec.get("cutover_floor", 0.05))
+    CUT_PROGRESS = float(spec.get('cutover_progress', 0.02))
+    trig = 1.0
+    last_cut_sb = -10**9
+    cut_ref = None
+    teacher_hv = None
+    _tref = getattr(step, "teacher_ref", None)
+    if _tref is not None and _tref[0] is not None and float(getattr(cfg, "distill_alpha", 0.0) or 0.0) > 0.0:
+        teacher_hv = teacher_heldout_loss(_tref[0], _tref[1], _tref[2],
+                                          target_offset=HELDOUT_TARGET[0],
+                                          scale=HELDOUT_TARGET[1])
+        print(f"[pump {net_id}] TEACHER heldout {teacher_hv:.6f} (constant reference); "
+              f"cutover when student <= {(1.0 + CUT_EPS) * teacher_hv:.6f} "
+              f"(within {CUT_EPS:.0%}), factor {CUT_FACTOR}, hold {CUT_HOLD} sb, "
+              f"floor {CUT_FLOOR}", flush=True)
+
     bps = cfg.batches_per_superbatch
     running: dict = {}
     t0 = time.time()
     remaining = bps * (cfg.superbatches - resume_sb)
     for i, batch in enumerate(batches):
         if ema_on:
-            params, ema, opt_state, metrics = step(params, ema, opt_state, batch)
+            params, ema, opt_state, metrics = step(params, ema, opt_state, batch, trig)
         else:
-            params, opt_state, metrics = step(params, opt_state, batch)
+            params, opt_state, metrics = step(params, opt_state, batch, trig)
         for k, v in metrics.items():
             running[k] = running.get(k, 0.0) + float(v)
         bidx, sb = i % bps, i // bps + start_sb
@@ -284,7 +354,17 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
                   f"pol_ce {c.get('pol_ce', 0):.6f} | "
                   f"ft_l1 {c.get('ft_l1', 0):.6f} | "
                   f"ft_density {c.get('ft_density', 0):.6f} | "
-                  f"{rate:,.0f} pos/s", flush=True)
+                  f"{rate:,.0f} pos/s"
+                  # The disagreement head's verdict is READ OFF THESE, not off
+                  # total loss: each column only earns its place by beating its
+                  # OWN null. dis_sgn vs predicting zero (a converged value head
+                  # leaves E[r|features]~0, so a null here is the expected
+                  # result and a finding, not a reason to re-run bigger);
+                  # dis_mag vs predicting the batch-mean |r| (a statistic a
+                  # mean-fitting head cannot emit at any capacity).
+                  + (f" | dis_sgn {c.get('dis_sgn', 0):.6f}/{c.get('dis_sgn_null', 0):.6f}"
+                     f" | dis_mag {c.get('dis_mag', 0):.6f}/{c.get('dis_mag_null', 0):.6f}"
+                     if 'dis_mag' in c else ""), flush=True)
             running = {}
             # Export cadence. Default 10, overridable per-run with
             # "export_every". The LR jump->anneal cycles set it to the cycle
@@ -313,6 +393,34 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
                           flush=True)
                 else:
                     print(f"heldout sb {sb} | value {hv:.6f}", flush=True)
+
+                # ---- CUTOVER CHECK ----------------------------------------
+                # Fire when the student comes within CUT_EPS of the frozen
+                # teacher's heldout loss. Uses the RAW (non-EMA) student: the
+                # EMA lags by design and would delay every cutover by roughly
+                # its own time constant.
+                # THE RULE RATCHETS, and it has to. "Within 5% of the teacher"
+                # is a LATCH, not an event: once true it stays true, so a naive
+                # reading fires every hold period and collapses the teacher to
+                # the floor in ~260 superbatches (simulated before this ran).
+                # So the FIRST cutover is earned against the teacher, and every
+                # later one against the student's own loss at the previous
+                # cutover — each further decay must be paid for with further
+                # progress. Naturally self-limiting: as the student converges,
+                # cutovers stop.
+                if teacher_hv is not None and trig > CUT_FLOOR and (sb - last_cut_sb) >= CUT_HOLD:
+                    if cut_ref is None:
+                        earned = hv <= (1.0 + CUT_EPS) * teacher_hv
+                        why = f"student {hv:.6f} <= {(1.0 + CUT_EPS) * teacher_hv:.6f} (teacher {teacher_hv:.6f})"
+                    else:
+                        earned = hv <= cut_ref * (1.0 - CUT_PROGRESS)
+                        why = f"student {hv:.6f} <= {cut_ref * (1.0 - CUT_PROGRESS):.6f} ({CUT_PROGRESS:.1%} better than the last cutover's {cut_ref:.6f})"
+                    if earned:
+                        old = trig
+                        trig = max(CUT_FLOOR, trig * CUT_FACTOR)
+                        last_cut_sb, cut_ref = sb, hv
+                        print(f"[pump {net_id}] CUTOVER sb {sb}: {why} "
+                              f"-> trig {old:.4f} -> {trig:.4f}", flush=True)
         if i + 1 >= remaining:
             break
     print(f"[pump {net_id}] TRAIN EXIT 0", flush=True)
