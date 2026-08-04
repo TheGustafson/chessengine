@@ -332,7 +332,7 @@ def head_forward(params: dict, arch: ArchSpec, acc_stm: jnp.ndarray,
         # dis_projw/dis_outw train from the dis loss.
         h_in = jax.lax.stop_gradient(hl1)
         dis_h = _crelu(h_in @ params["dis_projw"] + params["dis_projb"])
-        dis_pred = dis_h @ params["dis_outw"] + params["dis_outb"][0]  # (B,)
+        dis_pred = dis_h @ params["dis_outw"] + params["dis_outb"]     # (B, 2)
     pol_logits = None
     if arch.policy:
         if arch.pol_proj:

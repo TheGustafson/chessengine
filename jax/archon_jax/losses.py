@@ -130,12 +130,27 @@ def total_loss(value_logit, pol_logits, target, pol_target_id, pol_lambda: float
         metrics["pol_ce"] = p
         loss = loss + pol_lambda * p
     if dis_pred is not None and dis_lambda > 0.0:
-        # D48W disagreement head: predict the value head's own error
-        # magnitude in probability space. Target is stop-gradient so the
-        # head observes, never steers, the value fit.
-        err = jax.lax.stop_gradient(
-            jnp.abs(jax.nn.sigmoid(value_logit) - target))
-        d = jnp.mean((dis_pred - err) ** 2)
+        # Disagreement head: predict the value head's own residual, in
+        # probability space, as SIGNED (col 0) and MAGNITUDE (col 1).
+        # stop_gradient on the target so the head observes the value fit and
+        # never steers it; model.py additionally stop_gradients the trunk
+        # input so this cannot reshape the representation.
+        resid = jax.lax.stop_gradient(target - jax.nn.sigmoid(value_logit))
+        mag = jnp.abs(resid)
+        d_sgn = jnp.mean((dis_pred[:, 0] - resid) ** 2)
+        d_mag = jnp.mean((dis_pred[:, 1] - mag) ** 2)
+        d = d_sgn + d_mag
+        # EACH COLUMN'S OWN NULL, computed on the same batch so the comparison
+        # needs no second run. Signed is only worth having if it beats
+        # predicting ZERO -- MSE training already fits the conditional mean, so
+        # a converged value head leaves E[r|features] ~ 0 and there is nothing
+        # for it to learn unless the value head is capacity-limited. Magnitude
+        # is worth having if it beats the batch mean |r|; that statistic is one
+        # a mean-fitting head structurally cannot emit at any capacity.
+        metrics["dis_sgn"] = d_sgn
+        metrics["dis_sgn_null"] = jnp.mean(resid ** 2)
+        metrics["dis_mag"] = d_mag
+        metrics["dis_mag_null"] = jnp.mean((mag - jnp.mean(mag)) ** 2)
         metrics["dis"] = d
         loss = loss + dis_lambda * d
     metrics["loss"] = loss

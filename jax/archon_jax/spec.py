@@ -348,12 +348,21 @@ class ArchSpec:
                 shapes["polmovew"] = (l2_fan_in, POLICY_VOCAB)
             shapes["polmoveb"] = (POLICY_VOCAB,)
         if self.dis_proj:
-            # T11 seed: disagreement/uncertainty head off the accumulator,
-            # predicts |sigmoid(value) - target| (its own error magnitude).
+            # Disagreement head off the accumulator. TWO outputs, because they
+            # are different statistics and search wants both:
+            #   col 0  SIGNED residual  -> E[r | features], which way to correct
+            #   col 1  |residual|       -> E[|r| | features], whether to trust
+            # A signed head cannot stand in for the magnitude one: where the
+            # truth is +200 or -200 depending on a line the features cannot
+            # see, E[r] ~ 0 and the signed head reports "nothing to fix". The
+            # spread is real and single-signed samples reveal it, because many
+            # positions share a feature vector -- provably so for castling and
+            # the 50-move clock, where 800/800 twins are bit-identical here and
+            # the oracle disagrees between them by 25-34 cp.
             shapes["dis_projw"] = (self.hl, self.dis_proj)
             shapes["dis_projb"] = (self.dis_proj,)
-            shapes["dis_outw"] = (self.dis_proj,)
-            shapes["dis_outb"] = (1,)
+            shapes["dis_outw"] = (self.dis_proj, 2)
+            shapes["dis_outb"] = (2,)
         if self.out_skip:
             shapes["skipw"] = (self.hl, self.num_buckets)
         return shapes
