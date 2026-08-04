@@ -184,7 +184,13 @@ def main() -> int:
             p.unlink()
             if (i + 1) % 8 == 0 or i == K - 1:
                 print(f"  merged bucket {i+1}/{K} ({written:,} records)")
-    tmpdir.rmdir()
+    # rmtree, not rmdir. The --dedupe path creates a `dedupe/` SUBDIRECTORY
+    # inside tmpdir, so a bare rmdir raises ENOTEMPTY *after* the corpus is
+    # fully written but *before* the meta file — losing the sha256 and the
+    # record count for a merge that actually succeeded. Measured the hard way
+    # on a 147M-record campaign.
+    import shutil
+    shutil.rmtree(tmpdir, ignore_errors=True)
 
     if written != nrec:
         print(f"FATAL: wrote {written} records, expected {nrec}", file=sys.stderr)
