@@ -96,5 +96,25 @@ echo "[pgo] phase 4: optimized rebuild"
 # environment reproduces the previous pipeline byte-for-byte.
 RUSTFLAGS="-C target-cpu=${PGO_CPU:-native} -C profile-use=$PROF/merged.profdata ${PGO_EXTRA_RUSTFLAGS:-}" \
   nice -n 10 cargo build --release --features "$FEATURES" --target-dir "$TD" -q
-cp "$TD/release/chessengine" "engines/bin/$OUT"
+# INSTALL VIA rename, NOT cp. `cp` onto a binary that is currently EXECUTING
+# fails with ETXTBSY ("Text file busy"), and this script then carried on and
+# printed "done" — so a rebuild silently left the OLD binary in place while
+# claiming success. That happened for real: a match harness was running
+# engines/bin/<OUT> as an opponent, the install failed, and the reported-new
+# binary was two hours stale.
+#
+# `mv` within the same filesystem is a rename: it swaps the directory entry and
+# leaves running processes on the old inode, which is exactly the semantics
+# wanted here. And the install is now CHECKED — a failure is fatal, not a
+# warning buried above a success line.
+TMP_OUT="engines/bin/.$OUT.$$"
+cp "$TD/release/chessengine" "$TMP_OUT" || {
+  echo "[pgo] FATAL: could not stage the new binary at $TMP_OUT" >&2
+  rm -f "$TMP_OUT"; exit 5
+}
+chmod 755 "$TMP_OUT"
+mv -f "$TMP_OUT" "engines/bin/$OUT" || {
+  echo "[pgo] FATAL: could not install engines/bin/$OUT" >&2
+  rm -f "$TMP_OUT"; exit 5
+}
 echo "[pgo] done: engines/bin/$OUT"

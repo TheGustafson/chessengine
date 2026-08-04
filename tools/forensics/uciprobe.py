@@ -31,7 +31,16 @@ NET = REPO + "/engines/canonical/net.cenn"
 # "266 cp gap at depth 1" and a "400 cp PV disagreement" that were both entirely
 # this factor.  A fact in a doc gets forgotten; a helper at the tool boundary
 # cannot.  CLAUDE.md rule R2: never hand-compare cross-engine scores.
-ARCHON_PER_SF_PRINTED = 2.07
+# WAS 2.07. ARCHON now normalises its own printed score into Stockfish's
+# printed-cp frame at the UCI boundary (`uci.rs::to_cp`, design/12 §3.14), using
+# SF's own material-dependent divisor rather than this constant. So the frames
+# already agree and converting again would DOUBLE-divide.
+#
+# The helper is kept, not deleted: call sites stay correct without edits, and if
+# a pre-normalisation binary is ever probed the constant is here with its
+# meaning intact.
+ARCHON_PER_SF_PRINTED = 1.0
+ARCHON_PER_SF_PRINTED_PRE_NORMALISATION = 2.07
 
 
 def to_sf_frame(score, engine="archon"):

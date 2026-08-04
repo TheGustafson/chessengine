@@ -129,23 +129,21 @@ else
     PAIRING=(-games 2 -rounds $(( (GAMES + 1) / 2 )) -repeat)
 fi
 
-# Adjudication thresholds are in the PLAYERS' PRINTED FRAME, and ARCHON prints
-# ~2.07x Stockfish's printed cp. The constants below are ARCHON-frame: 1600
-# ARCHON-cp is ~773 SF-cp.
+# Adjudication thresholds are in the PLAYERS' PRINTED FRAME. ARCHON now
+# normalises its printed score into STOCKFISH'S frame at the UCI boundary
+# (`uci.rs::to_cp`), so every mode shares ONE set of constants and the
+# two-frame split this block used to carry is gone. Left as it was, the
+# ARCHON-frame 1600 would be a 2.07x LOOSER bar than intended for every
+# ARCHON-playing mode — resign firing far later, longer games, and a corpus
+# with a different endgame distribution that still looked identically
+# generated.
 #
-# ORACLE MODE IS THE PURE-SF PAIR THIS FILE USED TO SAY IT NEVER GENERATED.
-# Left uncorrected, `score=1600` would mean 1600 SF-cp — more than DOUBLE the
-# effective bar every other mode uses. Resign would fire far later, games would
-# run much longer, throughput would drop, and the resulting corpus would carry
-# a different endgame distribution from the rest of the mix while looking like
-# it was generated the same way. Halving restores the same effective threshold.
+# 773 SF-cp is exactly what the old ARCHON-frame 1600 always meant, kept rather
+# than rounded so corpora from before and after the normalisation stay
+# distributionally comparable.
 ADJARGS=()
 if [ "$ADJ" = "1" ]; then
-    if [ "$MODE" = "oracle" ]; then
-        RESIGN_SCORE=773; DRAW_SCORE=10       # SF frame
-    else
-        RESIGN_SCORE=1600; DRAW_SCORE=20      # ARCHON frame
-    fi
+    RESIGN_SCORE=773; DRAW_SCORE=10           # SF printed frame, ALL modes
     ADJARGS=(
         -resign movecount=4 score="$RESIGN_SCORE" twosided=true
         -draw   movenumber=40 movecount=8 score="$DRAW_SCORE"

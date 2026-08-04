@@ -1444,6 +1444,8 @@ fn cmd_go<W: Write + Send + 'static>(
     out: &SharedOut<W>,
 ) -> io::Result<()> {
     engine.wait_for_search_finished();
+    // Stamp root material for printed-score normalisation (display only).
+    set_root_material(wdl_material(&engine.board));
     let limits = parse_go(&engine.board, tokens, &mut *out.lock())?;
     // `go perft <d>` is a dev command (doc 12 §3.15): run perft divide from
     // the session position rather than launching a search.
@@ -1529,6 +1531,58 @@ impl fmt::Display for UciScore {
     }
 }
 
+/// Material of the root position of the current search, for score
+/// normalisation only. Display-only state: nothing in search reads it, and a
+/// stale value can at worst mis-scale a printed number. An atomic rather than a
+/// threaded parameter because `SearchInfo` carries no board and the UCI
+/// protocol runs one search at a time; stamped by `cmd_go`.
+static ROOT_MATERIAL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(58);
+
+/// Stamp the root material for score normalisation. Called once per `go`.
+pub fn set_root_material(m: i32) {
+    ROOT_MATERIAL.store(m, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// SF's material count for the WDL model: `p + 3n + 3b + 5r + 9q`, both sides.
+pub fn wdl_material(board: &Board) -> i32 {
+    use crate::types::{Color, PieceType};
+    let n = |pt: PieceType| -> i32 {
+        (board.pieces(Color::White, pt).count() + board.pieces(Color::Black, pt).count())
+            as i32
+    };
+    n(PieceType::Pawn)
+        + 3 * n(PieceType::Knight)
+        + 3 * n(PieceType::Bishop)
+        + 5 * n(PieceType::Rook)
+        + 9 * n(PieceType::Queen)
+}
+
+/// Our internal value in Stockfish's PRINTED-cp frame.
+///
+/// WHY THIS EXISTS. We print raw internal values; Stockfish divides its own by
+/// `a = p_a(material)` in `to_cp` (`eca43a97:src/uci.cpp:554`). The result was
+/// that our printed scores ran ~2.07x Stockfish's for the same position, which
+/// is a hazard every time a human compares the two — it manufactured a "266 cp
+/// gap at depth 1" and a "400 cp PV disagreement" in one session, three times
+/// over. design/12 §3.14 reserved this seam.
+///
+/// THIS DOES NOT TOUCH THE EVAL SCALE. Internal values, search margins and the
+/// network scale are unchanged; over 6000 games the shipped scale IS the
+/// optimum and moving it to SF parity costs ~18 Elo. Only the printed number
+/// moves.
+///
+/// The divisor is MATERIAL-DEPENDENT, so a fixed 2.07 would agree in the
+/// middlegame and drift in the endgame. This ports SF's cubic exactly, then
+/// applies our own frame ratio: our internal is 0.538 of SF's internal
+/// (`eval-frame` study), so sf_printed = 100 * (v / 0.538) / a.
+pub fn to_cp(v: Value, material: i32) -> Value {
+    const AS: [f64; 4] = [-72.325_658_36, 185.938_320_38, -144.588_621_93, 416.449_504_46];
+    const ARCHON_PER_SF_INTERNAL: f64 = 0.538;
+    let m = material.clamp(17, 78) as f64 / 58.0;
+    let a = ((AS[0] * m + AS[1]) * m + AS[2]) * m + AS[3];
+    (100.0 * (v as f64 / ARCHON_PER_SF_INTERNAL) / a).round() as Value
+}
+
 /// Split a ply-relative internal value into the UCI `cp`/`mate` form
 /// (doc 12 §3.14): mate plies convert to full moves — rounding up on the
 /// winning side (our mating move counts), truncating on the losing side,
@@ -1545,7 +1599,10 @@ pub fn format_score(v: Value) -> UciScore {
         let plies = VALUE_MATE + v;
         UciScore::Mate(-(plies / 2))
     } else {
-        UciScore::Cp(v)
+        UciScore::Cp(to_cp(
+            v,
+            ROOT_MATERIAL.load(std::sync::atomic::Ordering::Relaxed),
+        ))
     }
 }
 
@@ -2786,9 +2843,32 @@ option name EvalFile type string default <empty>
             format_score(VALUE_MATE_IN_MAX_PLY),
             UciScore::Mate((MAX_PLY as i32 + 1) / 2)
         );
+        // Centipawn scores are NORMALISED into Stockfish's printed frame
+        // (`to_cp`); mate scores above are move counts and pass through
+        // untouched, which is the contract this test pins.
         assert_eq!(format_score(0), UciScore::Cp(0));
-        assert_eq!(format_score(123), UciScore::Cp(123));
-        assert_eq!(format_score(-4000), UciScore::Cp(-4000));
+        let m = ROOT_MATERIAL.load(std::sync::atomic::Ordering::Relaxed);
+        assert_eq!(format_score(123), UciScore::Cp(to_cp(123, m)));
+        assert_eq!(format_score(-4000), UciScore::Cp(to_cp(-4000, m)));
+        // Sign and monotonicity survive the transform.
+        assert!(to_cp(123, m) > 0 && to_cp(-4000, m) < 0);
+        assert!(to_cp(400, m) > to_cp(123, m));
+        // And it is a REDUCTION: we used to print ~2.07x SF's cp.
+        assert!(to_cp(1000, m).abs() < 1000);
+    }
+
+    #[test]
+    fn to_cp_tracks_stockfishs_material_curve() {
+        // SF's divisor a = p_a(material) is material-dependent, so a fixed
+        // ratio would agree in the middlegame and drift in the endgame. Same
+        // internal value, two material regimes, must NOT map to the same cp.
+        let opening = to_cp(300, 78);
+        let endgame = to_cp(300, 17);
+        assert_ne!(opening, endgame);
+        // The anchor: SF fits at material 58, where a ~ 385, so 1 internal
+        // point is ~1/2.07 printed cp.
+        let anchor = to_cp(207, 58);
+        assert!((anchor - 100).abs() <= 2, "anchor mapped to {anchor}, expected ~100");
     }
 
     #[test]
@@ -2814,10 +2894,15 @@ option name EvalFile type string default <empty>
             hashfull: 13,
             pv: &pv,
         };
+        // The score field is NORMALISED (`to_cp`), so this pins the field
+        // ORDER against the transform rather than hardcoding a raw value.
+        let cp = to_cp(42, ROOT_MATERIAL.load(std::sync::atomic::Ordering::Relaxed));
         assert_eq!(
             format_info(&info, 2000),
-            "info depth 7 seldepth 12 multipv 2 score cp 42 nodes 4000 nps 2000 hashfull 13 \
-             time 2000 pv e2e4 e7e5"
+            format!(
+                "info depth 7 seldepth 12 multipv 2 score cp {cp} nodes 4000 nps 2000 \
+                 hashfull 13 time 2000 pv e2e4 e7e5"
+            )
         );
         // Zero elapsed must not divide by zero; bounds add their suffix.
         let bound = SearchInfo {
@@ -2826,8 +2911,10 @@ option name EvalFile type string default <empty>
         };
         assert_eq!(
             format_info(&bound, 0),
-            "info depth 7 seldepth 12 multipv 2 score cp 42 lowerbound nodes 4000 nps 4000000 \
-             hashfull 13 time 0 pv e2e4 e7e5"
+            format!(
+                "info depth 7 seldepth 12 multipv 2 score cp {cp} lowerbound nodes 4000 \
+                 nps 4000000 hashfull 13 time 0 pv e2e4 e7e5"
+            )
         );
     }
 }
