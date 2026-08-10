@@ -2547,11 +2547,19 @@ pub(crate) mod tests {
 
         let back = load_v2_bytes(&legacy_bytes).expect("legacy net loads");
         assert_eq!(back.head.bucket_layout, sota_head::LEGACY_BUCKET_LAYOUT);
-        assert_eq!(back.head.output_bucket(11), 1, "legacy: count 11 → bucket 1");
+        assert_eq!(
+            back.head.output_bucket(11),
+            1,
+            "legacy: count 11 → bucket 1"
+        );
 
         let back = load_v2_bytes(&archon_bytes).expect("OBL1 net loads");
         assert_eq!(back.head.bucket_layout, sota_head::ARCHON_BUCKET_LAYOUT);
-        assert_eq!(back.head.output_bucket(11), 2, "ARCHON: count 11 → bucket 2");
+        assert_eq!(
+            back.head.output_bucket(11),
+            2,
+            "ARCHON: count 11 → bucket 2"
+        );
         assert_eq!(back, archon, "full net equality including the layout");
     }
 
