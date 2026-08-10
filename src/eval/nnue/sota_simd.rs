@@ -1168,6 +1168,28 @@ mod scalar {
         }
     }
 
+    /// The scalar reference for the merged FT activation, stated from the
+    /// head's own math (design/11 §12.6; restated 2026-08, originality-audit
+    /// item 2 — see `docs/audit/2026-08-originality/00-synthesis.md` §2).
+    ///
+    /// Per perspective, accumulator lane `j` carries two channels that must
+    /// meet in one `FT_QUANT` frame:
+    ///
+    ///   * HalfKA, rescaled by its per-column i8 quantisation scale. The
+    ///     multiply happens in i16 and WRAPS — that is the defined semantics,
+    ///     not a shortcut: the vector backends multiply in i16 lanes
+    ///     (`vpmullw`), so a widen-before-multiply here would disagree with
+    ///     them on the (never observed) overflow, exactly where the old
+    ///     FT_QUANT-frame accumulator wrapped too.
+    ///   * threats, rescaled by the power-of-two merge shift
+    ///     (`FT_QUANT/threat_quant` carried as a shift, perf study 8 §4.6 —
+    ///     4 for a CEN2 net, 1 at threat_quant 128, 0 for a QAT net at 256).
+    ///
+    /// The clamped sum is the lane's pre-activation in `[0, FT_QUANT]`; the
+    /// activation multiplies each lane by its partner `ACC/2` above it and
+    /// drops the product back into u8 range with the `FT_SHIFT` right shift.
+    /// The side to move's pairs fill `out[..ACC/2]`; the opponent's fill
+    /// `out[ACC/2..]`.
     #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn activate(
         out: &mut [u8; ACC],
@@ -1177,52 +1199,36 @@ mod scalar {
         stm: usize,
         threat_shift: u32,
     ) {
-        const H: usize = ACC / 2;
-        for flip in 0..2 {
-            let perspective = stm ^ flip;
-            for lane in 0..H {
-                // Both rescales, and they are independent. THREAT:
-                // FT_QUANT/threat_quant as a power of two — 4 for a CEN2 net,
-                // 1 for a QAT net at scale 256. HALFKA: the lane put back into
-                // the FT_QUANT frame by its own per-column i8 scale.
-                // `wrapping_mul` in i16 is the DEFINED semantics, not a
-                // convenience: the vector backends multiply in i16 lanes, so
-                // widening first here would disagree with them on the (never
-                // observed) overflow — exactly where the old FT_QUANT-frame
-                // accumulator wrapped too. (See the avx512 twin.)
-                let merge = |p: i16, t: i16, s: u8| {
-                    (i32::from(p.wrapping_mul(i16::from(s))) + (i32::from(t) << threat_shift))
-                        .clamp(0, FT_QUANT)
-                };
-                let left = merge(
-                    pst[perspective][lane],
-                    threat[perspective][lane],
-                    scale[lane],
-                );
-                let right = merge(
-                    pst[perspective][lane + H],
-                    threat[perspective][lane + H],
-                    scale[lane + H],
-                );
-                out[lane + flip * H] = ((left * right) >> FT_SHIFT) as u8;
+        const PAIR: usize = ACC / 2;
+        let squash = |side: usize, j: usize| -> i32 {
+            let halfka = i32::from(pst[side][j].wrapping_mul(i16::from(scale[j])));
+            let threats = i32::from(threat[side][j]) << threat_shift;
+            (halfka + threats).clamp(0, FT_QUANT)
+        };
+        let (own_half, opp_half) = out.split_at_mut(PAIR);
+        for (side, half) in [(stm, own_half), (stm ^ 1, opp_half)] {
+            for (j, cell) in half.iter_mut().enumerate() {
+                *cell = ((squash(side, j) * squash(side, j + PAIR)) >> FT_SHIFT) as u8;
             }
         }
     }
 
+    /// The scalar reference for the sparse-group scan, stated from what the
+    /// L1 matmul needs (restated 2026-08, originality-audit item 2): the
+    /// activated FT vector is consumed as `ACC/4` four-byte groups (one
+    /// `vpdpbusd` word each), and a group is worth visiting exactly when any
+    /// of its four activations is nonzero. Emit each live group's index, in
+    /// ascending order, into `out`; return how many were emitted.
     #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn find_nnz(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
-        let mut count = 0;
-        for g in 0..ACC / 4 {
-            let mut nz = 0u8;
-            for k in 0..4 {
-                nz |= ft[g * 4 + k];
-            }
-            if nz != 0 {
-                out[count] = g as u16;
-                count += 1;
+        let mut live = 0usize;
+        for (group, quad) in ft.chunks_exact(4).enumerate() {
+            if quad.iter().any(|&b| b != 0) {
+                out[live] = group as u16;
+                live += 1;
             }
         }
-        count
+        live
     }
 
     /// The bit-exact reference for the L1 dequant+SCReLU (the loop moved here
@@ -4535,6 +4541,119 @@ mod tests {
                     let mut dispatched = [0u8; ACC];
                     activate(&mut dispatched, &pst, &threat, scale, stm, threat_shift);
                     assert_eq!(dispatched, reference, "shift {threat_shift}");
+                }
+            }
+        }
+    }
+
+    /// 2026-08 originality audit, item 2 (00-synthesis.md §2): the scalar
+    /// `activate` and `find_nnz` bodies were RESTATED from the math. The SIMD
+    /// backends were deliberately left byte-for-byte untouched, so they are
+    /// the fixed points the pre-restatement scalar was already pinned to —
+    /// bitwise agreement between the new scalar and EVERY available backend
+    /// on randomized inputs is therefore the proof that the restatement
+    /// changed nothing. (The dispatched tests above only exercise the one
+    /// backend the running CPU selects; this one enumerates them.)
+    ///
+    /// Inputs are drawn inside the pipeline's contract domain, which the
+    /// kernels' own debug tripwires enforce: per-lane `|pst| <= 32767/scale`
+    /// (the value representable at that column's scale), `|threat| <=
+    /// 32767 >> shift` (the i16 activate bound), `scale` in the loader's
+    /// 1..=255. The bound edges are planted explicitly each round.
+    #[test]
+    fn restated_scalar_kernels_match_every_backend_on_random_inputs() {
+        // xorshift64* (Vigna) — deterministic; the seed is the audit date.
+        let mut state: u64 = 0x2026_08_09_D40_u64 | 1;
+        let mut rng = move || {
+            state ^= state >> 12;
+            state ^= state << 25;
+            state ^= state >> 27;
+            state.wrapping_mul(0x2545_F491_4F6C_DD1D)
+        };
+
+        let mut backends: Vec<(&str, &Kernels)> = Vec::new();
+        #[cfg(target_arch = "x86_64")]
+        {
+            if std::arch::is_x86_feature_detected!("avx2")
+                && std::arch::is_x86_feature_detected!("fma")
+            {
+                backends.push(("avx2", &avx2::KERNELS));
+            }
+            if std::arch::is_x86_feature_detected!("avx512f")
+                && std::arch::is_x86_feature_detected!("avx512bw")
+                && std::arch::is_x86_feature_detected!("avx512vnni")
+            {
+                backends.push(("avx512", &avx512::KERNELS));
+                if std::arch::is_x86_feature_detected!("avx512vbmi2")
+                    && std::arch::is_x86_feature_detected!("avx512vl")
+                {
+                    backends.push(("avx512-vbmi2", &avx512::KERNELS_VBMI2));
+                }
+            }
+        }
+
+        for round in 0..64u32 {
+            let threat_shift = round % 3;
+            let stm = (round as usize / 3) % 2;
+            let t_bound = i32::from(i16::MAX >> threat_shift);
+
+            let mut scale = [1u8; ACC];
+            for s in scale.iter_mut() {
+                *s = (rng() % 255 + 1) as u8; // loader domain 1..=255
+            }
+            let mut pst = [[0i16; ACC]; 2];
+            let mut threat = [[0i16; ACC]; 2];
+            for side in 0..2 {
+                for j in 0..ACC {
+                    let p_bound = 32767 / i32::from(scale[j]);
+                    let p = (rng() % (2 * p_bound as u64 + 1)) as i32 - p_bound;
+                    pst[side][j] = p as i16;
+                    let t = (rng() % (2 * t_bound as u64 + 1)) as i32 - t_bound;
+                    threat[side][j] = t as i16;
+                }
+                // Plant the exact contract edges on a few lanes each round.
+                pst[side][0] = (32767 / i32::from(scale[0])) as i16;
+                pst[side][1] = -pst[side][1].abs();
+                threat[side][0] = (i16::MAX >> threat_shift) as i16;
+                threat[side][1] = -((i16::MAX >> threat_shift) as i16);
+                threat[side][2] = 0;
+            }
+
+            // activate: poison the two outputs differently so an unwritten
+            // lane cannot compare equal (the D33 reviewer-C lesson above).
+            let mut want = [0xA7u8; ACC];
+            scalar::activate(&mut want, &pst, &threat, &scale, stm, threat_shift);
+            for (name, k) in &backends {
+                let mut got = [0x58u8; ACC];
+                (k.activate)(&mut got, &pst, &threat, &scale, stm, threat_shift);
+                assert_eq!(
+                    want, got,
+                    "{name} activate diverges from the restated scalar \
+                     (round {round}, stm {stm}, shift {threat_shift})"
+                );
+            }
+
+            // find_nnz: drive it with the real activation output (its actual
+            // input distribution), then with a sparsified copy so the empty /
+            // near-empty group paths are exercised at every density.
+            let mut sparse = want;
+            for cell in sparse.iter_mut() {
+                if rng() % 8 != 0 {
+                    *cell = 0;
+                }
+            }
+            for ft in [&want, &sparse] {
+                let mut ref_idx = [0u16; ACC / 4];
+                let ref_n = scalar::find_nnz(ft, &mut ref_idx);
+                for (name, k) in &backends {
+                    let mut got_idx = [0u16; ACC / 4];
+                    let got_n = (k.find_nnz)(ft, &mut got_idx);
+                    assert_eq!(got_n, ref_n, "{name} find_nnz count (round {round})");
+                    assert_eq!(
+                        got_idx[..got_n],
+                        ref_idx[..ref_n],
+                        "{name} find_nnz indices (round {round})"
+                    );
                 }
             }
         }
