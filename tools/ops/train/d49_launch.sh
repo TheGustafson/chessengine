@@ -51,6 +51,12 @@ MIN_MEM_MB=${MIN_MEM_MB:-3000}
 UV_DEPS=${UV_DEPS:-'--with numpy==2.5.1 --with jax[cuda12]==0.11.0 --with optax==0.2.8'}
 EXP_DIR=${EXP_DIR:-$ARCHON_ROOT/data/nnue/experiments/d49-1280}
 SPEC_PATH="$ARCHON_ROOT/tools/nnue/runs/$RUN_SPEC"
+# The output dir must exist before OPS_LOG points into it. Without this, every
+# log() call fails with "No such file or directory" and the REAL trainer error
+# is buried under that noise — which is exactly how a D52 launch looked like a
+# trainer crash when the only problem was a missing directory. A new run spec
+# names a new `out`, so this fires on the first launch of every experiment.
+mkdir -p "$EXP_DIR"
 OPS_LOG="$EXP_DIR/cyc.log"; export OPS_LOG
 
 [ -f "$SPEC_PATH" ] || { log "FATAL: run spec not found: $SPEC_PATH"; exit 2; }
@@ -62,6 +68,20 @@ log "d49_launch: spec=$RUN_SPEC target=sb$TARGET_SB root=$ARCHON_ROOT"
 while :; do
     RESUME=$(ls "$EXP_DIR/$CKPT_GLOB"-sb*-ema-raw.bin 2>/dev/null \
              | sed -E 's/.*-sb([0-9]+)-ema-raw\.bin/\1/' | sort -n | tail -1)
+    # A RUN WITH NO EMA COULD NEVER FINISH. `ema_decay: 0.0` writes no
+    # `-ema-raw.bin` at all, so the glob above found nothing, RESUME stayed 0,
+    # the `>= TARGET_SB` break never fired, and the launcher re-ran the whole
+    # run from scratch forever. MEASURED 2026-08-06: D57 (a frozen-trunk dis
+    # head, ema_decay 0.0) completed sb60 with TRAIN EXIT 0 and all three
+    # checkpoints on disk, then relaunched from sb0 two minutes later; it also
+    # starved a downstream job that gated on this unit going inactive.
+    # Falling back to the plain `-raw.bin` is correct rather than merely
+    # terminating: those ARE the run's weights when no EMA is kept.
+    if [ -z "$RESUME" ]; then
+        RESUME=$(ls "$EXP_DIR/$CKPT_GLOB"-sb*-raw.bin 2>/dev/null \
+                 | grep -v -- '-ema-raw\.bin$' \
+                 | sed -E 's/.*-sb([0-9]+)-raw\.bin/\1/' | sort -n | tail -1)
+    fi
     RESUME=${RESUME:-0}
 
     if [ "$RESUME" -ge "$TARGET_SB" ]; then

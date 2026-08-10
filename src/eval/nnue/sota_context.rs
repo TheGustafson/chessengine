@@ -445,6 +445,41 @@ impl SotaContext {
     /// `ply` must be the ply whose accumulators are live (the same value the
     /// matching [`evaluate`](Self::evaluate) would be given), and `board` the
     /// position at it.
+    /// The disagreement head evaluated on the FT vector the LAST
+    /// [`evaluate`](Self::evaluate) already produced — the affordable poll.
+    ///
+    /// [`disagreement`](Self::disagreement) re-runs `activate_ft`, which is
+    /// `i8_into_shaped`: **53.61 % of this engine's L1-miss latency**. This
+    /// one costs the head's dense layers only (768x32 + 32x2 = 24,640 MACs,
+    /// ~1.9x the value head's own tail) and touches no new memory, which is
+    /// what makes a per-node consumer like an RFP margin thinkable at all.
+    ///
+    /// **Contract, and it is the caller's to keep:** the cached vector belongs
+    /// to whichever position last ran the head forward on this context's
+    /// scratch. Call this only directly after evaluating the node you are
+    /// asking about and before any child is evaluated. A TT-served eval does
+    /// NOT run the head, so the scratch then still holds an ancestor's
+    /// position — callers must gate on having just computed a fresh eval.
+    /// There is deliberately no stale-flag: it would cost the hot path to
+    /// protect a cold caller (see [`super::sota_head::HeadScratch::last_ft`]).
+    /// The raw u8 FT vector from the last head forward on this context — the
+    /// EXACT input `DisHead::forward` consumes. Diagnostic accessor for the
+    /// DIS census dump: a head retrained on these rows has no frame or
+    /// reconstruction gap at all. Same validity contract as
+    /// [`disagreement_cached`](Self::disagreement_cached).
+    pub fn last_ft_slice(&self) -> &[u8] {
+        self.head_scratch.last_ft()
+    }
+
+    pub fn disagreement_cached(&mut self) -> Option<[f32; super::sota_head::DIS_OUTS]> {
+        if self.net.head.dis_head.is_none() {
+            return None;
+        }
+        self.net
+            .head
+            .disagreement_from_ft(self.head_scratch.last_ft())
+    }
+
     pub fn disagreement(
         &mut self,
         board: &Board,

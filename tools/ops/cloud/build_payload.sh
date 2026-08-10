@@ -125,6 +125,10 @@ cp -r "$CHESS" "$STAGE/vendor/chess"
 rm -rf "$STAGE/vendor/chess/__pycache__"
 
 install -D -m755 "$(dirname "${BASH_SOURCE[0]}")/worker_shard.sh" "$STAGE/worker_shard.sh"
+# Relabel campaign worker (2026-08-07): sibling of worker_shard.sh, pure-stdlib
+# python labeler. Same payload, so one artifact serves both campaign types.
+install -D -m755 "$(dirname "${BASH_SOURCE[0]}")/worker_relabel.sh" "$STAGE/worker_relabel.sh"
+install -D -m644 "$(dirname "${BASH_SOURCE[0]}")/relabel_worker.py" "$STAGE/relabel_worker.py"
 
 # --- manifest: every file with its hash, so drift is detectable -------------
 python3 - "$STAGE" > "$STAGE/payload_manifest.json" <<'PYEOF'

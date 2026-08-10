@@ -1444,6 +1444,20 @@ fn cmd_go<W: Write + Send + 'static>(
     out: &SharedOut<W>,
 ) -> io::Result<()> {
     engine.wait_for_search_finished();
+    // ARCHON_TT_CLEAR_PER_GO=1: clear the TT (only — histories stay) before
+    // every search. A DIAGNOSTIC arm, not a feature: it prices the NET value
+    // of TT carryover between moves, after the 2026-08-08 forensics found
+    // stale cross-move entries causal for 108/149 mined blunders (warm replay
+    // reproduces, Clear Hash cures). Default off ⇒ bit-identical behaviour.
+    {
+        use std::sync::OnceLock;
+        static CLEAR_PER_GO: OnceLock<bool> = OnceLock::new();
+        if *CLEAR_PER_GO
+            .get_or_init(|| std::env::var("ARCHON_TT_CLEAR_PER_GO").is_ok_and(|v| v == "1"))
+        {
+            engine.tt_mut().clear();
+        }
+    }
     // Stamp root material for printed-score normalisation (display only).
     set_root_material(wdl_material(&engine.board));
     let limits = parse_go(&engine.board, tokens, &mut *out.lock())?;

@@ -91,11 +91,15 @@ case "$MODE" in
     self) OPP=$ENGINE ; OPPNET=$NET ;;
     sf18) OPP=$(asset engines/bin/stockfish18) ; OPPNET="" ;;
     sf16) OPP=$(asset engines/bin/stockfish16) ; OPPNET="" ;;
+    # ARCHON vs the DEV reference (eca43a97) — the engine our constants were
+    # transcribed from and the opponent every forensics corpus is measured
+    # against. Distinct from sf18: that is the older tagged release binary.
+    sfdev) OPP=$(asset engines/bin/stockfish-eca43a97) ; OPPNET="" ;;
     # ORACLE vs ORACLE. Both sides are the labelling engine, so EVERY ply of
     # every game is a position the oracle itself searched — the maximum-density
     # source of oracle-quality labels with a real result attached.
     oracle) ENGINE=$(asset engines/bin/stockfish-eca43a97) ; OPP=$ENGINE ; OPPNET="" ; NET="" ;;
-    *) log "FATAL: MODE must be self|sf18|sf16|oracle (got '$MODE')"; exit 2 ;;
+    *) log "FATAL: MODE must be self|sf18|sf16|sfdev|oracle (got '$MODE')"; exit 2 ;;
 esac
 
 [ -x "$ENGINE" ]    || { log "FATAL: engine not executable: $ENGINE"; exit 2; }

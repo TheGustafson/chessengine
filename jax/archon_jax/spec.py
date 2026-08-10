@@ -533,6 +533,20 @@ class TrainConfig:
     # post-CReLU accumulators, driving deploy density down (density-linear
     # l1_dot cost). 0.0 = OFF = graph identical to the incumbent recipe.
     dis_lambda: float = 0.0          # disagreement-head loss weight (D48W)
+    # Take the disagreement residual against the SCORE-ONLY target rather
+    # than the wdl-blended one. Banner in losses.py: the game-result term is
+    # 29.7 % of the heldout residual (measured 2026-08-06) and is
+    # unlearnable at the position level, so including it forces the head to
+    # memorise. Default False keeps every existing run bit-identical.
+    dis_score_only: bool = False
+    # Focal weighting of the value loss (owner, 2026-08-07): per-sample weight
+    # |sig - target_score|^focal_gamma, stop-gradiented, capped at
+    # focal_wmax x batch mean, normalised by value_loss's weighted mean.
+    # Referenced against the SCORE-ONLY target so the 29.7 % outcome-noise
+    # share of the blended residual is never up-weighted. 0.0 = off,
+    # bit-identical to every existing run.
+    focal_gamma: float = 0.0
+    focal_wmax: float = 8.0
     ft_sparsity_lambda: float = 0.0
     # Resume: 1-based superbatch this run STARTS at (bullet's
     # D40_START_SUPERBATCH). The LR schedule keys on

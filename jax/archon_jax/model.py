@@ -365,7 +365,7 @@ def head_forward(params: dict, arch: ArchSpec, acc_stm: jnp.ndarray,
             pol_logits = pol_logits + dense
         elif pol_mask is not None:
             pol_logits = pol_logits + pol_mask
-    return out, pol_logits, hl2, dis_pred
+    return out, pol_logits, hl2, dis_pred, hl1
 
 
 def _pairwise(c: jnp.ndarray, hl: int) -> jnp.ndarray:
@@ -439,7 +439,7 @@ def clip_qat_weights(params: dict, arch: ArchSpec) -> dict:
 
 def forward(params: dict, arch: ArchSpec, batch: dict,
             ft_impl: str = "reference", with_acc: bool = False,
-            with_dis: bool = False):
+            with_dis: bool = False, with_hl1: bool = False):
     """Full graph: sparse features -> (value_logit, pol_logits).
 
     ``ft_impl`` selects the feature-transformer implementation (see
@@ -452,7 +452,7 @@ def forward(params: dict, arch: ArchSpec, batch: dict,
     """
     acc_stm, acc_ntm, psqt_stm, psqt_ntm = _ft_accumulate_pair(
         params, batch, arch, ft_impl)
-    out, pol_logits, hl2, dis_pred = head_forward(
+    out, pol_logits, hl2, dis_pred, hl1 = head_forward(
         params, arch, acc_stm, acc_ntm,
         batch["bucket"], batch.get("pol_mask"), batch.get("pol_legal"))
     if arch.psqt:
@@ -462,6 +462,12 @@ def forward(params: dict, arch: ArchSpec, batch: dict,
         extras.append(dis_pred)
     if with_acc:
         extras.append((acc_stm, acc_ntm))
+    # hl1 = the POST-QAT trunk vector the disagreement head reads. Exposed so
+    # an offline probe fits the identical representation instead of
+    # re-deriving it from the accumulators and silently drifting from the
+    # pairwise/crelu/fake_quant_act chain above.
+    if with_hl1:
+        extras.append(hl1)
     if extras:
         return (out, pol_logits, hl2, *extras)
     return out, pol_logits, hl2

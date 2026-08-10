@@ -149,6 +149,174 @@ fn obs_bound_from_tt(bound: Bound) -> crate::obs::Bound {
 /// preserved. The Wave-F correction-history widening term
 /// (`|correction_value| / 182069`) is deliberately absent until correction
 /// history is plumbed into this suite (design/10 §4 Wave F).
+/// DIS-RFP coefficient (`ARCHON_DIS_RFP_C1`), read ONCE.
+///
+/// 0.0 (the default, and any unparseable value) disables the arm entirely and
+/// leaves the integer RFP margin untouched, so a shipped build is
+/// bit-identical to one compiled before this existed. Read through a
+/// `OnceLock` rather than per node: `std::env::var` on the hot path is exactly
+/// the dead-work class perf study 69 swept out of `.text`.
+///
+/// Sign: POSITIVE widens the margin where the head predicts search will move
+/// the eval a lot (prune less, safety), which is the direction the mechanism
+/// argues for. A negative value is the falsification arm — if it wins, the
+/// model's sign is wrong and the story needs re-deriving, not re-tuning.
+/// DIS-EVAL coefficient (`ARCHON_DIS_EVAL_C`), read ONCE. 0.0 = off, and the
+/// raw eval is untouched, so the shipped build stays bit-identical.
+///
+/// 1.0 means "trust the head's predicted (search - static) fully"; smaller
+/// values shrink toward the uncorrected eval. Worth stating plainly: the head
+/// explains r^2 = 0.611 of that delta beyond the static eval, NOT all of it,
+/// so the variance-minimising coefficient is below 1.0 — a regression toward
+/// the mean argument, not a tuning hunch. 0.5-0.6 is where that reasoning
+/// points and is where the panel should start.
+/// DIS-LMR coefficient (`ARCHON_DIS_LMR_C`), read ONCE. 0.0 = off, reduction
+/// untouched, shipped build bit-identical.
+///
+/// Units: reduction is in 1024ths of a ply, and the head's magnitude averages
+/// ~180 cp, so `c = 100` moves roughly 0.18 ply at the mean and about half a
+/// ply at the tail. POSITIVE reduces LESS where search is predicted to move
+/// the eval; negative is the falsification arm.
+/// DIS-TM coefficient (`ARCHON_DIS_TM_C`), read ONCE. 0.0 = off, the soft-stop
+/// product is untouched, shipped build bit-identical.
+///
+/// MUST BE TESTED AT REAL TC. `nodestime` is not a real-clock proxy for time
+/// management on this engine — it once scored a TM arm +52.6 where the real
+/// clock scored the same arm -31.4. A fixed-node harness cannot test this at
+/// all: with the node budget fixed there is no stop decision left to move.
+/// DIS-CENSUS gate (`ARCHON_DIS_CENSUS=1`). Diagnostic only — emits to stderr
+/// and never changes a decision. Read once; see the banner at its call site.
+/// DIS-TM falsification control (`ARCHON_DIS_TM_RANDOM=1`). See the banner at
+/// its use site: matched magnitude, zero information.
+#[cfg(feature = "sota")]
+#[inline]
+fn dis_tm_random() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("ARCHON_DIS_TM_RANDOM").is_some())
+}
+
+/// Diagnostic: disable RFP pruning so census nodes are actually searched and
+/// produce a ground-truth value. `ARCHON_RFP_OFF=1`. Never set in a match.
+#[inline]
+fn rfp_off() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("ARCHON_RFP_OFF").is_some())
+}
+
+#[cfg(feature = "sota")]
+#[inline]
+fn dis_census_on() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("ARCHON_DIS_CENSUS").is_some())
+}
+
+/// DIS-CENSUS binary feature dump (`ARCHON_DIS_DUMP=<path>`, append mode).
+/// One fixed 792-byte record per census row: id u64 | depth i32 | eval i16 |
+/// beta i16 | margin i16 | flags u8 (imp|ow<<1|tt<<2) | pad | corr i32 |
+/// ft [u8; 768]. Unbuffered `File` on purpose: records survive any exit path,
+/// and this is a diagnostic that never runs in a match.
+#[cfg(feature = "sota")]
+#[allow(clippy::too_many_arguments)]
+fn dis_dump_write(
+    id: u64,
+    depth: Depth,
+    eval: Value,
+    beta: Value,
+    margin: Value,
+    imp: bool,
+    ow: bool,
+    tt: bool,
+    corr: i32,
+    ft: &[u8],
+) {
+    use std::io::Write;
+    use std::sync::{Mutex, OnceLock};
+    static F: OnceLock<Option<Mutex<std::fs::File>>> = OnceLock::new();
+    let slot = F.get_or_init(|| {
+        std::env::var_os("ARCHON_DIS_DUMP").map(|path| {
+            Mutex::new(
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .expect("ARCHON_DIS_DUMP path"),
+            )
+        })
+    });
+    let Some(m) = slot else { return };
+    let mut rec = [0u8; 792];
+    rec[0..8].copy_from_slice(&id.to_le_bytes());
+    rec[8..12].copy_from_slice(&depth.to_le_bytes());
+    rec[12..14].copy_from_slice(&(eval.clamp(-32000, 32000) as i16).to_le_bytes());
+    rec[14..16].copy_from_slice(&(beta.clamp(-32000, 32000) as i16).to_le_bytes());
+    rec[16..18].copy_from_slice(&(margin.clamp(-32000, 32000) as i16).to_le_bytes());
+    rec[18] = u8::from(imp) | (u8::from(ow) << 1) | (u8::from(tt) << 2);
+    rec[20..24].copy_from_slice(&corr.to_le_bytes());
+    let n = ft.len().min(768);
+    rec[24..24 + n].copy_from_slice(&ft[..n]);
+    let mut f = m.lock().unwrap();
+    let _ = f.write_all(&rec);
+}
+
+#[cfg(feature = "sota")]
+#[inline]
+fn dis_tm_c() -> f32 {
+    use std::sync::OnceLock;
+    static C: OnceLock<f32> = OnceLock::new();
+    *C.get_or_init(|| {
+        std::env::var("ARCHON_DIS_TM_C")
+            .ok()
+            .and_then(|s| s.parse::<f32>().ok())
+            .filter(|v| v.is_finite())
+            .unwrap_or(0.0)
+    })
+}
+
+#[cfg(feature = "sota")]
+#[inline]
+fn dis_lmr_c() -> f32 {
+    use std::sync::OnceLock;
+    static C: OnceLock<f32> = OnceLock::new();
+    *C.get_or_init(|| {
+        std::env::var("ARCHON_DIS_LMR_C")
+            .ok()
+            .and_then(|s| s.parse::<f32>().ok())
+            .filter(|v| v.is_finite())
+            .unwrap_or(0.0)
+    })
+}
+
+#[cfg(feature = "sota")]
+#[inline]
+fn dis_eval_c() -> f32 {
+    use std::sync::OnceLock;
+    static C: OnceLock<f32> = OnceLock::new();
+    *C.get_or_init(|| {
+        std::env::var("ARCHON_DIS_EVAL_C")
+            .ok()
+            .and_then(|s| s.parse::<f32>().ok())
+            .filter(|v| v.is_finite())
+            .unwrap_or(0.0)
+    })
+}
+
+#[cfg(feature = "sota")]
+#[inline]
+fn dis_rfp_c1() -> f32 {
+    use std::sync::OnceLock;
+    static C1: OnceLock<f32> = OnceLock::new();
+    *C1.get_or_init(|| {
+        std::env::var("ARCHON_DIS_RFP_C1")
+            .ok()
+            .and_then(|s| s.parse::<f32>().ok())
+            .filter(|v| v.is_finite())
+            .unwrap_or(0.0)
+    })
+}
+
 #[inline]
 fn rfp_margin(
     depth: Depth,
@@ -1104,6 +1272,27 @@ pub struct Worker {
     /// iterations (v1, doc 12 step 7). `stop_on_ponderhit` and the
     /// soft-stop factor stack are doc 12 steps 8–9 (P10/P11).
     pub tm: TimeManager,
+    /// DIS-TM: the disagreement head's predicted |search - static| for the
+    /// ROOT position, in internal centipawns; 0.0 when the net has no DIS1
+    /// section or the arm is off.
+    ///
+    /// Polled ONCE per `go`, right after `refresh_root`, and cached — NOT read
+    /// from `disagreement_cached`, whose vector belongs to whichever node last
+    /// ran a fresh eval and by soft-stop time is some deep interior position,
+    /// not the root. One full poll per search is free against millions of
+    /// nodes, and it removes the staleness question entirely.
+    #[cfg_attr(not(feature = "sota"), allow(dead_code))]
+    root_dis_mag: f32,
+    /// DIS-CENSUS: per-ply node id stamped when a census row is emitted on the
+    /// way in, so the node's searched value can be joined to it on the way out.
+    /// Diagnostic only; zero unless `ARCHON_DIS_CENSUS` is set.
+    #[cfg_attr(not(feature = "sota"), allow(dead_code))]
+    dis_census_id: [u64; MAX_PLY + 8],
+    /// DIS-TM: the ROOT static eval at search start, internal cp. Paired with
+    /// `root_dis_mag` to measure how much of the head's PREDICTED movement the
+    /// live search has already found.
+    #[cfg_attr(not(feature = "sota"), allow(dead_code))]
+    root_static_eval: f32,
     /// Best PV of the last iteration whose result was trusted (`!stop`)
     /// AND not a forgotten mate, §3.5. Persists across iterations so a
     /// `bestmove` is always printable; [`Worker::root_hygiene`] both
@@ -1259,6 +1448,9 @@ impl Worker {
             completed_depth: 0,
             limits: Limits::new(),
             tm: TimeManager::new(),
+            root_dis_mag: 0.0,
+            dis_census_id: [0; MAX_PLY + 8],
+            root_static_eval: 0.0,
             last_best_move_pv: Vec::new(),
             last_best_move_score: -VALUE_INFINITE,
             last_best_move_depth: 0,
@@ -1880,6 +2072,44 @@ impl Worker {
             return; // mate/stalemate at the root: nothing to search
         }
         self.eval_ctx.refresh_root(&self.board);
+        // DIS-TM: one root poll per search (see `root_dis_mag`). Uses the FULL
+        // `disagreement`, which re-runs `activate_ft`, because the cached form
+        // needs a fresh eval to have just run at THIS position and none has.
+        // At one poll per `go` the cost is unmeasurable.
+        #[cfg(feature = "sota")]
+        {
+            // FALSIFICATION CONTROL (`ARCHON_DIS_TM_RANDOM=1`): keep the arm
+            // and its magnitude, throw away the INFORMATION.
+            //
+            // At a fixed clock this arm can only MOVE time between moves, so a
+            // win could mean either "the head picks the right moments" or
+            // merely "redistributing time at all helps". `c=0` cannot separate
+            // those — it removes the redistribution too. This control replaces
+            // the head's prediction with a value drawn from the SAME empirical
+            // distribution (census: p10 110, median 179, p90 250) keyed on the
+            // root position hash, so the spend/save split and its magnitude
+            // are matched and only the signal is gone. If the two score alike,
+            // the head contributed nothing.
+            self.root_dis_mag = if dis_tm_c() != 0.0 && dis_tm_random() {
+                let h = self.board.key().wrapping_mul(0x9E37_79B9_7F4A_7C15);
+                110.0 + ((h >> 33) % 141) as f32
+            } else if dis_tm_c() != 0.0 {
+                self.eval_ctx
+                    .disagreement_root(&self.board)
+                    .map_or(0.0, |d| (f32::from(d[1]) * 600.0).max(0.0))
+            } else {
+                0.0
+            };
+            self.root_static_eval = if self.root_dis_mag > 0.0 && self.board.checkers().is_empty() {
+                // `evaluate` must never be called in check (design/11 §3.1),
+                // and a root in check has no static eval to budget against —
+                // leave the arm off there rather than inventing one.
+                crate::eval::evaluate(&self.board, &mut self.eval_ctx, 0, 0) as f32
+            } else {
+                self.root_dis_mag = 0.0;
+                0.0
+            };
+        }
         // Per-`go` history refresh (design/09 §3.4): decay the butterfly
         // history toward zero so recent searches dominate, and refill the
         // low-ply history. Correction/capture/continuation tables persist
@@ -2343,6 +2573,25 @@ impl Worker {
     // plumbed-through borrows (`tt` per doc 07 §3.10, `stop` per §3.9) —
     // SF's search carries the same state; bundling would only rename it.
     #[allow(clippy::too_many_arguments)]
+    /// DIS-CENSUS: emit this node's searched value for the row stamped on the
+    /// way in, and clear the stamp. Called at EVERY post-census return path —
+    /// the final TT store, both NMP cutoff returns, and both ProbCut returns.
+    /// Labelling only the final-store path silently drops early fail-high
+    /// returns, which are exactly the RIGHT-prune examples, and skews the
+    /// collected class balance toward fail-lows.
+    #[cfg(feature = "sota")]
+    #[inline]
+    fn dis_census_result(&mut self, cur: usize, value: Value, red: u32, rer: u32) {
+        if self.dis_census_id[cur] != 0 {
+            eprintln!(
+                "DISRESULT id={} value={} red={} rer={}",
+                self.dis_census_id[cur], value, red, rer
+            );
+            self.dis_census_id[cur] = 0;
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn search<NT: NodeType>(
         &mut self,
         tt: &TranspositionTable,
@@ -2393,6 +2642,20 @@ impl Worker {
         // Step 2 — init. `cur ± k` indexing stays in bounds for all
         // ply <= MAX_PLY (§3.2.1).
         let cur = ss(ply);
+        // DIS-CENSUS hygiene: a stamp left by a node that returned through an
+        // uninstrumented path (stop-abort) must not attach its id to the NEXT
+        // node at this ply. A lost label is acceptable; a wrong one is not.
+        #[cfg(feature = "sota")]
+        if dis_census_on() {
+            self.dis_census_id[cur] = 0;
+        }
+        // DIS-CENSUS (LMR-veto probe): per-node reduced-scout / re-search
+        // counters, emitted with DISRESULT. Plain local adds — cheaper than
+        // gating them.
+        #[cfg(feature = "sota")]
+        let mut census_lmr_red: u32 = 0;
+        #[cfg(feature = "sota")]
+        let mut census_lmr_rer: u32 = 0;
         let in_check = !self.board.checkers().is_empty();
         self.stack[cur].in_check = in_check;
         self.stack[cur].move_count = 0;
@@ -2548,6 +2811,13 @@ impl Worker {
         // Perf study 64 census: did THIS node pay for a real forward pass?
         #[cfg(feature = "foldcount")]
         let mut fresh_eval = false;
+        // DIS-LMR: this node's predicted |search - static| in centipawns, 0.0
+        // when unavailable. Captured at the FRESH-eval site because that is
+        // the only point where the head's cached FT vector belongs to this
+        // position; carried down to the reduction rather than re-polled, since
+        // by then the scratch holds a CHILD's activation.
+        #[cfg(feature = "sota")]
+        let mut dis_mag_cp: f32 = 0.0;
         // `improving` is hoisted out of the not-in-check branch: doc 10's LMR
         // reduction (below, in the move loop) reads it even when this node is
         // in check — where SF pins it `false` (the pre-check eval bears no
@@ -2588,12 +2858,95 @@ impl Worker {
                 raw_eval = if tt_served {
                     tt_data.eval
                 } else {
-                    evaluate(
+                    let fresh = evaluate(
                         &self.board,
                         &mut self.eval_ctx,
                         self.optimism[self.board.side_to_move() as usize],
                         ply,
-                    )
+                    );
+                    // DIS-EVAL (2026-08-07): correct the RAW eval by the
+                    // disagreement head's predicted (search - static).
+                    //
+                    // A different lever from DIS-RFP, which was REFUTED —
+                    // three sign-spanning coefficients over 3000 games read
+                    // +1.04, +2.08 and +6.60, the last being the FALSIFICATION
+                    // arm, i.e. no win anywhere and the predicted-worst arm
+                    // nominally best. That says the RFP margin cannot spend
+                    // this signal; it does not say the signal is absent
+                    // (held-out r^2 = 0.611 signed, beyond a flexible function
+                    // of the static eval, measured on 300k positions).
+                    //
+                    // This makes the EVAL closer to what a search would
+                    // return, which every downstream consumer reads:
+                    // improving/opponent_worsening, razoring, RFP, NMP,
+                    // futility, LMR and the step-9 error signal.
+                    //
+                    // Sited INSIDE the fresh branch on purpose. The poll reads
+                    // the scratch the last head forward filled, so a TT-served
+                    // eval — which never ran the head — must not see it; being
+                    // in this arm makes that structural rather than a runtime
+                    // check that a later edit could drop. It is also the RAW
+                    // eval by design: the TT stores raw, and a corrected value
+                    // cached as raw would smuggle this adjustment across paths
+                    // the way correction history must not (D22).
+                    // Capture the magnitude for DIS-LMR whenever ANY dis
+                    // consumer is armed. Polled once and reused: a second poll
+                    // would cost another head forward for the same vector.
+                    #[cfg(feature = "sota")]
+                    if dis_lmr_c() != 0.0 {
+                        if let Some(d) = self.eval_ctx.disagreement_cached() {
+                            dis_mag_cp = (f32::from(d[1]) * 600.0).max(0.0);
+                        }
+                    }
+                    #[cfg(feature = "sota")]
+                    let fresh = {
+                        let ce = dis_eval_c();
+                        if ce != 0.0 && is_valid(fresh) {
+                            match self.eval_ctx.disagreement_cached() {
+                                // col 0 = signed, network_scale units. Clamped:
+                                // the head is an unbounded regressor and one
+                                // wild prediction must not invent a winning
+                                // score out of a drawn position.
+                                Some(d) => {
+                                    // ORTHOGONALISED. The head's signed output
+                                    // is dominated by a GLOBAL RESCALE, not by
+                                    // per-position information: measured on
+                                    // 300k positions it is
+                                    //     pred_cp ~ -0.4361*static + 23.7
+                                    // (corr -0.793), because search regresses
+                                    // extreme evals toward zero. Adding it
+                                    // whole therefore multiplies the eval by
+                                    // (1 - 0.436*c) -- c=0.5 is a -21.8 %
+                                    // rescale -- and the eval SCALE is a
+                                    // settled interior optimum on this engine
+                                    // (6000 games: SF parity costs ~18 Elo,
+                                    // over-shrinking ~12; "the frame is NOT a
+                                    // lever"). Unsurprisingly the naive form
+                                    // measured -52.5 Elo, and -97.1 once the
+                                    // frame bug that had been damping it was
+                                    // fixed.
+                                    //
+                                    // Subtracting that fitted line leaves the
+                                    // 60.9 % of prediction variance (154.6 cp
+                                    // std) that is genuinely per-position --
+                                    // the same component the partial-r^2
+                                    // control isolated as real signal beyond
+                                    // any function of the static eval.
+                                    const DIS_SLOPE: f32 = -0.4361;
+                                    const DIS_INTERCEPT: f32 = 23.7;
+                                    let pred = f32::from(d[0]) * 600.0;
+                                    let rescale_part = DIS_SLOPE * fresh as f32 + DIS_INTERCEPT;
+                                    let adj =
+                                        ((pred - rescale_part) * ce).clamp(-300.0, 300.0) as Value;
+                                    fresh + adj
+                                }
+                                None => fresh,
+                            }
+                        } else {
+                            fresh
+                        }
+                    };
+                    fresh
                 };
                 // S1 (design/10 N6, D22): `ss.static_eval` is the CORRECTED
                 // eval — raw plus the correction-history delta — and every
@@ -2980,16 +3333,156 @@ impl Worker {
                 // relaxation and its two-margin lazy-`all_threats` dance —
                 // the margin is one call again, and RFP no longer builds the
                 // threat map at all.
-                if eval
-                    - rfp_margin(
-                        depth,
-                        tt_hit,
-                        improving,
-                        opponent_worsening,
-                        correction_value,
-                    )
-                    >= beta
+                // DIS-RFP (2026-08-07): scale the reverse-futility margin by
+                // the disagreement head's predicted |search - static|.
+                //
+                // RFP is a bet that the STATIC eval is good enough to prune
+                // without searching. The head predicts, from the trunk the
+                // eval already computed, how far a real search would move that
+                // eval — measured held-out r^2 = 0.442 for the magnitude
+                // column BEYOND anything a flexible function of the static
+                // eval explains, so it is information this node does not
+                // otherwise have. High predicted movement => trust the eval
+                // less => widen the margin => prune less.
+                //
+                // Gated OFF by default and read once into a `OnceLock`: with
+                // the coefficient unset this is one relaxed load and the
+                // integer margin is untouched, so the shipped build stays
+                // bit-identical (verified by `bench`).
+                //
+                // `disagreement_cached` is only valid straight after a FRESH
+                // eval — a TT-served eval never ran the head, so the scratch
+                // would hold an ancestor's position. `fresh_eval` is compiled
+                // out unless `foldcount` is on, so the gate re-derives it from
+                // the same `tt_served` condition rather than depending on a
+                // feature flag.
+                // DIS-CENSUS (`ARCHON_DIS_CENSUS=1`): the measurement that
+                // should have preceded every consumer arm.
+                //
+                // The offline probe controlled the head against the STATIC
+                // EVAL only, and reported r^2 = 0.611 beyond it. But RFP does
+                // not decide on the static eval alone — it also has depth,
+                // `improving`, `opponent_worsening`, `tt_hit` and correction
+                // history, all of which are proxies for "is this eval
+                // trustworthy here". So the question that decides whether the
+                // head can ever help THIS gate is not "does it beat the eval"
+                // but "does it beat the gate's OWN INPUTS".
+                //
+                // Emits one row per RFP-eligible node: the head's prediction
+                // alongside every input the margin uses, plus the static eval.
+                // Pair it with the node's searched value (run with RFP
+                // effectively disabled so nothing is pruned away) and regress
+                // dis_pred on the actual delta CONTROLLING for these columns.
+                // If the 0.611 collapses here, that is a real and sufficient
+                // explanation for four nulls; if it survives, the nulls need a
+                // different one and the intervention size is the next suspect.
+                #[cfg(feature = "sota")]
+                if dis_census_on() {
+                    if let Some(d) = self.eval_ctx.disagreement_cached() {
+                        self.dis_census_id[cur] = self.nodes;
+                        eprintln!(
+                            "DISCENSUS id={} d={} eval={} dis={:.1} imp={} ow={} tt={} corr={} beta={} margin={}",
+                            self.nodes,
+                            depth,
+                            eval,
+                            f32::from(d[1]) * 600.0,
+                            u8::from(improving),
+                            u8::from(opponent_worsening),
+                            u8::from(tt_hit),
+                            correction_value,
+                            beta,
+                            // The margin THIS node would have used. With
+                            // `ARCHON_RFP_OFF=1` the node is searched anyway,
+                            // so `eval - margin >= beta` reconstructs "RFP
+                            // would have fired here" and the node's searched
+                            // value says whether that prune would have been
+                            // RIGHT. That is the question RFP actually asks —
+                            // NOT "how far does the eval move", which is what
+                            // the first census measured and which cannot
+                            // settle this either way.
+                            rfp_margin(
+                                depth,
+                                tt_hit,
+                                improving,
+                                opponent_worsening,
+                                correction_value,
+                            ),
+                        );
+                        // Binary feature row for OFF-LINE RETRAINING on the
+                        // deployment distribution: the u8 FT vector is exactly
+                        // what DisHead::forward consumes — no frame gap, no
+                        // FEN round-trip, no reconstruction.
+                        if let Some(ft) = self.eval_ctx.last_ft_slice() {
+                            dis_dump_write(
+                                self.nodes,
+                                depth,
+                                eval,
+                                beta,
+                                rfp_margin(
+                                    depth,
+                                    tt_hit,
+                                    improving,
+                                    opponent_worsening,
+                                    correction_value,
+                                ),
+                                improving,
+                                opponent_worsening,
+                                tt_hit,
+                                correction_value,
+                                ft,
+                            );
+                        }
+                    }
+                }
+                #[cfg_attr(not(feature = "sota"), allow(unused_mut))]
+                let mut margin = rfp_margin(
+                    depth,
+                    tt_hit,
+                    improving,
+                    opponent_worsening,
+                    correction_value,
+                );
+                #[cfg(feature = "sota")]
                 {
+                    let c1 = dis_rfp_c1();
+                    if c1 != 0.0 && !(tt_hit && is_valid(tt_data.eval)) {
+                        if let Some(d) = self.eval_ctx.disagreement_cached() {
+                            // col 1 = magnitude, in `network_scale` units; the
+                            // fit predicts (search - static)/600, so 600x is
+                            // internal cp. Clamped both ends: the head is a
+                            // regressor with no bound, and an unclamped scale
+                            // would let one bad prediction delete or explode
+                            // the margin.
+                            // MAGNITUDE, so negatives are prediction error, not
+                            // meaning: the head is an unbounded regressor and
+                            // 0.02 % of its outputs come out below zero.
+                            let mag_cp = (f32::from(d[1]) * 600.0).max(0.0);
+                            let scale = (1.0 + c1 * (mag_cp / 100.0)).clamp(0.7, 1.5);
+                            // ** ONLY SCALE A POSITIVE MARGIN. **
+                            // `rfp_margin` can be NEGATIVE — at depth 1 with
+                            // `improving` and no TT hit it is
+                            // 24 - 2934*24/1024 = -44.7 — and scaling a
+                            // negative margin INVERTS this arm's meaning:
+                            // `eval - margin` grows, so a "wider" margin
+                            // prunes MORE, not less.
+                            // The justification is ARITHMETIC, from the
+                            // formula above -- deliberately NOT the node
+                            // counts. Bench totals were measured at 209936
+                            // (c1=-0.30) vs 209965 (c1=+0.30) vs 257749
+                            // (c1=1.0), which looks like a sign flip and is
+                            // not: perf study 70 pinned an INERT +-1 quiet
+                            // ordering jitter at up to +18.3 % on a 50-position
+                            // total, so swings of this size on a position set
+                            // are the instrument, not the arm. Whether this
+                            // guard is worth Elo is a question only games can
+                            // answer.
+                            if margin > 0 {
+                                margin = (margin as f32 * scale) as Value;
+                            }
+                        }
+                    }
+                }
+                if eval - margin >= beta && !rfp_off() {
                     #[cfg(feature = "foldcount")]
                     if fresh_eval {
                         crate::eval::nnue::foldcount::note_search(
@@ -3078,6 +3571,8 @@ impl Worker {
                     // verification (`nmp_min_ply != 0`, where recursive
                     // verification is disallowed) — trust the null value.
                     if self.nmp_min_ply != 0 || depth < params::NMP_VERIFY_DEPTH() {
+                        #[cfg(feature = "sota")]
+                        self.dis_census_result(cur, null_value, 0, 0);
                         return null_value;
                     }
                     // Verification search at THIS node (same ply, real moves)
@@ -3091,6 +3586,8 @@ impl Worker {
                     let v = self.search::<NonPv>(tt, stop, beta - 1, beta, depth - r, false, ply);
                     self.nmp_min_ply = 0;
                     if v >= beta {
+                        #[cfg(feature = "sota")]
+                        self.dis_census_result(cur, null_value, 0, 0);
                         return null_value;
                     }
                 }
@@ -3186,6 +3683,8 @@ impl Worker {
                         if !is_decisive(value) {
                             // Shift the surplus back onto our window.
                             self.stats.gate(Gate::ProbcutCut);
+                            #[cfg(feature = "sota")]
+                            self.dis_census_result(cur, value - (probcut_beta - beta), 0, 0);
                             return value - (probcut_beta - beta);
                         }
                     }
@@ -3208,6 +3707,8 @@ impl Worker {
             && tt_value >= check_probcut_beta
         {
             self.stats.gate(Gate::CheckCut);
+            #[cfg(feature = "sota")]
+            self.dis_census_result(cur, check_probcut_beta, 0, 0);
             return check_probcut_beta;
         }
 
@@ -3850,6 +4351,34 @@ impl Worker {
                 r += r * params::RED_ALLNODE_NUM()
                     / (params::RED_ALLNODE_DEPTH_MULT() * depth + params::RED_ALLNODE_DEPTH_BASE());
             }
+            // DIS-LMR (2026-08-07): reduce LESS where the head predicts a
+            // real search would move the eval a lot.
+            //
+            // This is the one channel that touches NEITHER the eval NOR a
+            // margin, which is the property all three refuted arms violated:
+            // DIS-RFP scaled a margin (null over 3000 games, falsification arm
+            // best), and both DIS-EVAL forms perturbed the eval (-97.1 naive,
+            // -35.6 orthogonalised). The standing conclusion there is that the
+            // eval and its thresholds are a JOINTLY CALIBRATED system and a
+            // per-position adjustment breaks that calibration everywhere at
+            // once. A reduction is a "how much to search here" decision, so it
+            // leaves the eval distribution and every tuned threshold alone.
+            //
+            // The MAGNITUDE column is the right one: r^2 = 0.442 held-out
+            // beyond a flexible function of the static eval. Its predictions
+            // average ~180 cp, so the term is normalised by 100 cp and scaled
+            // by the coefficient; a whole ply is 1024 here.
+            //
+            // The poll is only valid straight after a FRESH eval (the scratch
+            // holds that position's FT vector), so this reads the flag rather
+            // than polling unconditionally.
+            #[cfg(feature = "sota")]
+            {
+                let cl = dis_lmr_c();
+                if cl != 0.0 && dis_mag_cp > 0.0 {
+                    r -= (cl * (dis_mag_cp / 100.0)) as i32;
+                }
+            }
             #[cfg(feature = "search-control")]
             let trace_final_reduction = r;
             #[cfg(feature = "search-control")]
@@ -3926,6 +4455,10 @@ impl Worker {
                 let mut c70_research_nodes = 0u64;
                 #[cfg(feature = "census70")]
                 let mut c70_researched = false;
+                #[cfg(feature = "sota")]
+                {
+                    census_lmr_red += u32::from(d < new_depth);
+                }
                 value = -self.search::<NonPv>(tt, stop, -(alpha + 1), -alpha, d, true, ply + 1);
                 #[cfg(feature = "census70")]
                 let c70_scout_nodes = self.nodes - c70_scout_before;
@@ -3954,6 +4487,10 @@ impl Worker {
                     new_depth += params::LMR_DEEPER_STEP() * Depth::from(do_deeper)
                         - params::LMR_SHALLOWER_STEP() * Depth::from(do_shallower);
                     if new_depth > d {
+                        #[cfg(feature = "sota")]
+                        {
+                            census_lmr_rer += 1;
+                        }
                         #[cfg(feature = "search-control")]
                         let trace_nodes_before_research = self.nodes;
                         #[cfg(feature = "census70")]
@@ -4451,6 +4988,9 @@ impl Worker {
                 raw_eval,
                 generation,
             );
+            // DIS-CENSUS truth for the normal path.
+            #[cfg(feature = "sota")]
+            self.dis_census_result(cur, best_value, census_lmr_red, census_lmr_rer);
         }
 
         // Correction-history update (design/10 §3.10 step 9, Wave-F item 21):
@@ -5621,8 +6161,85 @@ impl Worker {
             Self::best_move_instability(tot_best_move_changes, self.pool.shells.len());
         let effort = Self::high_best_move_effort(self.root_moves[0].effort, self.nodes);
 
+        // DIS-TM (2026-08-07, owner's design): keep thinking while the
+        // disagreement head says the ROOT eval is still unresolved, with the
+        // bar RISING WITH DEPTH.
+        //
+        // WHY THIS ESCAPES THE FINDING THAT KILLED THE OTHER ARMS. Four
+        // per-node consumers (RFP margin, eval correction x2, LMR reduction)
+        // read null-to-negative over ~10,500 games, and the explanation was
+        // that the head predicts `search - static` while THE SEARCH ALREADY
+        // COMPUTES THAT BY SEARCHING — the information is not new, only
+        // earlier, and the only nodes where earlier helps are the ones the
+        // search declines to expand, which is exactly where the pruning
+        // margins are most heavily tuned.
+        //
+        // The stop decision is the one place the search is about to STOP
+        // LOOKING ALTOGETHER. Information about a position it is declining to
+        // examine is redundant with nothing, and time management here is far
+        // less tuned than the pruning margins it inherited.
+        //
+        // THE DEPTH SCALING IS LOAD-BEARING, not a knob. The head was trained
+        // against a 4000-node search (~depth 8-10), so once the live search is
+        // deeper than that its own knowledge dominates and the prediction is
+        // stale. A FIXED bar would fire on nearly every position at low depth
+        // and never at high; `DIS_TM_T0 * depth` makes the head's vote decay
+        // exactly as the search overtakes what it was trained to predict.
+        #[cfg_attr(not(feature = "sota"), allow(unused_mut))]
+        let mut dis_factor = 1.0f64;
+        #[cfg_attr(not(feature = "sota"), allow(unused_mut, unused_variables))]
+        let mut dis_remaining = 0.0f32;
+        #[cfg(feature = "sota")]
+        {
+            let c = dis_tm_c();
+            if c != 0.0 && self.root_dis_mag > 0.0 {
+                // REMAINING PREDICTED MOVEMENT, not the raw prediction.
+                //
+                // The head says a search will move this root eval by
+                // `root_dis_mag`. The live search has already moved it by
+                // |score_now - static_root|. What is still worth buying time
+                // for is the DIFFERENCE: budget predicted, minus budget spent.
+                //
+                // The first version of this arm used the raw prediction with a
+                // bar of T0*depth, and the census killed it — against a 145 cp
+                // prediction it pinned at the 1.5 cap through depth 5 and went
+                // SILENT from depth 6, i.e. switched off exactly where the stop
+                // decision is made (depth 12-20). It was a constant per
+                // position, so the only thing that varied was the bar.
+                //
+                // This form is live: it falls as the search finds the movement
+                // the head predicted, and reaches zero on its own once the
+                // prediction is spent — no depth term needed, because the
+                // search's own progress does the scaling.
+                //
+                // TWO-SIDED, and that is the whole point at a real TC. The
+                // clock is FIXED, so this arm cannot buy time — it can only
+                // MOVE it between moves. A one-sided `1 + c*max(0, ...)` was
+                // measured by the census at a mean factor of 1.177 with 0 % at
+                // the cap: that is not redistribution, it is asking for 18 %
+                // more time on essentially every move and letting the rest of
+                // TM claw it back later. Pivoting on the MEDIAN remaining
+                // (census: dismag median 179, p25 142, p75 217) makes the arm
+                // spend above the median and SAVE below it, which is the
+                // behaviour worth testing.
+                let found = (best_value as f32 - self.root_static_eval).abs();
+                let remaining = (self.root_dis_mag - found).max(0.0);
+                let excess = remaining - params::DIS_TM_PIVOT() as f32;
+                // Traced, because the PIVOT must be the median of THIS
+                // quantity and not of `dismag`. Setting it from the dismag
+                // median put 76 % of decisions below the pivot (census, mean
+                // factor 0.895) — the arm saved time nearly always instead of
+                // being mean-neutral. Deriving `remaining` back out of the
+                // factor is not sound once the clamp bites, so log it.
+                dis_remaining = remaining;
+                // Capped: this multiplies a TIME budget, and an unbounded
+                // factor on a bad prediction would burn a whole game's clock
+                // on one move. `maximum` is still the hard wall above this.
+                dis_factor = (1.0 + f64::from(c * excess / 100.0)).clamp(0.7, 1.5);
+            }
+        }
         let mut total_time =
-            self.tm.optimum() as f64 * falling_eval * reduction * instability * effort;
+            self.tm.optimum() as f64 * falling_eval * reduction * instability * effort * dis_factor;
         // The soft-stop factor product is multiplicative, so a future
         // head-driven TM factor (σ̂ / WDL / score-contestedness) is a one-line
         // re-insertion here. The speculative versions were deleted 2026-08-01
@@ -5648,6 +6265,7 @@ impl Worker {
         if std::env::var_os("ARCHON_TM_TRACE").is_some() {
             eprintln!(
                 "TMTRACE d={} opt={} max={} fe={:.3} red={:.3} inst={:.3} eff={:.3} \
+                 dis={:.4} dismag={:.0} disrem={:.0} \
                  total={:.0} elapsed={:.0} chg={:.2} \
                  bv={} prevavg={} iterold={} dprev={} diter={} stab={}",
                 self.root_depth,
@@ -5657,6 +6275,24 @@ impl Worker {
                 reduction,
                 instability,
                 effort,
+                // DIS-TM census columns. `dis` is the factor actually applied
+                // and `dismag` the root prediction that produced it, so a run
+                // can be summarised into "how often did this fire, by how
+                // much, at what depth" WITHOUT spending a single game — the
+                // cheap screen that says whether a (c, T0) pair is inert,
+                // saturated at the cap, or doing something in between.
+                dis_factor,
+                {
+                    #[cfg(feature = "sota")]
+                    {
+                        self.root_dis_mag
+                    }
+                    #[cfg(not(feature = "sota"))]
+                    {
+                        0.0f32
+                    }
+                },
+                dis_remaining,
                 total_time,
                 elapsed,
                 tot_best_move_changes,

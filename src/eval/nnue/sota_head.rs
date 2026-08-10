@@ -538,6 +538,33 @@ impl HeadScratch {
         }
     }
 
+    /// The activated feature-transformer vector left behind by the last
+    /// [`SotaHead::forward_into`] on this scratch.
+    ///
+    /// **This is what makes a disagreement poll affordable.**
+    /// [`SotaHead::disagreement`] re-runs `activate_ft` from the accumulators,
+    /// which is `i8_into_shaped` — measured at **53.61 % of this engine's
+    /// L1-miss latency**, the single hottest thing in the binary. Paying it a
+    /// second time roughly doubles eval cost at every polled node, which is
+    /// why that method's own doc says a caller polling on a large fraction of
+    /// nodes has misunderstood it.
+    ///
+    /// The value pass already produced this exact vector for this exact
+    /// position, so a poll that reuses it costs only the head's dense layers
+    /// (768x32 + 32x2 = 24,640 MACs, ~1.9x the value head's own tail) and no
+    /// extra memory traffic at all.
+    ///
+    /// **Validity is the caller's contract**, and it is narrow: the contents
+    /// belong to whichever position last ran `forward_into` on this scratch.
+    /// Read it only immediately after evaluating the node you are asking
+    /// about, before any child is evaluated. There is deliberately no
+    /// bookkeeping here to enforce that — a stale-flag would cost the hot path
+    /// something to protect a cold caller.
+    #[inline]
+    pub fn last_ft(&self) -> &[u8; L1] {
+        &self.ft
+    }
+
     /// A scratch filled with values no forward pass can legitimately leave
     /// behind — the test-only stand-in for "the previous position's buffer".
     ///
@@ -732,7 +759,10 @@ impl SotaHead {
         threat: &[[i16; L1]; 2],
         stm: Color,
     ) -> Option<[f32; DIS_OUTS]> {
-        let dis = self.dis_head.as_ref()?;
+        // Early-out BEFORE the activation, not after: on a net with no DIS1
+        // section this whole call is one null check, so a caller may poll
+        // unconditionally without branching on the net's shape.
+        self.dis_head.as_ref()?;
         let mut ft = [0u8; L1];
         activate_ft(
             pst,
@@ -742,7 +772,21 @@ impl SotaHead {
             self.threat_shift,
             &mut ft,
         );
-        let out = dis.forward(&ft);
+        self.disagreement_from_ft(&ft)
+    }
+
+    /// [`disagreement`](Self::disagreement) on an ALREADY-ACTIVATED feature
+    /// vector — the affordable form of the poll.
+    ///
+    /// Pair it with [`HeadScratch::last_ft`], whose doc carries the cost
+    /// argument and the validity contract: the vector must belong to the
+    /// position being asked about. Same `None` semantics as its sibling — a
+    /// net without a DIS1 section, or a non-finite result, yields `None`
+    /// rather than a NaN that would silently poison a search margin.
+    #[inline]
+    pub fn disagreement_from_ft(&self, ft: &[u8; L1]) -> Option<[f32; DIS_OUTS]> {
+        let dis = self.dis_head.as_ref()?;
+        let out = dis.forward(ft);
         // Same guard, and the same rationale, as `sigma`: a consumer must get
         // `None` rather than a NaN that silently poisons a search margin.
         out.iter().all(|v| v.is_finite()).then_some(out)

@@ -128,12 +128,19 @@ else
     MODE=(nodes="$NODES" tc=inf)
 fi
 
+# PGNOUT=path.pgn adds a PGN with per-move {score/depth nodes} comments —
+# the raw material for loss forensics (searchopt/). Off by default: a plain
+# anchor run doesn't need the disk.
+PGNARGS=()
+[ -n "${PGNOUT:-}" ] && PGNARGS=(-pgnout file="$PGNOUT" notation=san nodes=true seldepth=true append=false)
+
 "$FASTCHESS" \
   -engine cmd="$ENGINE" name=archon proto=uci option.EvalFile="$(readlink -f "$NET")" \
   -engine cmd="$SF" name="${SFNAME:-$SFTAG}" proto=uci \
   -each "${MODE[@]}" \
   -openings file="$BOOK" format=epd order=random \
   -games 2 -rounds $((GAMES / 2)) -repeat -concurrency "$CONC" \
+  "${PGNARGS[@]}" \
   -recover -ratinginterval 25 > "$OUT" 2>&1
 
 { echo "=== vs ${SFNAME:-$SFTAG} (${TC:-${NODES}n}): $(basename "$NET") ==="

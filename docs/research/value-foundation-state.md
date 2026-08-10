@@ -621,6 +621,50 @@ imminent (S5 λ probe finishing).**
 > rather than fixed λ (policy dominance was an accident of scale, not
 > a choice).
 
+## 2026-08-08 — D61-FOCAL (focal-weighted value loss): REJECTED at the pre-registered rule
+
+Owner's idea: spend the small net's capacity on hard positions by weighting the
+value loss per sample. Built noise-immune: weight = |sig - target_score|^1.0
+against the SCORE-ONLY target (the blended residual is 29.7% game-outcome
+noise, which naive focal weighting would amplify), stop-gradiented, capped at
+8x batch mean, weight-normalised (no LR shift). Recipe otherwise D59 verbatim
+including the LR path, so D59's full 10-gate ladder is the control.
+
+Ladder (600 games/gate): -17.4, -27.9, -26.7, -30.2, -20.3, -17.4, -13.9,
+-17.4, -31.4, -11.0. **Pooled -21.3 vs control -6.8 (6,000 games each): the
+focal objective costs ~14.5 +/- 7.6 Elo.** REJECTED per the pre-registered
+pooled rule; no confirm spent.
+
+Two honest notes. (1) The sb100 screen rule would have rejected it at -27.9 vs
+-0.0; the owner's 500-sb extension was the right process call even though the
+conclusion matched — gates 250-400 showed a real recovery (-30 -> -14) that a
+100-sb screen could never distinguish from a slow-burner that pays. It didn't
+pay: sb450 (-31.4) broke the trend and the pooled gap never closed. (2) The
+heldout drift up (+1.3%) was the intended trade showing in the metric; games
+priced the trade negative.
+
+Next value-lane run: the fishpack relabel fine-tune, once relabel-fishpack-v1
+(~$58, 404 shards, in flight) merges. GPU idle until then by choice — no
+well-motivated run exists in the gap, and burning GPU to look busy is how bad
+experiments happen.
+
+## 2026-08-07 — D59 (D53 recipe x5 from canonical): REJECTED, recipe exhausted
+
+D56 extended the promoted D53 recipe (20% oracle-uho1, 30% teacher, lr 4e-5)
+from 100 to 500 sb and read -4.75 +/- 7.66 — but warm-started from D55's net,
+itself -3.82 vs canonical, so it tested recipe-plus-handicap. D59 removed that
+confound: same recipe, same length, warm from CANONICAL.
+
+Gate ladder (600 games each, 25k nodes): -13.90, -0.00, -0.00, -2.90, -3.47,
+-7.53, -6.37, -12.17, -17.97, -4.05. Pooled ~ **-5.5 over 5,400 games** —
+statistically identical to D56's -4.75 from the weak parent.
+
+**Pre-registered verdict fires: the parent was never the explanation. The D53
+recipe has nothing further to give at ANY parent — the oracle-uho1 corpus is
+consumed. Canonical (d53mix20-sb100-s600) stands.** Next gains on the value
+lane need new data (larger/timed oracle campaigns) or a new recipe, not more
+epochs of this mix.
+
 ## 2026-07-26 TM FRONT-LOAD BUG — DIAGNOSED + FIXED (depth-redenomination)
 
 **Symptom (user, GUI + 2+1 probe):** ARCHON burns 108s of a 120s base by move
@@ -699,6 +743,32 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## 2026-07-26 ~11:2x D47S HALFWAY HEALTH — in-frame heldout ACCELERATING
 ## down: sb10 0.010787 → sb50 0.010768 → sb120 0.010517 (−2.3% in the last
 ## 70sb as the cosine bites). Run healthy; anneal watch continues.
+
+## ★ OUTCOME (2026-08-10 ~07:30): the d62a premise was REFUTED at power.
+## exp-0169/exp-0170: d62a-sb50 (relabel) −16.23 ± 7.67 and d62b-sb50
+## (teacher control) −8.11 ± 7.40, both vs canonical, 3000 games each at
+## 25k nodes. The 600-game gate ladder (+13.9/+9.85 for d62a) was noise —
+## paired relabel advantage −8.1 ± 10.7, i.e. GONE. Both fine-tunes LOSE
+## to canonical: a 100sb fine-tune of the incumbent is the wrong
+## instrument for ranking data (eval-search co-adaptation dominates; the
+## 2026-07-19 dead-end finding, re-measured). The 700sb warm-restart plan
+## below is therefore NOT triggered by its own precondition — owner call
+## pending. The corpus assets stand regardless: fishpack32-sf5k (1.567B,
+## first-party 5k labels, ledger'd) + the growing sfdev5k-a wave.
+
+## ★ PRE-REGISTERED PLAN (user, 2026-08-09 ~22:30) — the d62a follow-on
+
+> **If d62a works** (fine-tune on `fishpack32-sf5k.shuf.bin`, the SF-dev
+> 5k-node relabel of fishpack32, beats the d62b control ladder: sb50 −2.3
+> ± 16.8, sb100 −12.2 ± 17.2), **the next step is a WARM RESTART of the
+> canonical net for 700sb** with a data mix containing (a) the relabeled
+> fishpack32-sf5k corpus (~1.567B records, ledger id `fishpack32-sf5k`) and
+> (b) the sfdev5k-a mining wave (ARCHON-vs-SFdev 5k-node games, positions
+> relabeled by SF-dev at 20k nodes, `data/nnue/selfplay/sfdev5k-a-c*`;
+> ~15M and growing ~9–15M/day — merge with `merge_shards.py --dedupe` +
+> one ledger row before use). Mix ratios TBD at launch (the mining wave is
+> ~1% the size of fishpack; decide oversampling then). Winner of d62a/d62b
+> also gets the pre-registered 3000-game confirm vs canonical.
 
 ## ★★★★ TAKEOVER CHECKPOINT 2026-07-27 ~03:0x — READ THIS FIRST.
 ## Everything below it is detail; the ~12:4x checkpoint further down is

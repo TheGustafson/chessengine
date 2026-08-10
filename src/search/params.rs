@@ -1397,6 +1397,32 @@ crate::constants! {
     /// milliseconds, or nodes under `nodestime` (doc 12 §3.11), like every
     /// budget the soft stop compares against.
     pub ONE_REPLY_TOTAL_TIME_CAP: f64 = 561.7;
+    /// DIS-TM: the bar, in internal centipawns, on REMAINING predicted
+    /// movement — the head's root prediction minus what the live search has
+    /// already moved the eval. The arm buys time only above this.
+    ///
+    /// No depth term: an earlier version scaled the bar by depth and the
+    /// census showed it pinned at the cap through depth 5 then went silent
+    /// from depth 6, i.e. off exactly where the stop decision happens. The
+    /// remaining-movement form scales itself, because the search's own
+    /// progress consumes the budget. Inert unless `ARCHON_DIS_TM_C` is set.
+    pub DIS_TM_T0: f64 = 40.0;
+    /// DIS-TM pivot: the REMAINING-movement value the arm treats as neutral,
+    /// internal cp. Above it the arm spends time, below it the arm saves time.
+    ///
+    /// Set to the MEASURED median of REMAINING itself — census over 578 live
+    /// decisions: p10 0, p25 84, **median 127**, p75 178, p90 211 — so the arm
+    /// is mean-neutral by construction. At a real TC the clock is fixed, so an
+    /// arm that only ever adds time is not redistributing, it is front-loading
+    /// the game and letting the other TM factors pay for it later.
+    ///
+    /// FIRST ATTEMPT USED THE WRONG DISTRIBUTION: the median of `dismag` (179)
+    /// rather than of `remaining`. `remaining = dismag - found` is
+    /// systematically smaller because `found` grows as the search moves the
+    /// eval, so 76 % of decisions fell below the pivot and the arm became a
+    /// net time-SAVER (mean factor 0.895) instead of neutral. Pivot on the
+    /// quantity the comparison actually uses, not on its parent.
+    pub DIS_TM_PIVOT: f64 = 127.0;
     /// fallingEval factor 1: constant term of `(11.87 + 2.21·Δavg + 1.0·Δiter)
     /// / 100`, clamped to `[0.572, 1.708]` — think longer when the score drops.
     pub FALLING_EVAL_BASE: f64 = 11.87;

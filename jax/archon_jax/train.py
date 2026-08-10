@@ -225,7 +225,10 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
                                        getattr(cfg, "pow_exp", 2.0),
                                        pol_soft=batch.get("_pol_soft"),
                                net_offset=cfg.net_offset, net_scale=cfg.net_scale,
-                               qp_asymmetry=cfg.qp_asymmetry, weight=batch.get("weight"))
+                               qp_asymmetry=cfg.qp_asymmetry, weight=batch.get("weight"),
+                               focal_gamma=getattr(cfg, "focal_gamma", 0.0),
+                               focal_ref=batch.get("target_score"),
+                               focal_wmax=getattr(cfg, "focal_wmax", 8.0))
             # L1 on the post-CReLU activations = what the engine pays for
             # (density-linear l1_dot). Density metric = deploy-relevant
             # fraction of nonzero clamped activations.
@@ -248,15 +251,30 @@ def make_update_step(arch: ArchSpec, cfg: TrainConfig, ft_impl: str | None = Non
                               pol_soft=batch.get("_pol_soft"),
                               dis_pred=dis_pred,
                               dis_lambda=float(cfg.dis_lambda),
+                              # Score-only residual when the run asks for it.
+                              # NOTE this deliberately reads the ORIGINAL
+                              # batch's score target: the teacher blend above
+                              # rewrites batch["target"], and blending the dis
+                              # residual with a teacher would make the head
+                              # predict a mixture rather than our own error.
+                              dis_target=(batch.get("target_score")
+                                          if getattr(cfg, "dis_score_only", False)
+                                          else None),
                                net_offset=cfg.net_offset, net_scale=cfg.net_scale,
-                               qp_asymmetry=cfg.qp_asymmetry, weight=batch.get("weight"))
+                               qp_asymmetry=cfg.qp_asymmetry, weight=batch.get("weight"),
+                               focal_gamma=getattr(cfg, "focal_gamma", 0.0),
+                               focal_ref=batch.get("target_score"),
+                               focal_wmax=getattr(cfg, "focal_wmax", 8.0))
         value_logit, pol_logits, _ = forward(params, arch, batch, ft_impl)
         return total_loss(value_logit, pol_logits, batch["target"],
                           batch.get("pol_target_id"), cfg.pol_lambda,
                           getattr(cfg, "pow_exp", 2.0),
                           pol_soft=batch.get("_pol_soft"),
                                net_offset=cfg.net_offset, net_scale=cfg.net_scale,
-                               qp_asymmetry=cfg.qp_asymmetry, weight=batch.get("weight"))
+                               qp_asymmetry=cfg.qp_asymmetry, weight=batch.get("weight"),
+                               focal_gamma=getattr(cfg, "focal_gamma", 0.0),
+                               focal_ref=batch.get("target_score"),
+                               focal_wmax=getattr(cfg, "focal_wmax", 8.0))
 
     import optax
 

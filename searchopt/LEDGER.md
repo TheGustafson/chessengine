@@ -5,6 +5,49 @@ known.** Add to this file rather than to prose elsewhere.
 
 ---
 
+## 2026-08-08 — THE STALE-ANCHOR CHAIN: TT carryover causes the NEITHER blunder class, is +39 Elo net anyway; verdict = fix the eval (labels), not the search
+
+Full chain, every rung measured, all tools scripted and reusable:
+
+1. **Fresh corpus**: 1000 games vs SF18-dev eca43a97, equal 25k nodes, both PGO
+   (−86.9 ± 13.2; PGN with per-move telemetry via vs_stockfish.sh PGNOUT).
+2. **Oracle audit** (mine_losses.py, oracle=eca43a97 @120k, now shardable
+   --shard i/n): 7,606 playable moves from 413 lost games → 77 wp≥0.10
+   blunders (0.19/lost game, 13.8 game-equivalents ≈ ~10 Elo of the −87).
+   337/413 losses contain NO discrete blunder — the gap is grind (weights).
+3. **Classify** (25k budget): OURS 50 / BOTH 16 / NEITHER 149 / artifact 4.
+4. **OURS split by nodes-to-find**: 32 search-slow (median 4× budget),
+   13 unstable (found-then-lost), 5 never-found ≤1.6M. A "starved quiet"
+   census initially read 12/32; re-derivation with both moves forced at the
+   full 25k killed it to **3/32** (the census instrument — shallow-forced vs
+   free-final — was never nulled and does not survive; do not reuse it).
+5. **NEITHER = carryover, causally**: warm replay (game state rebuilt move
+   by move) reproduces the played blunder **149/149**; cold avoids 149/149;
+   the cold pick is oracle-better in **126/149**, recovering **77%** of the
+   played→best wp gap; random-move null on the same rows reads **−98%**
+   (selection artifact excluded). Bisect: Clear Hash (TT only, histories
+   stay warm) cures **108/149** → TT is the dominant carrier.
+6. **Mechanism** (searchdbg warm-vs-cold traces, 10 specimens): stale entries
+   hold the incumbent's score inflated (6/10 show >30 raw cp same-depth
+   inflation vs the cold twin), the correction lands as a cliff, and a
+   mediocre challenger takes the argmax by **<15 raw cp in 8/10** — after
+   which stale confirmation locks it in (early-lock variant more common than
+   the last-iteration cliff, 7/10 falling-incumbent flips, only 3/10 within
+   one iteration of budget end).
+7. **Net price** (ARCHON_TT_CLEAR_PER_GO arm, engines/bin/archon-ttclear-pgo,
+   1000 games self-play, 25k equal nodes): carryover is worth
+   **+39.4 ± 12.3 Elo** (LOS 100%). The mechanism that causes the ~10 Elo
+   blunder tail pays +39 net.
+
+**VERDICT (owner ratified the direction 2026-08-08): no search-side patch.**
+The tail's enabler is eval: whisker separations between 631-cp-different moves
+and ±130 cp inter-search swings are weight properties, and SF runs the same
+carryover architecture without the tail. After the fishpack-sf5k fine-tune,
+re-run this pipeline (mine → classify → warm/cold → bisect) on the new net and
+re-measure the NEITHER class. Only if it survives better labels does a
+carryover-preserving arm (age-aware root cutoff trust etc.) get designed, with
+pre-registered gates.
+
 ## THE EVAL TRAP — 2026-07-28, recorded because the axiom alone did not prevent it
 
 An agent briefed on A1 ("eval is at par or better"), which had read it in START-HERE.md and
@@ -1953,3 +1996,394 @@ it, and it cost one hour.
 **Standing consequence:** `TM_SCORE_C` stays at its default 0. The front-load
 arm (`C=+2048`, −64.9 ± 20.9 at nodestime) is NOT re-tested at real TC — it
 lost on both the instrument and the hypothesis, so there is nothing to confirm.
+
+---
+
+## 2026-08-07 — THE DISAGREEMENT HEAD HAS REAL SIGNAL AND THREE CONSUMERS FAILED TO SPEND IT
+
+**Status: the head is TRAINED and MEASURED; every search integration tried is
+REFUTED. ~7,500 games. No +Elo anywhere.**
+
+### What the head is, and what it is NOT
+
+The shipped `dis_proj` head is 768→32→2 reading `hl1` behind a `stop_gradient`.
+Two targets were tried:
+
+1. **The value head's OWN residual** (`target − sigmoid(value_logit)`), which is
+   what D51/D57/D58 trained. **Structurally empty.** In-sample it fits 51–64 %;
+   on 1M heldout positions it is `corr(sgn,r) = +0.0416`, **r² = 0.0017**, and
+   the best possible affine rescale buys −0.27 %. Switching to the score-only
+   column (D58, `dis_score_only`) changed nothing: +0.0428 vs a D57 control of
+   +0.0446 run in the same job.
+   **Mechanism, and it generalises: a converged model's residual against its own
+   features is unpredictable by construction** — any error structure visible in
+   those features would already be inside the value tail. No target inside that
+   framing escapes it. Do not re-run this.
+
+2. **SEARCH-vs-STATIC disagreement** (`search(4000 nodes) − static`), which the
+   net is NOT trained on. **Real.** Held-out, sequential (game-ordered) split,
+   300k positions: signed r² = 0.858 raw, **0.611 after removing a flexible
+   10-term function of the static eval**; magnitude 0.442 partial. It IMPROVES
+   with data (0.507 → 0.611 from 60k → 300k), the opposite of the memorisation
+   signature. Piece-count null r = +0.006, so it is not phase. Adding a
+   `static × material` interaction to the control moves it 0.611 → 0.604, so it
+   is not the outer-shape transform either.
+
+### The three consumers, all refuted
+
+| arm | coefficient | Elo (n=1000 each) |
+|---|---|---|
+| DIS-RFP margin scale | +0.30 / +0.10 / **−0.10** | +1.04 / +2.08 / **+6.60** |
+| DIS-EVAL, mixed frame | +0.5 | −52.51 ± 13.82 |
+| DIS-EVAL, correct frame | +0.5 | −97.13 (506 games, stopped) |
+| DIS-EVAL orthogonalised | +0.5 / −0.5 | −35.56 / −22.62 |
+
+**DIS-RFP is null and its FALSIFICATION arm scored highest.** Three
+sign-spanning coefficients, 3000 games, no win anywhere, and the arm that
+prunes hardest where the eval is least trustworthy read best. Per rule 6 that
+is a sign problem, not a tuning problem.
+
+**DIS-EVAL loses in BOTH directions, and the mechanism's direction loses more.**
+
+### Two traps this cost real games to find — both worth remembering
+
+**(a) THE HEAD'S SIGNED OUTPUT IS 79 % A GLOBAL EVAL RESCALE.** Measured:
+`pred_cp ≈ −0.4361·static + 23.7`, corr −0.793, because search regresses extreme
+evals toward zero (slope 0.62). So adding it whole multiplies the eval by
+`1 − 0.436·c` — at c=0.5 a **−21.8 % rescale**. The eval scale is a SETTLED
+interior optimum here (6000 games: SF parity −18 Elo, over-shrinking −12, "the
+frame is NOT a lever"), so the naive arm was silently re-running a refuted
+experiment. Only **60.9 %** of the prediction variance (154.6 cp std) is
+genuinely per-position. Orthogonalising against that line is what took −97 to
+−35.6 — an improvement that still loses.
+
+**(b) `nnue-eval` IS RAW, SEARCH SCORES ARE SHAPED.** `nnue-eval` calls
+`SotaContext::evaluate` (inner value); search goes through `eval::evaluate` →
+`apply_outer_shape`, which scales by `(EVAL_BLEND_BASE + material)/BASE`, mean
+**1.13×**. A target built from `search − nnue_eval` mixes two frames and carries
+the whole shape transform; adding it back to a shaped eval applies the shape
+TWICE. Fixing it made the target MORE learnable (r² 0.821 → 0.858) — a frame fix
+should always do that, and that is the check to run when unsure.
+
+### The standing conclusion
+
+**The eval and its margins are a jointly-calibrated system.** Every pruning
+threshold and the whole tunable set are fitted to the eval's ACTUAL
+distribution. Injecting a 154 cp-std per-position adjustment breaks that
+calibration everywhere at once, and the damage exceeds what the better eval
+buys. This is "eval is an AXIOM, not a hypothesis" appearing as a measurement
+rather than a maxim.
+
+**A better estimate of what search would return is not, by itself, worth Elo to
+a search already tuned around the estimate it has.**
+
+### What is LANDED and reusable regardless
+
+* `HeadScratch::last_ft()` + `SotaHead::disagreement_from_ft()` — the poll
+  reusing the value pass's FT vector instead of re-running `activate_ft`
+  (`i8_into_shaped`, 53.61 % of L1-miss latency). 24,640 MACs, no extra memory
+  traffic. All four dis-head tests pass, including the dense hand-reference.
+* `EvalContext::disagreement_cached()`, with the validity contract documented:
+  the vector belongs to the last FRESH eval, so a TT-served node must not poll.
+* `jax/tools/dishead_fit.py` — fits the head OFFLINE on cached `hl1`. The
+  `stop_gradient` makes this EXACT, not an approximation, and it is ~2 min on
+  CPU against ~70 min of GPU per trainer run.
+* `jax/tools/dishead_inject.py` / `searchdelta_probe.py` / `searchdelta_fit.py`
+  — record→FEN decode, corpus build (4 ms/position), ridge probe with the
+  piece-count and static-eval nulls.
+* `d49_launch.sh` **BUGFIX**: a run with `ema_decay: 0.0` writes no
+  `-ema-raw.bin`, so the resume glob found nothing, `RESUME` stayed 0 and the
+  launcher re-ran a COMPLETED run from scratch forever. Falls back to plain
+  `-raw.bin` now.
+* Both search arms stay in-tree behind `ARCHON_DIS_RFP_C1` / `ARCHON_DIS_EVAL_C`,
+  default 0.0, **verified bit-identical (`bench` 284874)**.
+
+### FOURTH CONSUMER: DIS-LMR — also null (added after the panel above)
+
+The one channel touching NEITHER the eval NOR a margin: `r -= c * mag_cp/100`
+on the LMR reduction, so it changes only HOW MUCH to search and leaves the eval
+distribution and every calibrated threshold alone.
+
+| c | Elo (n=1000) |
+|---|---|
+| −100 (falsification) | −5.56 ± 13.21 |
+| **+100** | **+1.74 ± 13.40** |
+| +250 | −3.13 ± 13.61 |
+| +500 | −1.39 ± 13.21 |
+
+**Null.** At ±100 the falsification arm was, for the FIRST time in this series,
+worse than the mechanism arm (+1.74 vs −5.56) — every earlier panel had the
+predicted-worst direction reading best. That looked like the mechanism finally
+biting. **It did not survive the sweep:** +250 and +500 both go slightly
+negative (−3.13 and −1.39), so the 4-point curve just wanders inside ±5 of zero at ±13 bars. A
+correct sign ordering at ONE coefficient is not evidence; the curve is.
+
+**So the reduction channel is null too, and the "it does not touch the eval"
+argument did not rescue it.** That weakens the joint-calibration explanation as
+a COMPLETE story: if breaking eval calibration were the only problem, a channel
+that avoids it should have shown something.
+
+### The honest bottom line
+
+**Four consumers, ~10,500 games, no +Elo.** A head with a large, well-controlled
+offline signal (r² = 0.611 partial, improving with data, surviving phase and
+shape controls) produced nothing through margin scaling, eval correction
+(naive or orthogonalised), or reduction adjustment. The offline number is real
+and the Elo is not there; those are both facts and the second one governs.
+
+### FIFTH ATTEMPT: A DIFFERENT TARGET (best-move instability) — TOO WEAK, no games spent
+
+The ledger's own closing suggestion was that the problem is UNITS, not the
+consumer: centipawns are not something search consumes, so try a target whose
+units it does. Best-move instability — how often the PV move changes across
+depths, as a rate `changes/(depths-1)` — is dimensionless, is a property of the
+position rather than the eval's frame, and is what actually costs Elo (a wrong
+SCORE that still picks the right move costs nothing; this project's standing
+bar is about blunders, which are wrong MOVES).
+
+Extracted with `tools/ops/data/movestability.py` (UCI `go nodes 4000`, one
+entry per DEPTH — aspiration re-searches emit several `info depth` lines per
+depth and counting them all would measure re-search churn, not mind changes).
+60k positions, healthy distribution: mean 2.61 changes, 11.7 % perfectly
+stable, depths 3-17, rate mean 0.386 std 0.234.
+
+**Predictable, but with a LOW CEILING:**
+
+| probe | partial r^2 (beyond a flexible static-eval basis) |
+|---|---|
+| piece-count null | 0.031 |
+| static-eval null | 0.038 |
+| linear ridge on hl1 | **0.0786** |
+| **768→32→1 MLP on hl1** | **0.0833** |
+
+**The MLP barely beats the linear probe (0.0786 → 0.0833), and that is the
+finding.** On the cp target capacity mattered hugely (0.363 linear → 0.611
+MLP); here it buys nothing, which says the information is not in the trunk at
+all rather than being nonlinearly encoded. Instability is decided by tactics
+the static features do not represent.
+
+**No games were spent.** The ceiling test was pre-registered as the gate, and
+a target 7x weaker than one that already produced zero Elo across four
+consumers does not earn a match.
+
+### WHY NONE OF THIS WORKED — RETRACTED, then MEASURED
+
+**RETRACTION (2026-08-07).** This section previously claimed the head fails
+because it "predicts what the search computes anyway, so the information is
+redundant — the same information, only earlier." That was asserted, never
+measured, and it is WRONG on its own terms: at a pruning gate the search has
+NOT computed what searching would reveal — that is precisely why it is using a
+heuristic. The information genuinely is new at the moment the arm acts. Do not
+cite the redundancy story; it is retracted.
+
+**THE MEASURED EXPLANATION: DISTRIBUTION SHIFT.** The head was trained on
+CORPUS ROOT positions (uho-band0-5 records: quiet-filtered, one per game) and
+then queried at INTERIOR SEARCH NODES. It does not survive the move:
+
+| where the head is asked | raw r on \|search - static\| |
+|---|---|
+| root positions (its training distribution) | **+0.809** |
+| interior RFP-eligible nodes (where 4 arms queried it) | **+0.250** |
+
+Instrumented in-engine (`ARCHON_DIS_CENSUS=1`, 8,423 joined node pairs at
+depth 12), predicting the node's ACTUAL |searched - static|:
+
+| predictor | r^2 |
+|---|---|
+| static eval only | 0.5379 |
+| RFP's OWN inputs (eval, depth, improving, opp_worsening, tt_hit, corrhist) | 0.5704 |
+| dis alone | 0.0627 |
+| RFP inputs + dis | 0.5701 (**no gain**) |
+| **PARTIAL corr(dis, actual \| RFP inputs)** | **-0.0413, r^2 0.0017** |
+
+Against the gate's own inputs the head adds NOTHING — r^2 0.0017, the same as
+the dead self-residual target. Ablation says the work is done by the static
+eval alone (dropping it costs 0.46 of the 0.57; dropping corrhist costs
+0.0001), which is regression to the mean: extreme evals move more.
+
+**So the four nulls have one cause, and it is not subtle: every one of those
+consumers queried the head OUT OF DISTRIBUTION.** The offline r^2 = 0.611 is
+real and is a ROOT-LEVEL number. It was never evidence that the head knows
+anything at an interior node, and I never checked before building four arms on
+it.
+
+**The generalisable rule is about VALIDITY, not redundancy: measure where your
+auxiliary head is accurate, and only build consumers that query it THERE.**
+A head trained on corpus roots is a root-level instrument.
+
+### THE CONSEQUENCE: ROOT-LEVEL CONSUMERS ARE THE ONLY ONES THAT CAN WORK
+
+`soft_stop` queries the head AT THE ROOT — the same population it was trained
+on. First result, and it is the first positive in the whole line:
+
+    DIS-TM c=0.20, 5+0.05, n=1000:  +9.38 +/- 10.64, LOS 95.82 %
+    Ptnml [2, 103, 261, 134, 0], PairsRatio 1.28, DrawRatio 52.2 %
+
+NOT a result yet (the bar spans zero) and NOT yet attributable to the head —
+see the control below, which is the next thing owed.
+
+### If anyone picks this up again
+
+LMR/extension depth is now TRIED and null (above). What remains untested is the
+ROOT-ONLY class — aspiration-window width and time management — where the poll
+is once per iteration rather than per node, so it is nearly free and cannot
+perturb any per-node threshold. TM must be tested at REAL TC, never nodestime
+(that instrument gave TM +52.6 where the real clock gave −31.4).
+
+SUPERSEDED by the retraction above. That advice followed from the redundancy
+story and is void with it. The correct guidance is the validity one: the head
+is accurate at ROOT positions and not at interior nodes, so build root-level
+consumers and nothing else until that changes.
+
+If you want the head to work at interior nodes, the fix is not a new target —
+it is to TRAIN IT ON INTERIOR NODES. `ARCHON_DIS_CENSUS=1` already dumps the
+right pairs (node eval + its searched value); what it does not yet dump is the
+FEN, which is what a refit would need to rebuild trunk vectors.
+
+
+---
+
+## 2026-08-07 — DIS-TM: the owner's design, frozen and awaiting a quiet box
+
+**Owner's idea:** poll disagreement where the search is about to STOP, and keep
+thinking while it is above a threshold.
+
+**Why it escapes the finding that killed the other four consumers.** Those all
+fed the search information it was about to compute anyway (`search - static`,
+which the search obtains BY SEARCHING). The stop decision is the one place it
+is about to stop looking altogether, so the information is redundant with
+nothing — and TM here is far less tuned than the pruning margins the engine
+inherited.
+
+**Final form** — one multiplicative factor in `soft_stop`, the exact
+re-insertion the deleted-hooks note in `search/mod.rs` predicted:
+
+    remaining  = root_dis_mag - |score_now - static_root|
+    dis_factor = 1 + c * (remaining - DIS_TM_PIVOT)/100,  clamped [0.7, 1.5]
+    total_time = optimum * falling_eval * reduction * instability * effort * dis_factor
+
+`root_dis_mag` is polled ONCE per `go` at the root (not `disagreement_cached`,
+whose vector belongs to whichever node last ran a fresh eval). Root-in-check
+disables the arm — `evaluate` must never be called in check.
+
+### THE CENSUS IS THE METHOD HERE, AND IT KILLED FOUR DESIGNS FOR FREE
+
+`ARCHON_TM_TRACE=1` now prints `dis=` and `disrem=`. ~4 minutes per run over 30
+book positions at 10+0.1, no games. What it caught, in order:
+
+| version | census verdict |
+|---|---|
+| bar = `T0 * depth` | pinned at the cap through depth 5, **silent from depth 6** — off exactly where the stop decision is made (depth 12-20) |
+| `c = 1.0` | saturated at the cap at nearly every depth |
+| one-sided `1 + c*max(0,·)` | mean factor **1.177** — adds time on ~every move; at a FIXED clock that is front-loading, not redistribution |
+| pivot = median of `dismag` (179) | **wrong distribution.** The factor keys on `remaining = dismag - found`, which is systematically smaller; 76 % of decisions fell below the pivot and the arm became a net time-SAVER (mean 0.895) |
+
+Final, with pivot = the measured median of REMAINING (n=578: p10 0, p25 84,
+**median 127**, p75 178, p90 211):
+
+    c=0.20  n=576  mean 0.990  spend 50.7%  save 49.1%  at cap 0.0%  at floor 0.0%
+
+**Every one of those four would have produced a plausible Elo number that meant
+nothing**, and a coefficient sweep would have chased all four as noise.
+Characterise an arm before you buy games for it.
+
+### The test that is still owed, and its non-obvious control
+
+* **Quiet box, REAL TC.** `nodestime` scored a TM arm +52.6 where the real
+  clock scored the same arm −31.4. A fixed-node harness cannot test this at all:
+  with the node budget fixed there is no stop decision left to move.
+* **The control is NOT `c=0`.** At a fixed TC the clock is constant, so this arm
+  only MOVES time between moves. The honest falsification arm is a RANDOM
+  redistribution of matched magnitude (the same ±spread, assigned by a hash of
+  the position rather than by the head). If dis-driven ≈ random, the head
+  contributed nothing and only the redistribution did.
+* Free parameter after the census: `c` alone, ~0.2 vs 0.4. Three matches, not a
+  grid.
+
+Env: `ARCHON_DIS_TM_C` (default 0.0). Tunables `DIS_TM_PIVOT` 127,
+`DIS_TM_T0` 40 (now unused by this form; kept for the RFP-style variant).
+Gate-off verified bit-identical, `bench` 284874.
+
+---
+
+## 2026-08-07 (later) — DIS-RFP CLOSED BY THE CORRECT EXPERIMENT
+
+Every earlier "refutation" of DIS-RFP measured a proxy (movement magnitude,
+node-level splits, class-biased labels). This one measures the decision.
+
+**Design** (each item fixes a named earlier error):
+* features = the u8 FT vector dumped BY THE ENGINE at census nodes
+  (`ARCHON_DIS_DUMP`, 792-B records) — the exact input `DisHead::forward`
+  consumes; no frame gap, no game-vs-tree shift;
+* target = the DECISION: fail-low given fired / fail-high given not-fired
+  (well-defined at NonPV null-window nodes even though values are bounds);
+* labels from EVERY post-census return path — final store, both NMP returns,
+  both ProbCut returns, plus a stale-stamp entry-clear. Join 82% -> 99.7%,
+  and the missing 18% had been exactly the RIGHT-prune examples (class bias);
+* split BY ROOT (node-level splits leak same-game structure);
+* both the linear screen and the DELIVERABLE 768->32 MLP;
+* gate pre-registered before collection: stacked - RFP-alone >= +0.02 AUC.
+
+**Data**: 300 roots, 1.36 M census rows, 954 k fired (wrong-prune 3.56 %),
+206 k not-fired (fail-high 87.85 %).
+
+**Result** (held out by root):
+
+| direction | RFP inputs | mlp(ft) | stacked | delta |
+|---|---|---|---|---|
+| wrong-prune among fired | 0.7508 | 0.5618 | 0.5940 | **-0.157** |
+| fail-high among not-fired | 0.7130 | 0.5280 | 0.6002 | **-0.113** |
+
+Gate fails decisively in both directions. Nonlinearity does not rescue it
+(0.562 vs linear 0.554 — unlike root positions, where the MLP doubled the
+linear probe), and stacking DEGRADES RFP alone: the ft scores carry
+root-specific components that do not transfer. Whether the cause is absent
+signal or non-transfer, the deployment answer is the same.
+
+**Standing conclusion: at interior tree nodes the trunk carries no
+prune-outcome information beyond the eval+margin machinery. DIS-RFP is closed
+on its own decision variable.** The 87.85 % fail-high base rate among
+not-fired nodes is real headroom for someone, but not for this trunk.
+
+Correction to earlier entries: the "endgame instrument" claim is RETRACTED —
+the head reads r 0.72-0.85 at every piece-count bucket on game positions
+(shape-fixed frame), and per-bucket heads LOSE to a shared one (pre-registered
+bucketing test, buckets 5-7 all negative). The validity axis is game-vs-tree,
+not piece count. The raw 0.79-0.85 figures in the bucket table were measured
+against a mixed-frame target and are inflated; the honest transfer number is
+partial r ~ 0.51 against a flexible static basis.
+
+### DIS-RFP at 3,000 roots — the root-diversity lever measured, and the lane CLOSED
+
+Learning curve said root diversity was binding (0.544/0.568/0.578 at
+75/150/225 train roots). At 2,998 roots (449k capped rows, wrong-rate 4.32%):
+
+| probe | AUC held-out by root |
+|---|---|
+| RFP's own inputs | 0.7689 |
+| FT linear | 0.6214 (was 0.5543 at 300 roots — the curve was real) |
+| FT MLP | 0.5905 |
+| stacked | 0.6507 — **Δ −0.118 vs the +0.02 gate. FAIL.** |
+
+Root diversity genuinely improves the FT probe, but toward an asymptote BELOW
+the incumbent, and stacking has now degraded RFP-alone in three independent
+runs — no orthogonal component, not insufficient data. **DIS-RFP closed.**
+Remaining interior-node question: the owner's LMR-VETO (tail behaviour of the
+magnitude at the parent), gated on a re-search-rate probe before any consumer.
+
+### LMR-VETO (owner's proposal) — refuted pre-registered; INTERIOR NODES CLOSED
+
+Probe: does the head's magnitude at the parent rank "this node's reductions
+will force a re-search"? 1,115 roots, natural search, per-node reduced/re-search
+counters joined to the FT dump, held out by root. Base rate 57.4%.
+
+| ranking | AUC | top-decile lift |
+|---|---|---|
+| head magnitude | 0.5055 | 1.020x |
+| node's own inputs | 0.8772 | 1.696x |
+
+Gate (a) lift >= 1.3x: FAIL. Gate (b) beat the node's inputs: FAIL. The tail
+hypothesis (veto binds only in the top decile, averages could hide it) is
+answered directly: the tail carries nothing either. With RFP (both directions),
+LMR-continuous and LMR-veto all closed on their own decision variables, the
+interior-node consumer space for this head is EXHAUSTED.

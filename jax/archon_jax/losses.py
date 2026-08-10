@@ -112,11 +112,41 @@ def total_loss(value_logit, pol_logits, target, pol_target_id, pol_lambda: float
                pow_exp: float = 2.0, pol_soft=None,
                dis_pred=None, dis_lambda: float = 0.0,
                net_offset: float = 0.0, net_scale: float = 0.0,
-               qp_asymmetry: float = 0.0, weight=None):
+               qp_asymmetry: float = 0.0, weight=None,
+               dis_target=None,
+               focal_gamma: float = 0.0, focal_ref=None,
+               focal_wmax: float = 8.0):
+    # FOCAL WEIGHT (owner's capacity argument, 2026-08-07): spend the small
+    # net's capacity on hard positions. Three deliberate choices, each a
+    # measured-landmine dodge:
+    #   * the residual is taken against `focal_ref` = the SCORE-ONLY target,
+    #     never the wdl-blended one — the game-result term is 29.7 % of the
+    #     blended residual (measured, 200k heldout) and is irreducible noise
+    #     at the position level; a naive focal weight up-weights exactly the
+    #     flukiest outcomes;
+    #   * stop_gradient on the weight, so the loss gets no second path through
+    #     its own weighting;
+    #   * capped at `focal_wmax x batch mean` so one wild sample cannot own a
+    #     step, and value_loss's sum(err*w)/sum(w) already makes the weights
+    #     scale-invariant — the effective LR does not move.
+    if focal_gamma > 0.0 and focal_ref is not None:
+        if net_scale > 0.0:
+            fsig = expected_score(value_logit, net_offset, net_scale)
+        else:
+            fsig = jax.nn.sigmoid(value_logit)
+        fw = (jnp.abs(fsig - focal_ref) + 1e-6) ** focal_gamma
+        fw = jnp.minimum(fw, focal_wmax * jnp.mean(fw))
+        fw = jax.lax.stop_gradient(fw)
+        weight = fw if weight is None else weight * fw
+        metrics_focal = (jnp.mean(fw), jnp.max(fw) / (jnp.mean(fw) + 1e-12))
+    else:
+        metrics_focal = None
     v = value_loss(value_logit, target, pow_exp,
                    net_offset=net_offset, net_scale=net_scale,
                    qp_asymmetry=qp_asymmetry, weight=weight)
     metrics = {"value": v}
+    if metrics_focal is not None:
+        metrics["focal_wmean"], metrics["focal_wpeak"] = metrics_focal
     loss = v
     if pol_logits is not None and pol_lambda > 0.0:
         if pol_soft is not None:
@@ -135,20 +165,44 @@ def total_loss(value_logit, pol_logits, target, pol_target_id, pol_lambda: float
         # stop_gradient on the target so the head observes the value fit and
         # never steers it; model.py additionally stop_gradients the trunk
         # input so this cannot reshape the representation.
-        resid = jax.lax.stop_gradient(target - jax.nn.sigmoid(value_logit))
+        # WHICH TARGET THE RESIDUAL IS TAKEN AGAINST DECIDES WHAT THE HEAD CAN
+        # LEARN. `target` carries the game RESULT at weight `wdl` (0.3 in the
+        # canonical recipe), and the result is irreducible at the position
+        # level -- MEASURED 2026-08-06, it is 29.7 % of the heldout residual
+        # MSE and no head of any capacity can predict it. `dis_target` is the
+        # SCORE-ONLY target (`features.map_batch`'s `target_score`), so the
+        # residual becomes labeller-search minus static eval: learnable, and
+        # the quantity a search consumer actually wants. Falls back to
+        # `target` so every existing config keeps its behaviour.
+        dtgt = target if dis_target is None else dis_target
+        resid = jax.lax.stop_gradient(dtgt - jax.nn.sigmoid(value_logit))
         mag = jnp.abs(resid)
         d_sgn = jnp.mean((dis_pred[:, 0] - resid) ** 2)
         d_mag = jnp.mean((dis_pred[:, 1] - mag) ** 2)
         d = d_sgn + d_mag
         # EACH COLUMN'S OWN NULL, computed on the same batch so the comparison
-        # needs no second run. Signed is only worth having if it beats
-        # predicting ZERO -- MSE training already fits the conditional mean, so
-        # a converged value head leaves E[r|features] ~ 0 and there is nothing
-        # for it to learn unless the value head is capacity-limited. Magnitude
-        # is worth having if it beats the batch mean |r|; that statistic is one
-        # a mean-fitting head structurally cannot emit at any capacity.
+        # needs no second run. Magnitude is worth having if it beats the batch
+        # mean |r|; that statistic is one a mean-fitting head structurally
+        # cannot emit at any capacity.
+        #
+        # ** dis_sgn GETS TWO NULLS, AND THE ZERO ONE IS THE WEAK ONE. **
+        # `dis_sgn_null` (predict 0) is what a converged value head should
+        # leave, since MSE already fits the conditional mean -- but it is NOT a
+        # sufficient null, because E[r] is only zero if the value head is
+        # UNBIASED on this data. It is not: the label transform, the QAT
+        # rounding and any train/heldout population shift all put a constant
+        # offset in r, and a head that learns NOTHING BUT ITS OUTPUT BIAS
+        # collects that offset for free and "beats" the zero null.
+        # `dis_sgn_null_mean` = Var(r) is the honest null: predict the batch
+        # mean. The gap between the two nulls IS the bias term
+        # (E[r]^2 = mean(r^2) - Var(r)), so logging both prices it directly and
+        # only the margin over dis_sgn_null_mean is feature-driven signal.
+        # MEASURED 2026-08-06 (D57 sb1-2): dis_sgn read 51-56 % under the ZERO
+        # null, which is exactly the shape a constant offset produces.
         metrics["dis_sgn"] = d_sgn
         metrics["dis_sgn_null"] = jnp.mean(resid ** 2)
+        metrics["dis_sgn_null_mean"] = jnp.mean((resid - jnp.mean(resid)) ** 2)
+        metrics["dis_resid_mean"] = jnp.mean(resid)
         metrics["dis_mag"] = d_mag
         metrics["dis_mag_null"] = jnp.mean((mag - jnp.mean(mag)) ** 2)
         metrics["dis"] = d

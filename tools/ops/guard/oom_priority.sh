@@ -46,12 +46,25 @@
 
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
-PROTECT=${PROTECT:-'pump_train'}
+# SUPERVISORS ARE NOT DISPOSABLE. `pump_train` alone was not enough: the
+# trainer's MainPID is the d49_launch.sh bash, whose cmdline references
+# $ARCHON_ROOT and so matched the repo sweep — MEASURED 2026-08-05 sitting at
+# adj=1000 while the python it supervises sat at 100. Killing that bash makes
+# systemd tear down the whole unit, so the guard was nominating the training
+# run for death by way of its 3 MB parent.
+PROTECT=${PROTECT:-'pump_train|d49_launch'}
 ADJ=${ADJ:-1000}
 PERIOD=${PERIOD:-15}
 # RSS floor (kB) for the exe-based heap sweep. Only processes big enough to
 # decide an OOM are worth reclassifying; 200 MB skips the long tail.
 MIN_RSS_KB=${MIN_RSS_KB:-200000}
+# RSS floor (kB) for the RAISE itself, applied to EVERY candidate and not just
+# the heap sweep. Freeing a process cannot resolve an OOM unless it holds real
+# memory, so raising a small one is all cost and no benefit: it dies, the OOM
+# continues, and whatever it was supervising dies with it. 50 MB keeps the gate
+# engines (~150-250 MB each with the net resident) firmly in scope while
+# excluding every bash/sleep/wrapper in the tree.
+MIN_RAISE_KB=${MIN_RAISE_KB:-50000}
 OPS_LOG=${OPS_LOG:-$ARCHON_D49/oom_priority.log}; export OPS_LOG
 
 log "oom_priority: adj=$ADJ protect='$PROTECT' period=${PERIOD}s root=$ARCHON_ROOT"
@@ -117,6 +130,12 @@ while :; do
             *oom_priority*)     continue;;   # ourselves
         esac
         echo "$cmd" | grep -qE "$PROTECT" && continue
+
+        # Too small to be worth nominating — see MIN_RAISE_KB. Read from the
+        # same /proc/<pid>/status the heap sweep uses; a pid that exits between
+        # the two reads just falls out here.
+        rss=$( { awk '/^VmRSS:/{print $2}' "/proc/$p/status"; } 2>/dev/null ) || continue
+        [ -n "$rss" ] && [ "$rss" -ge "$MIN_RAISE_KB" ] || continue
 
         cur=$(cat "/proc/$p/oom_score_adj" 2>/dev/null) || continue
         if [ "${cur:-0}" -lt "$ADJ" ]; then

@@ -680,6 +680,18 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
     else:
         eval_t = 1.0 / (1.0 + np.exp(-s / scale))
     out["target"] = (wdl * result + (1.0 - wdl) * eval_t).astype(np.float32)
+    # The SCORE-ONLY target, i.e. `target` at wdl=0. Free here (eval_t is
+    # already computed) and it is a DIFFERENT QUANTITY, not a variant of the
+    # same one: `target` carries the game RESULT, which at the position level
+    # is irreducible noise -- two identical positions can end 1-0 and 0-1.
+    # MEASURED 2026-08-06 on 200k heldout records: the result term contributes
+    # 0.003176 of the 0.010703 residual MSE, i.e. 29.7 % of what a residual
+    # predictor is being asked to fit is unlearnable by construction.
+    # The disagreement head wants THIS column: `s` is the labeller's SEARCH
+    # score, so (target_score - eval) is search-vs-static disagreement, which
+    # is the quantity a margin or reduction should key on, while
+    # (target - eval) mixes that with coin flips.
+    out["target_score"] = eval_t.astype(np.float32)
 
     # --- SF-style distribution SHAPING (2026-07-29) -------------------------
     # Our filter is a pure accept/reject predicate with no shaping at all; SF's

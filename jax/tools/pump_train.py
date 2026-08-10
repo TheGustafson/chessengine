@@ -164,6 +164,9 @@ def build_cfg(spec: dict, start_sb: int) -> TrainConfig:
         TrainConfig(),
         distill_alpha=float(spec.get("distill_alpha", 0.0)),
         dis_lambda=float(spec.get("dis_lambda", 0.0)),
+        dis_score_only=bool(spec.get("dis_score_only", False)),
+        focal_gamma=float(spec.get("focal_gamma", 0.0)),
+        focal_wmax=float(spec.get("focal_wmax", 8.0)),
         distill_alpha_end=float(spec.get("distill_alpha_end", -1.0)),
         distill_alpha_ramp=tuple(
             (float(a), float(b)) for a, b in spec.get("distill_alpha_ramp", [])),
@@ -386,7 +389,15 @@ def main(cfg_path: str, resume_sb: int = 0) -> int:
                   # result and a finding, not a reason to re-run bigger);
                   # dis_mag vs predicting the batch-mean |r| (a statistic a
                   # mean-fitting head cannot emit at any capacity).
-                  + (f" | dis_sgn {c.get('dis_sgn', 0):.6f}/{c.get('dis_sgn_null', 0):.6f}"
+                  # dis_sgn prints BOTH nulls: zero-null / mean-null. Only the
+                  # margin over the MEAN null is feature-driven -- see the
+                  # banner in losses.py. resid_mean is the bias itself.
+                  + (f" | focal w{c['focal_wmean']:.3f} pk{c['focal_wpeak']:.0f}"
+                     if 'focal_wmean' in c else "")
+                  + (f" | dis_sgn {c.get('dis_sgn', 0):.6f}"
+                     f"/{c.get('dis_sgn_null', 0):.6f}"
+                     f"/{c.get('dis_sgn_null_mean', 0):.6f}"
+                     f" | rmean {c.get('dis_resid_mean', 0):+.6f}"
                      f" | dis_mag {c.get('dis_mag', 0):.6f}/{c.get('dis_mag_null', 0):.6f}"
                      if 'dis_mag' in c else ""), flush=True)
             running = {}

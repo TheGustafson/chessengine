@@ -45,6 +45,14 @@ def main() -> int:
     ap.add_argument("--out", required=True, type=pathlib.Path)
     ap.add_argument("--bucket-mb", type=int, default=512)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--consume", action="store_true",
+                    help="Delete each input shard (resolving symlinks) once it "
+                         "has been fully scattered. Halves peak disk — without "
+                         "it the scatter holds inputs + buckets = 2x the corpus, "
+                         "which a 50 GB campaign cannot afford next to its own "
+                         "mirror. Only safe when the shards exist elsewhere "
+                         "(GCS keeps the campaign's; the bucket has no lifecycle "
+                         "deletion rules — checked 2026-08-08).")
     ap.add_argument("--dedupe", action="store_true",
                     help="Drop byte-identical records before shuffling. Timed "
                          "replays of one opening converge on a small set of "
@@ -161,6 +169,11 @@ def main() -> int:
                         if sel.size:
                             handles[b].write(sel.tobytes())
             print(f"  scattered {s.parent.name}")
+            if a.consume:
+                real = s.resolve()
+                s.unlink()
+                if real != s and real.exists():
+                    real.unlink()
     finally:
         for h in handles:
             h.close()

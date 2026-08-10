@@ -71,6 +71,10 @@ campaign at **~150 M unique positions**. See "Opening supply" below.
 | 3 | `oracle-canary3-canary-20260803-185921` | 18:59 | 1 task, 100k pos | same, with portable binaries | **SUCCEEDED** in ~4 min. 101,331 records, 58.27 rows/game, 22.58 % D46 drop. Fetched back, sha256 verified on arrival. |
 | 4 | `oracle-uho1-run-20260803-191039` | 19:10 | **73 tasks**, par 18 requested, 145 M target | ~2.1 h wall, **$6.86** worst case | **RUNNING.** Estimate was wrong twice over. (a) only **6 tasks run at once** (96 vCPU, not the 288 the quota rows implied) = 3x; (b) a shard really takes **~49 min**, not 26, because c2d cores are ~half this box's speed = 2.24x. Real wall clock **~9.8 h**, ETA ~05:00. Cost is barely affected ($11 vs $7) since vCPU-h scale with the work, not the schedule. Shards land at **2,013,192 records** each, on target. **⚠ maxRunDuration is 3370 s = 56.2 min against a 49 min actual — 15 % margin.** A task that overruns is killed and retried from scratch, so a slow VM could burn all 3 retries. Watching; a resubmit is cheap because published shards are skipped. |
 
+| 5 | `relabel-fishpack-canary` (submitting) | 00:30 | 1 task, 4 M records from the 1 GB head slice | EXPECTED: ~35 min run inside a 102 min cap; shard-00000.bin = 4 M x 32 B minus ~2.8 % castle-filtered, stats corr_old_new ~0.92 matching the local smoke; $0.15 worst case. New worker (`worker_relabel.sh`), new payload `payload-relabel-v1`. Fetched shard must byte-match a local relabel of the same slice — determinism is the whole point of the design. | SUCCEEDED in 39 min: 3,886,727 records (2.83% castle-filtered, exactly the smoke's rate), corr 0.9094, 1,655 pos/s/task. BYTE-VERIFY vs local relabel of the same slice: 160,000 records, 0 mismatches. |
+
+| 6 | `relabel-fishpack-v1` (chain launched) | 01:25 | 404 tasks x 4 M records, SRC = the 51.6 GB master (gated: upload size-verify -> plan -> submit) | EXPECTED: ~45 h wall at 6 concurrent tasks, ~$58 vs $100 budget; 404 shards, ~1.567 B records out after ~2.8 % castle filter; per-shard corr ~0.91; local mirror via relfetch daemon. | RUNNING |
+
 ---
 
 ## Opening supply, and why it stops being the constraint

@@ -105,6 +105,12 @@ def main() -> int:
                         "python image means adding Google's apt repo.")
     p.add_argument("--nodes", type=int, default=5000)
     p.add_argument("--pergame", type=int, default=80)
+    p.add_argument("--worker", default="worker_shard.sh",
+                   help="worker script inside the payload (worker_relabel.sh "
+                        "for relabel campaigns)")
+    p.add_argument("--extra-env", default="",
+                   help="extra KEY=VAL pairs prepended to the worker command "
+                        "(e.g. 'SRC=gs://bucket/corpora/fishpack32.shuf.bin')")
     p.add_argument("--service-account",
                    default="archon-batch-worker@archon-502500.iam.gserviceaccount.com",
                    help="Least-privileged runtime identity. Verified 2026-08-03 to hold "
@@ -199,7 +205,8 @@ def main() -> int:
                             f"CAMPAIGN={a.campaign} DEST={a.dest} "
                             f"SHARD_POS={a.shard_pos} NODES={a.nodes} "
                             f"PERGAME={a.pergame} CONC={a.vcpus_per_task} "
-                            "bash /opt/archon/worker_shard.sh"
+                            + (a.extra_env + " " if a.extra_env else "")
+                            + f"bash /opt/archon/{a.worker}"
                         )],
                     }
                 }],

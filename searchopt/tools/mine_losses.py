@@ -92,6 +92,11 @@ def main() -> int:
                     help="skip the book/opening plies")
     ap.add_argument("--out", default="searchopt/positions/losses.json")
     ap.add_argument("--limit-games", type=int, default=0)
+    ap.add_argument("--shard", default="",
+                    help="'i/n': score only games with index %% n == i, so n "
+                         "instances can run in parallel and their outputs be "
+                         "concatenated. Sharding is by GAME so each game's rows "
+                         "stay in one file.")
     a = ap.parse_args()
     os.chdir(REPO)
     # python-chess is imported HERE, not at module level, so `--help` works in a plain
@@ -123,6 +128,10 @@ def main() -> int:
             g_i += 1
             if a.limit_games and g_i > a.limit_games:
                 break
+            if a.shard:
+                s_i, s_n = (int(x) for x in a.shard.split("/"))
+                if g_i % s_n != s_i:
+                    continue
             board = g.board()
             for ply, mv in enumerate(g.mainline_moves()):
                 ours = (board.turn == chess.WHITE) == we_are_white

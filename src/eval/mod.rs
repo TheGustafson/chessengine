@@ -206,6 +206,50 @@ impl EvalContext {
         None
     }
 
+    /// The disagreement head on the FT vector the last SOTA eval already
+    /// produced — `None` on a net without a DIS1 section or when the cheap
+    /// path ran, so a caller may poll unconditionally.
+    ///
+    /// `&mut self` because the head reads the context's long-lived
+    /// `HeadScratch`; see
+    /// [`nnue::sota_context::SotaContext::disagreement_cached`] for the cost
+    /// argument and, importantly, the VALIDITY CONTRACT — the cached vector
+    /// belongs to the last position that ran a fresh eval, so a TT-served
+    /// node must not poll it.
+    /// Census-dump accessor: the last head forward's u8 FT vector, `None`
+    /// off the sota path. See `SotaContext::last_ft_slice`.
+    #[inline]
+    pub fn last_ft_slice(&self) -> Option<&[u8]> {
+        #[cfg(feature = "sota")]
+        if let Some(ctx) = self.sota.as_ref() {
+            return Some(ctx.last_ft_slice());
+        }
+        None
+    }
+
+    #[inline]
+    pub fn disagreement_cached(&mut self) -> Option<[f32; 2]> {
+        #[cfg(feature = "sota")]
+        if let Some(ctx) = self.sota.as_mut() {
+            return ctx.disagreement_cached();
+        }
+        None
+    }
+
+    /// The disagreement head for `board` at the ROOT, re-running the FT
+    /// activation rather than reusing a cached vector. For once-per-search
+    /// callers only — see `disagreement_cached` for the per-node form and its
+    /// validity contract.
+    #[inline]
+    #[cfg_attr(not(feature = "sota"), allow(unused_variables))]
+    pub fn disagreement_root(&mut self, board: &Board) -> Option<[f32; 2]> {
+        #[cfg(feature = "sota")]
+        if let Some(ctx) = self.sota.as_mut() {
+            return ctx.disagreement(board, 0);
+        }
+        None
+    }
+
     /// D41 rich-net: the WDL probabilities [L,D,W] from the most recent SOTA eval,
     /// or `None` when the net has no WDL head / the cheap path ran. Search reads it
     /// for the decisiveness / optimism consumers; `None` → those fall back to no-op.
