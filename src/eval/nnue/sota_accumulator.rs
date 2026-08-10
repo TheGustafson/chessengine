@@ -20,18 +20,9 @@ use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
 const STACK_LEN: usize = MAX_PLY + 8;
 const FINNY_KEYS: usize = 64;
 
-/// Perf study 43's software-prefetch arm for the Finny warm refresh.
-///
-/// **One binary, four modes, selected by `P43_PF` at run time.** Study 29
-/// killed a prefetch here on a *separate* build, which confounds the arm with
-/// code layout — and its own §5.3 records that a byte-different null moved the
-/// cycles median by more than the arm did. Reading the mode from the
-/// environment makes control and arm the same bytes, so layout differences out
-/// by construction (perf study 39's idiom). The mode check costs one relaxed
-/// load and one branch per refresh, i.e. **0.16 per node**.
-///
-/// Modes, chosen so each names a distinct reason study 29's arm could have
-/// failed rather than repeating it:
+/// Software-prefetch arm for the Finny warm refresh — diagnostic only. One
+/// binary, several modes, selected by `P43_PF` at run time so control and arm
+/// share the same bytes and code layout drops out by construction.
 ///
 /// | mode | what |
 /// |---|---|
@@ -58,12 +49,10 @@ pub(crate) mod pf43 {
         #[cfg(target_arch = "x86_64")]
         {
             #[allow(unsafe_code)]
-            // SAFETY: `_mm_prefetch` is a pure cache hint. It is defined for
-            // ANY address value — it cannot fault, cannot trap, and has no
-            // architectural effect beyond cache state — so no validity or
-            // provenance claim about `p` is required. Same sanctioned use and
-            // same justification as `TranspositionTable::prefetch` (doc 08
-            // §3.15).
+            // SAFETY: `_mm_prefetch` is a pure cache hint, defined for ANY
+            // address — it cannot fault and has no architectural effect beyond
+            // cache state, so no validity or provenance claim about `p` is
+            // required. Same justification as `TranspositionTable::prefetch`.
             unsafe {
                 use std::arch::x86_64::{_MM_HINT_T0, _MM_HINT_T2, _mm_prefetch};
                 if t0 {
@@ -87,8 +76,7 @@ pub(crate) mod pf43 {
         let full = mode != 3;
         let t0 = mode != 2;
         for &f in adds.iter().chain(subs) {
-            // `wrapping_add`, not `add`: a hint needs no in-bounds proof, and
-            // the wrapping form keeps this free of a provenance argument.
+            // `wrapping_add`: a hint needs no in-bounds proof.
             let base = weights.as_ptr().wrapping_add(f.0);
             if full {
                 for off in (0..ACC).step_by(64) {
@@ -114,18 +102,11 @@ pub(crate) mod pf43 {
     }
 }
 
-/// `N` clones of `value` on the heap as a fixed-size array (perf study 22 arm
-/// 1b).
-///
-/// The array size is a const generic so callers get `Box<[T; N]>` — a THIN
-/// pointer with a compile-time length — rather than `Box<[T]>`, whose fat
-/// pointer makes every index reload the length from memory. The route through
-/// `Vec` is what keeps the 1.3 MB `Entry` array off the thread stack:
-/// `Box::new([…; N])` would build the array as a temporary first.
-///
-/// `debug_assert_eq!` rather than a runtime check on the length: `n` is only
-/// ever the same constant as `N` at every call site, and `TryFrom` for
-/// `Box<[T]> -> Box<[T; N]>` already re-checks it (that check folds away).
+/// `N` clones of `value` on the heap as a fixed-size array. The const-generic
+/// size gives callers a THIN `Box<[T; N]>` with a compile-time length rather
+/// than a fat `Box<[T]>` whose every index reloads the length; the route
+/// through `Vec` keeps the 1.3 MB `Entry` array off the thread stack
+/// (`Box::new([…; N])` would build the array as a stack temporary first).
 fn boxed_array<T: Clone, const N: usize>(value: T, n: usize) -> Box<[T; N]> {
     debug_assert_eq!(n, N, "boxed_array length must equal the array size");
     vec![value; n]
@@ -138,51 +119,13 @@ fn boxed_array<T: Clone, const N: usize>(value: T, n: usize) -> Box<[T; N]> {
 /// Feature `feature`'s PSQ1 row as a FIXED-size array reference. `table` is
 /// row-major (`feature · BUCKETS + bucket`) and must be non-empty.
 ///
-/// The fixed size is the whole point, and it is worth a paragraph because the
-/// slice form looked identical and was not. `BUCKETS` i32 is exactly 32 bytes —
-/// one `ymm` — but handing the accumulate a `&[i32]` of merely *runtime* length
-/// left LLVM's SLP vectoriser unable to see a trip count of 8, so it found a
-/// 4-lane group, then a 2-lane group, then gave up:
-///
-/// ```text
-///     vmovdqu (%rsi),%xmm0            ; lanes 0..3
-///     vpaddd  (%r8,%rdx,4),%xmm0,%xmm0
-///     vmovdqu %xmm0,(%rsi)
-///     vmovq   0x10(%r8,%rdx,4),%xmm0  ; lanes 4..5
-///     vmovq   0x10(%rsi),%xmm1
-///     vpaddd  %xmm0,%xmm1,%xmm0
-///     vmovq   %xmm0,0x10(%rsi)
-///     mov     0x18(%r8,%rdx,4),%ecx   ; lane 6, SCALAR
-///     add     %ecx,0x18(%rsi)
-///     mov     0x1c(%rsi),%ecx         ; lane 7, SCALAR
-///     add     0x1c(%r8,%rdx,4),%ecx
-///     mov     %ecx,0x1c(%rsi)
-/// ```
-///
-/// Twelve instructions for a load / add / store. `psqt_add` + `psqt_sub` are
-/// ~3.0% of ALL engine instructions (perf study 8 §4.5) because they run once
-/// per resolved feature in *both* the threat fold and the HalfKA fold.
-/// # Safety-free form
-/// `BUCKETS` i32 is exactly 32 bytes — one `ymm` — but a `&[i32]` of merely
-/// RUNTIME length left LLVM's SLP vectoriser unable to see a trip count of 8,
-/// so it emitted a 4-lane group, a 2-lane `vmovq` group, and two SCALAR lanes:
-/// twelve instructions for a load / add / store. A fixed-size array reference
-/// fixes the shape. (A raw-pointer form removes the length check too, but
-/// measured +2.2% — it costs LLVM the aliasing facts the slice index gives it.)
-///
-/// # One bounds check, not three
-/// The `table[f*BUCKETS..][..BUCKETS].try_into()` spelling reaches the same
-/// `&[i32; BUCKETS]` but pays for it three times: the open range checks
-/// `f*BUCKETS <= len`, the closed range checks `BUCKETS <= len - f*BUCKETS`,
-/// and `try_into` checks the length again (it folds, but the first two do
-/// not). In the threat resolver that is a `sub`/`jb`/`cmp $7`/`jbe` quartet
-/// per resolved event per perspective — measured in perf study 10 §2.1 as
-/// two of the five panic edges in that ~40-instruction loop.
-///
-/// `as_chunks` states the shape once: the table IS a slice of BUCKETS-wide
-/// rows (`THREAT_DIMS · BUCKETS` / `HALFKA_DIMS · BUCKETS` by construction),
-/// so the row index is a single `cmp`/`jae` against a length LLVM derives by
-/// a shift. Same row, same arithmetic, bit-identical output.
+/// The fixed size is the point: `BUCKETS` i32 is one `ymm`, but a `&[i32]` of
+/// merely RUNTIME length leaves LLVM's SLP vectoriser unable to see a trip
+/// count of 8, so it emits a 4-lane group, a 2-lane group and two SCALAR
+/// lanes. (A raw-pointer form also loses: it costs LLVM the aliasing facts the
+/// slice index gives it.) `as_chunks` additionally states the shape once, so
+/// the row index is ONE bounds check instead of the three the
+/// `table[f*BUCKETS..][..BUCKETS].try_into()` spelling pays.
 #[inline]
 fn psqt_row(table: &[i32], feature: usize) -> &[i32; BUCKETS] {
     let (rows, _tail) = table.as_chunks::<BUCKETS>();

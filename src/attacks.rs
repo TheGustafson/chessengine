@@ -1,50 +1,24 @@
-//! Precomputed attack tables (design/03-attack-tables.md, D12/D13).
+//! Precomputed attack tables (design/03, D12/D13).
 //!
 //! This module answers exactly one question: *which squares does a piece on
 //! `sq` attack given occupancy `occ`?* Legality (pins, checks, castling) is
-//! movegen's job (design/05).
+//! movegen's job. Const-built leaper/geometry tables, plus the fancy-magic
+//! slider machinery behind `LazyLock<AttackTables>` — hoist a [`tables`]
+//! handle in hot loops.
 //!
-//! All of doc 03 §4 (steps 1–5) has landed: the `const fn` foundations
-//! ([`safe_destination`] + the naive ray generator that serves as the
-//! module's correctness oracle), the compile-time leaper and empty-board
-//! slider tables (`KNIGHT_ATTACKS`, `KING_ATTACKS`, `PAWN_ATTACKS`,
-//! `PSEUDO_*`) with their accessor functions, the 64×64 ray-geometry
-//! tables behind [`between`]/[`line`]/[`ray_pass`]/[`distance`]/[`aligned`],
-//! and the fancy-magic slider machinery: one densely packed shared table
-//! (102,400 rook + 5,248 bishop entries) behind `LazyLock<AttackTables>`,
-//! consumed through [`attacks`]/[`rook_attacks`]/[`bishop_attacks`]/
-//! [`queen_attacks`] — or through a hoisted [`tables`] handle in hot loops.
-//! `uci::run` forces the `LazyLock` before any command runs (§3.7), and the
-//! full doc 03 §5 battery — every mask subset on every square, 10,000 mixed-
-//! density occupancies per square — guards it all. `benches/attacks.rs`
-//! (criterion) records the lookup latencies; baselines live in
-//! `docs/perf-baseline.md`.
-//!
-//! All tables here are `static`, not `const`: a `const` is a value inlined
-//! (and potentially duplicated) at every use site, while a `static`
-//! guarantees one copy in `.rodata` (doc 03 §3.8). Const builders operate on
-//! raw `u64` internally — operator traits like `BitOr` are not `const` — and
-//! wrap into [`Bitboard`] at the boundary.
+//! All tables here are `static`, not `const` (one copy in `.rodata`, never
+//! inlined per use site). Const builders operate on raw `u64` — operator
+//! traits are not `const` — and wrap into [`Bitboard`] at the boundary.
 
 use std::sync::LazyLock;
 
 use crate::bitboard::Bitboard;
 use crate::types::{Color, PieceType, Square};
 
-// ---------------------------------------------------------------------------
-// Const foundations: safe stepping + the naive ray oracle (doc 03 §3.2)
-// ---------------------------------------------------------------------------
+// --- Const foundations: safe stepping + the naive ray oracle ----------------
 
-/// Bit of the target square, or 0 if the step leaves the board or wraps
-/// around a board edge.
-///
-/// A thin const wrapper over [`Square::try_offset`] — P0's single safe
-/// stepping primitive — returning the destination as a raw bit for the
-/// u64-domain const builders. `try_offset`'s wrap test (Chebyshev distance
-/// ≤ 2) and doc 03 §3.2's (file distance ≤ 2 within 0..64) accept exactly
-/// the same steps for every step set used here: genuine knight/king/slider
-/// steps move at most 2 files and 2 ranks, while a horizontal wrap jumps at
-/// least 6 files.
+/// Bit of the target square, or 0 if the step leaves the board or wraps —
+/// a const wrapper over [`Square::try_offset`] for the u64-domain builders.
 const fn safe_destination(sq: i32, step: i32) -> u64 {
     debug_assert!(0 <= sq && sq < 64);
     match Square::new(sq as u8).try_offset(step as i8) {
@@ -58,8 +32,8 @@ const ROOK_DIRS: [i32; 4] = [8, -8, 1, -1];
 /// Bishop direction step deltas: NE, NW, SE, SW.
 const BISHOP_DIRS: [i32; 4] = [9, 7, -7, -9];
 
-/// Walk each direction from `sq` until the board edge or the first blocker;
-/// the blocker square is included in the attack set (capture semantics).
+/// Walk each direction from `sq` until the board edge or the first blocker,
+/// which is included (capture semantics).
 const fn sliding_attack(dirs: [i32; 4], sq: u8, occupied: u64) -> u64 {
     let mut attacks = 0u64;
     let mut d = 0;
@@ -81,10 +55,8 @@ const fn sliding_attack(dirs: [i32; 4], sq: u8, occupied: u64) -> u64 {
     attacks
 }
 
-/// Naive rook attacks: the module's correctness oracle (doc 03 §3.2). The
-/// const geometry tables are defined in terms of it, the magic init will
-/// verify against it, and the test suite cross-checks everything else
-/// against it.
+/// Naive rook attacks: the module's correctness oracle — the geometry
+/// tables are defined in terms of it and the magic init verifies against it.
 pub(crate) const fn rook_attacks_naive(sq: u8, occ: u64) -> u64 {
     sliding_attack(ROOK_DIRS, sq, occ)
 }
@@ -94,9 +66,7 @@ pub(crate) const fn bishop_attacks_naive(sq: u8, occ: u64) -> u64 {
     sliding_attack(BISHOP_DIRS, sq, occ)
 }
 
-// ---------------------------------------------------------------------------
-// Leaper tables (doc 03 §3.3)
-// ---------------------------------------------------------------------------
+// --- Leaper tables ----------------------------------------------------------
 
 /// Knight step deltas (same on any LERF board).
 const KNIGHT_STEPS: [i32; 8] = [-17, -15, -10, -6, 6, 10, 15, 17];
@@ -131,22 +101,14 @@ pub static KNIGHT_ATTACKS: [Bitboard; 64] = build_leaper_table(KNIGHT_STEPS);
 /// King attacks from each square.
 pub static KING_ATTACKS: [Bitboard; 64] = build_leaper_table(KING_STEPS);
 
-/// Set-wise pawn attacks for all `pawns` of `color` at once; `const` so
-/// movegen and eval can use it anywhere, including other const builders.
-///
-/// Delegates to [`Bitboard::pawn_attacks`] (doc 02 §3.5) — the same masked
-/// shifts doc 03 §3.3 spells out: white attacks NW (+7, illegal from file A)
-/// and NE (+9, illegal from file H); black mirrors.
+/// Set-wise pawn attacks for all `pawns` of `color` at once (`const`, so
+/// other const builders can use it).
 pub const fn pawn_attacks_bb(color: Color, pawns: Bitboard) -> Bitboard {
     pawns.pawn_attacks(color)
 }
 
-/// Attacks FROM `sq` BY a pawn of the indexing color:
-/// `PAWN_ATTACKS[color as usize][square index]`.
-///
-/// Defined for all 64 squares, including the ranks where no pawn can stand
-/// (rank 8 for White, rank 1 for Black — the shift leaves the board, so
-/// those entries are geometrically correct and empty; harmless, per SF).
+/// Attacks FROM `sq` BY a pawn of the indexing color. Defined for all 64
+/// squares (entries on the impossible ranks are simply empty).
 pub static PAWN_ATTACKS: [[Bitboard; 64]; 2] = {
     let mut t = [[Bitboard::EMPTY; 64]; 2];
     let mut s = 0;
@@ -159,9 +121,7 @@ pub static PAWN_ATTACKS: [[Bitboard; 64]; 2] = {
     t
 };
 
-// ---------------------------------------------------------------------------
-// Pseudo (empty-board) slider tables (doc 03 §3.3)
-// ---------------------------------------------------------------------------
+// --- Pseudo (empty-board) slider tables -------------------------------------
 
 /// Empty-board bishop rays from each square.
 pub static PSEUDO_BISHOP: [Bitboard; 64] = {
@@ -197,23 +157,13 @@ pub static PSEUDO_QUEEN: [Bitboard; 64] = {
     t
 };
 
-// ---------------------------------------------------------------------------
-// Ray geometry: BETWEEN, LINE, RAY_PASS, DISTANCE (doc 03 §3.4)
-// ---------------------------------------------------------------------------
+// --- Ray geometry: BETWEEN, LINE, RAY_PASS, DISTANCE ------------------------
 //
-// All four 64×64 tables are built at compile time from the naive generator:
-// the defining formulas only need slider attacks with zero-or-one blockers,
-// which `*_attacks_naive` computes in const context. Outputs are bit-identical
-// to Stockfish's. The tables are private; consume them through `between`/
-// `line`/`ray_pass`/`distance` below.
+// All four 64×64 tables are built at compile time from the naive generator;
+// they are private — consume them through the accessors below.
 
-/// Which slider (if any) aligns `s1` with `s2`: the per-pair dispatch of the
-/// geometry builders.
-///
-/// Two distinct squares are aligned on at most one of bishop/rook, and a
-/// square is never aligned with itself (empty-board rays exclude their
-/// origin, so `s1 == s2` falls out as `Unaligned`). Reading the `PSEUDO_*`
-/// statics from const context is fine since Rust 1.83 (`const_refs_to_static`).
+/// Which slider (if any) aligns `s1` with `s2`. A square is never aligned
+/// with itself (empty-board rays exclude their origin).
 #[derive(Clone, Copy)]
 enum Ray {
     Unaligned,
@@ -232,10 +182,8 @@ const fn ray_alignment(s1: usize, s2: usize) -> Ray {
     }
 }
 
-/// `BETWEEN[s1][s2]`: squares strictly between the pair — each endpoint
-/// blocking the other's ray — OR'd with `bit(s2)` **unconditionally**, so
-/// every entry contains the target square (SF semantics; rationale on
-/// [`between`]). Unaligned pairs and `s1 == s2` yield exactly `{s2}`.
+/// `BETWEEN[s1][s2]`: squares strictly between the pair, OR'd with
+/// `bit(s2)` **unconditionally** (SF semantics; rationale on [`between`]).
 const fn between_entry(s1: usize, s2: usize) -> u64 {
     let (bit1, bit2) = (1u64 << s1, 1u64 << s2);
     let strict = match ray_alignment(s1, s2) {
@@ -246,9 +194,8 @@ const fn between_entry(s1: usize, s2: usize) -> u64 {
     strict | bit2
 }
 
-/// `LINE[s1][s2]`: the full edge-to-edge line through both squares (the
-/// intersection of their empty-board rays) plus both endpoints; 0 if
-/// unaligned. Symmetric; `LINE[s][s]` is empty.
+/// `LINE[s1][s2]`: the full edge-to-edge line through both squares plus
+/// both endpoints; 0 if unaligned. Symmetric; `LINE[s][s]` is empty.
 const fn line_entry(s1: usize, s2: usize) -> u64 {
     let (bit1, bit2) = (1u64 << s1, 1u64 << s2);
     match ray_alignment(s1, s2) {
@@ -263,9 +210,7 @@ const fn line_entry(s1: usize, s2: usize) -> u64 {
 }
 
 /// `RAY_PASS[s1][s2]`: the ray from `s1` (exclusive) through `s2` and past
-/// it to the board edge; 0 if unaligned. `s1`'s empty-board ray masked to
-/// the `s2` side: everything `s2` sees looking back until it hits `s1`,
-/// plus `s2` itself.
+/// it to the board edge; 0 if unaligned.
 const fn ray_pass_entry(s1: usize, s2: usize) -> u64 {
     let (bit1, bit2) = (1u64 << s1, 1u64 << s2);
     match ray_alignment(s1, s2) {
@@ -277,8 +222,8 @@ const fn ray_pass_entry(s1: usize, s2: usize) -> u64 {
     }
 }
 
-/// Selector for [`build_pair_table`]: const contexts cannot call through
-/// `fn` pointers, so the shared builder loop dispatches on an enum instead.
+/// Selector for [`build_pair_table`] — const contexts cannot call through
+/// `fn` pointers, so the builder dispatches on an enum.
 #[derive(Clone, Copy)]
 enum PairTable {
     Between,
@@ -310,9 +255,7 @@ static BETWEEN: [[Bitboard; 64]; 64] = build_pair_table(PairTable::Between);
 static LINE: [[Bitboard; 64]; 64] = build_pair_table(PairTable::Line);
 static RAY_PASS: [[Bitboard; 64]; 64] = build_pair_table(PairTable::RayPass);
 
-/// Chebyshev distances, built from the P0 reference implementation
-/// [`Square::distance`] (which stays the reference; doc 02 §9.3, doc 03
-/// §3.4). Access via [`distance`].
+/// Chebyshev distances, built from [`Square::distance`]; access via [`distance`].
 static DISTANCE: [[u8; 64]; 64] = {
     let mut t = [[0u8; 64]; 64];
     let mut s1 = 0;
@@ -327,9 +270,7 @@ static DISTANCE: [[u8; 64]; 64] = {
     t
 };
 
-// ---------------------------------------------------------------------------
-// Accessors (doc 03 §3.1; all #[inline] table lookups)
-// ---------------------------------------------------------------------------
+// --- Accessors (all #[inline] table lookups) --------------------------------
 
 /// Squares a knight on `sq` attacks.
 #[inline]
@@ -349,8 +290,7 @@ pub fn pawn_attacks(color: Color, sq: Square) -> Bitboard {
     PAWN_ATTACKS[color as usize][sq.idx()]
 }
 
-/// Empty-board attacks for `pt` on `sq`. Debug-asserts `pt != Pawn` — pawns
-/// need a color, use [`pawn_attacks`].
+/// Empty-board attacks for `pt` on `sq`; `pt != Pawn` (use [`pawn_attacks`]).
 #[inline]
 pub fn pseudo_attacks(pt: PieceType, sq: Square) -> Bitboard {
     debug_assert!(
@@ -368,60 +308,48 @@ pub fn pseudo_attacks(pt: PieceType, sq: Square) -> Bitboard {
 }
 
 /// Squares strictly between `s1` and `s2`, OR'd with the **target square
-/// `s2`** — SF's exact semantics (doc 03 §3.4). Every result contains `s2`;
-/// for unaligned pairs (and `s1 == s2`) it is exactly `{s2}`. NOT symmetric.
-///
-/// The unconditional `| s2` is why the dominant consumers need no extra
-/// work: `between(king_sq, checker_sq)` is directly the "block the check or
-/// capture the checker" evasion mask, and `between(king_sq, pinner_sq)`
-/// keeps the pinner capturable in pin handling.
+/// `s2`**; for unaligned pairs (and `s1 == s2`) exactly `{s2}`. NOT
+/// symmetric. The unconditional `| s2` makes `between(king_sq, checker_sq)`
+/// directly the "block-or-capture" evasion mask.
 #[inline]
 pub fn between(s1: Square, s2: Square) -> Bitboard {
     BETWEEN[s1.idx()][s2.idx()]
 }
 
 /// The full line through both squares, extended to the board edges and
-/// including both endpoints; `EMPTY` if the squares are not aligned on a
-/// rank, file, or diagonal (including `s1 == s2`). Symmetric.
+/// including both endpoints; `EMPTY` if unaligned (incl. `s1 == s2`).
+/// Symmetric.
 #[inline]
 pub fn line(s1: Square, s2: Square) -> Bitboard {
     LINE[s1.idx()][s2.idx()]
 }
 
 /// The ray from `s1` (exclusive) through `s2` and past it to the board
-/// edge; `EMPTY` if not aligned. For aligned pairs it contains everything
-/// strictly between plus `s2` and beyond, so `between(s1, s2)` ⊆
-/// `ray_pass(s1, s2)`. Consumer: NNUE discovered-attack rays (doc 03 §3.4).
+/// edge; `EMPTY` if not aligned. `between(s1, s2)` ⊆ `ray_pass(s1, s2)`.
+/// Consumer: NNUE discovered-attack rays.
 #[inline]
 pub fn ray_pass(s1: Square, s2: Square) -> Bitboard {
     RAY_PASS[s1.idx()][s2.idx()]
 }
 
 /// Chebyshev distance: `max(|Δfile|, |Δrank|)` — king moves between the
-/// squares. Table-backed; [`Square::distance`] is the const reference
-/// implementation the table is built from.
+/// squares. Table-backed.
 #[inline]
 pub fn distance(s1: Square, s2: Square) -> u8 {
     DISTANCE[s1.idx()][s2.idx()]
 }
 
-/// True if `s3` lies on the (extended) line through `s1` and `s2` — the
-/// movegen legality workhorse ("does this move stay on the pin ray").
+/// True if `s3` lies on the extended line through `s1` and `s2` — the
+/// legality workhorse ("does this move stay on the pin ray").
 #[inline]
 pub fn aligned(s1: Square, s2: Square, s3: Square) -> bool {
     line(s1, s2).contains(s3)
 }
 
-// ---------------------------------------------------------------------------
-// Prng: xorshift64* (doc 03 §3.6)
-// ---------------------------------------------------------------------------
+// --- Prng: xorshift64* ------------------------------------------------------
 
-/// Xorshift64\* pseudo-random generator (constants exact per doc 03 §3.6).
-///
-/// `pub(crate)` because the Zobrist key generator (P2) reuses it; doc 03
-/// records SF's Zobrist seed (1070372) so both phases agree on the
-/// generator. `const fn` because the Zobrist table builder (doc 04 §3.4)
-/// const-evaluates it — the magic search keeps calling it at runtime.
+/// Xorshift64\* PRNG. `pub(crate)` + `const fn` because the Zobrist table
+/// builder reuses it in const context; the magic search calls it at runtime.
 pub(crate) struct Prng {
     s: u64,
 }
@@ -436,21 +364,17 @@ impl Prng {
         self.s ^= self.s >> 12;
         self.s ^= self.s << 25;
         self.s ^= self.s >> 27;
-        self.s.wrapping_mul(0x2545_F491_4F6C_DD1D) // 2685821657736338717
+        self.s.wrapping_mul(0x2545_F491_4F6C_DD1D)
     }
 
-    /// AND of three draws (~8 bits set on average). Good magic multipliers
-    /// are empirically sparse; sampling sparse candidates directly makes the
-    /// magic search converge orders of magnitude faster than uniform
-    /// sampling would.
+    /// AND of three draws (~8 bits set). Good magics are empirically
+    /// sparse; sampling sparse candidates converges orders of magnitude faster.
     pub(crate) const fn sparse_rand(&mut self) -> u64 {
         self.rand64() & self.rand64() & self.rand64()
     }
 }
 
-// ---------------------------------------------------------------------------
-// Fancy magic bitboards: data structures (doc 03 §3.5)
-// ---------------------------------------------------------------------------
+// --- Fancy magic bitboards: data structures ---------------------------------
 //
 // The magic lookup answers `slider_attacks(sq, occ)` with: mask the occupancy
 // to the relevant blocker squares, multiply by a per-square magic constant so
@@ -461,9 +385,8 @@ impl Prng {
 //     shift   = 64 - popcount(mask)
 //     attacks = table[offset + index]
 //
-// "Fancy" means each square's subtable has its own size 2^popcount(mask) and
-// they are packed back-to-back in one shared array (vs. "plain" magics where
-// every square gets a worst-case 4096-entry block).
+// "Fancy": each square's subtable has its own size 2^popcount(mask), packed
+// back-to-back in one shared array.
 
 /// Entries in the rook block of the packed shared table (800 KB).
 pub const ROOK_TABLE_SIZE: usize = 0x19000; // 102_400
@@ -472,10 +395,9 @@ pub const BISHOP_TABLE_SIZE: usize = 0x1480; // 5_248
 /// Rook block occupies `table[0..ROOK_TABLE_SIZE]`, bishop block the rest.
 const TABLE_SIZE: usize = ROOK_TABLE_SIZE + BISHOP_TABLE_SIZE;
 
-/// Per-square, per-slider magic metadata. Where Stockfish stores an absolute
-/// pointer into the shared table, we store a `u32` offset instead: no
-/// self-referential struct, no `unsafe`, and 4 bytes smaller — the add folds
-/// into the load's addressing on x86.
+/// Per-square, per-slider magic metadata. A `u32` offset into the shared
+/// table instead of an absolute pointer: no self-referential struct, no
+/// `unsafe`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
 struct Magic {
@@ -505,9 +427,8 @@ impl Magic {
     }
 }
 
-/// Both magics for one square packed into exactly one cache line (doc 03
-/// §3.5, mirroring SF's `alignas(64) Magic Magics[64][2]`): one line fetch
-/// serves both slider types for a square, which queen lookups always want.
+/// Both magics for one square packed into exactly one cache line: one line
+/// fetch serves both slider types, which queen lookups always want.
 #[repr(C, align(64))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct MagicPair {
@@ -525,52 +446,40 @@ impl MagicPair {
     };
 }
 
-/// The runtime-initialized slider attack tables: per-square magic metadata
-/// plus the single densely packed shared attack table (rook block then
-/// bishop block, 841 KB total). Built once behind a `LazyLock` (see
-/// [`tables`]); every launch re-derives and thereby re-verifies the magics
-/// against the naive oracle (doc 03 §3.9).
-/// Allocation length of the shared attack table, rounded up to a power of two
-/// (perf study 53, arm `magic53`).
-///
-/// `table` used to be a `Box<[Bitboard]>` — a genuine runtime-length slice — so
-/// every `rook_attacks`/`bishop_attacks` paid a length load, a `cmp`, a `jae`
-/// and a panic block before the lookup. Rounding the allocation up and masking
-/// the index makes the mask a provable no-op (`i & (2^k - 1) < 2^k`, and the
-/// array's length IS `2^k`), which folds the bounds check away entirely.
-///
-/// The cost is `TABLE_ALLOC - TABLE_SIZE` = 23 424 entries = 187 392 B of pages
-/// that are allocated, zeroed once at init, and never read again. They are
-/// never *reachable*: [`init_magics`]'s step 6 proves every index this table
-/// can produce is `< TABLE_SIZE`, exhaustively, at startup.
+/// Allocation length of the shared attack table, rounded up to a power of
+/// two so `slot`'s index mask is a provable no-op (`i & (2^k - 1) < 2^k`,
+/// and the array's length IS `2^k`), which folds the slice bounds check
+/// away entirely. The padding is allocated, zeroed once, and never
+/// reachable: `init_magics` step 6 proves every producible index is
+/// `< TABLE_SIZE`, exhaustively, at startup.
 const TABLE_ALLOC: usize = TABLE_SIZE.next_power_of_two();
-/// Index mask for [`TABLE_ALLOC`]. `TABLE_ALLOC` is a power of two, so this is
-/// `TABLE_ALLOC - 1` and `idx & TABLE_MASK` is unconditionally in bounds.
+/// Index mask for [`TABLE_ALLOC`]: `idx & TABLE_MASK` is always in bounds.
 const TABLE_MASK: usize = TABLE_ALLOC - 1;
 
 // The mask in `AttackTables::slot` is sound only while these three hold, so
-// they fail the build rather than a test (perf study 53).
+// they fail the build rather than a test.
 const _: () = assert!(TABLE_ALLOC.is_power_of_two());
 const _: () = assert!(TABLE_ALLOC >= TABLE_SIZE);
 const _: () = assert!(TABLE_MASK == TABLE_ALLOC - 1);
 
+/// The runtime-initialized slider attack tables: per-square magic metadata
+/// plus one densely packed shared attack table (rook block then bishop
+/// block). Built once behind a `LazyLock` (see [`tables`]); every launch
+/// re-derives and thereby re-verifies the magics against the naive oracle.
 pub struct AttackTables {
     magics: [MagicPair; 64],
-    /// Fixed-size so the length is a compile-time constant: with the
-    /// [`TABLE_MASK`] at every access there is no length load, no compare and
-    /// no panic edge. Only `table[..TABLE_SIZE]` is ever reachable.
+    /// Fixed-size so the length is a compile-time constant; only
+    /// `table[..TABLE_SIZE]` is ever reachable.
     table: Box<[Bitboard; TABLE_ALLOC]>,
 }
 
 impl AttackTables {
-    /// One packed-table slot. The single place the slice is indexed, so the
-    /// `magic53` mask has exactly one home.
+    /// One packed-table slot: the single place the slice is indexed, so the
+    /// bounds-folding mask has exactly one home.
     #[inline]
     fn slot(&self, i: usize) -> Bitboard {
-        // Provably a no-op: `init_magics` step 6 asserts every reachable `i` is
-        // `< TABLE_SIZE <= TABLE_ALLOC`, exhaustively at startup. What it buys
-        // is the bounds check, which LLVM can now discharge because the array's
-        // length IS `TABLE_MASK + 1`.
+        // The mask is provably a no-op (init step 6); what it buys is the
+        // bounds check, discharged because the length IS `TABLE_MASK + 1`.
         self.table[i & TABLE_MASK]
     }
 
@@ -588,7 +497,7 @@ impl AttackTables {
     }
 
     /// Squares a queen on `sq` attacks given `occupied`: two lookups OR'd —
-    /// there is no queen magic table (SF-identical).
+    /// there is no queen magic table.
     #[inline]
     pub fn queen_attacks(&self, sq: Square, occupied: Bitboard) -> Bitboard {
         self.rook_attacks(sq, occupied) | self.bishop_attacks(sq, occupied)
@@ -613,10 +522,9 @@ impl AttackTables {
     }
 
     fn new() -> AttackTables {
-        // `vec![..].into_boxed_slice().try_into()` builds the array straight on
-        // the heap; `Box::new([_; TABLE_ALLOC])` would materialise 1 MiB on the
-        // stack first. The `TryFrom<Box<[T]>> for Box<[T; N]>` impl is exactly
-        // the length check, and it cannot fail here.
+        // `vec![..].into_boxed_slice().try_into()` builds the array straight
+        // on the heap; `Box::new([_; TABLE_ALLOC])` would materialise 1 MiB
+        // on the stack first.
         let mut table: Box<[Bitboard; TABLE_ALLOC]> = vec![Bitboard::EMPTY; TABLE_ALLOC]
             .into_boxed_slice()
             .try_into()
@@ -628,25 +536,16 @@ impl AttackTables {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Magic initialization (doc 03 §3.6)
-// ---------------------------------------------------------------------------
+// --- Magic initialization ---------------------------------------------------
 
-/// Per-rank PRNG seeds, indexed by the square's rank and re-seeding per
-/// square (SF-current 64-bit values, D20). Tuned against SF's exact PRNG
+/// Per-rank PRNG seeds, re-seeding per square. Tuned against an exact PRNG
 /// consumption order, so the candidate loop below must consume the PRNG
-/// identically: prefilter rejections also advance it (doc 03 §6 pitfall 6).
+/// identically: prefilter rejections also advance it.
 ///
-/// REMEDIATION-PENDING (2026-08 originality audit, item 6a — F1 in
-/// `docs/audit/2026-08-originality/foundation-infra.md`): this row is SF's
-/// 64-bit seed row verbatim, and because the PRNG and consumption order also
-/// match SF's, the magic multipliers found at startup EQUAL SF's by
-/// construction. The seeds only affect init time (~21 ms), never play, so
-/// the fix is free: run the `find_own_magic_seeds` harness below
-/// (`cargo test --release -- --ignored find_own_magic_seeds --nocapture`),
-/// paste the printed ARCHON row here, and delete this notice. Execution-gated
-/// — a seed's quality is measured by running `init_magics`, which this box
-/// cannot compile mid-training-run; see the audit runbook.
+/// REMEDIATION-PENDING (originality audit item 6a): this row is Stockfish's
+/// verbatim, so the multipliers found at startup equal SF's by construction.
+/// Seeds only affect init time (~21 ms), never play — run the
+/// `find_own_magic_seeds` harness below and paste ARCHON's own row here.
 const MAGIC_SEEDS: [u64; 8] = [728, 10316, 55013, 32803, 12281, 15100, 16645, 255];
 
 /// Which of the two magic-backed sliders `init_magics` is building.
@@ -657,7 +556,7 @@ enum Slider {
 }
 
 impl Slider {
-    /// The naive oracle for this slider type (doc 03 §3.2).
+    /// The naive oracle for this slider type.
     fn attacks_naive(self, sq: u8, occ: u64) -> u64 {
         match self {
             Slider::Bishop => bishop_attacks_naive(sq, occ),
@@ -676,8 +575,7 @@ impl Slider {
 
 /// Find a magic for every square of `slider` and fill its block of the
 /// packed shared `table`, starting at `base_offset`. Runs once per slider
-/// type inside the `LazyLock` init; deterministic (fixed seeds), ~21 ms
-/// release for both types together (measured once, doc 03 §6).
+/// type inside the `LazyLock` init; deterministic (fixed seeds).
 fn init_magics(
     slider: Slider,
     base_offset: usize,
@@ -688,14 +586,10 @@ fn init_magics(
 }
 
 /// [`init_magics`] parameterized over the per-rank seed row, returning the
-/// number of candidate ATTEMPTS spent per rank — the seed-quality metric.
-///
-/// The seed row's only effect is how fast the Las Vegas search converges:
-/// ANY seed row terminates with oracle-verified magics (the collision check
-/// runs against `attacks_naive` and the reachability assert stays on), so
-/// attempts-per-rank is the whole comparison surface. This split exists for
-/// the `find_own_magic_seeds` remediation harness (audit item 6a); the
-/// production path calls it with [`MAGIC_SEEDS`] and ignores the counts.
+/// candidate ATTEMPTS spent per rank — the seed-quality metric. Any seed
+/// row terminates with oracle-verified magics, so attempts-per-rank is the
+/// whole comparison surface. Exists for the `find_own_magic_seeds` harness;
+/// the production path passes [`MAGIC_SEEDS`] and ignores the counts.
 fn init_magics_seeded(
     slider: Slider,
     base_offset: usize,
@@ -703,11 +597,10 @@ fn init_magics_seeded(
     magics: &mut [MagicPair; 64],
     seeds: &[u64; 8],
 ) -> [u32; 8] {
-    // Scratch space, shared across all squares of this slider type (doc 03
-    // §3.6): `occupancy`/`reference` hold the current square's Carry-Rippler
-    // enumeration; `epoch` + `attempt` implement verification without
-    // clearing — a slot whose epoch predates the current attempt is "empty",
-    // so a failed candidate costs no memset of up to 4096 entries.
+    // Scratch space shared across squares: `occupancy`/`reference` hold the
+    // current square's Carry-Rippler enumeration; `epoch` + `attempt` make a
+    // slot whose epoch predates the current attempt "empty", so a failed
+    // candidate costs no memset.
     let mut occupancy = [0u64; 4096]; // 2^12 = max rook subtable
     let mut reference = [0u64; 4096];
     let mut epoch = [0u32; 4096];
@@ -716,19 +609,18 @@ fn init_magics_seeded(
 
     let mut offset = base_offset;
     for s in Square::all() {
-        // Step 1 — relevant-blocker mask: the full empty-board ray minus the
-        // edge squares NOT on s's own rank/file (a blocker on the far edge
-        // never changes the attack set; an edge square on the slider's own
-        // line IS relevant when s itself is on that edge).
+        // Step 1 — relevant-blocker mask: the empty-board ray minus edge
+        // squares NOT on s's own rank/file (a far-edge blocker never changes
+        // the attack set; an edge square on s's own line IS relevant when s
+        // sits on that edge).
         let edges = ((Bitboard::RANK_1 | Bitboard::RANK_8) & !Bitboard::RANKS[s.rank() as usize])
             | ((Bitboard::FILE_A | Bitboard::FILE_H) & !Bitboard::FILES[s.file() as usize]);
         let mask = slider.attacks_naive(s.index(), 0) & !edges.to_u64();
         let shift = 64 - mask.count_ones();
 
-        // Step 3 — Carry-Rippler subset enumeration: `(b - mask) & mask`
-        // steps through every subset of `mask` (every possible relevant-
-        // blocker configuration) in a cycle starting and ending at 0. The
-        // subtraction intentionally wraps when b < mask as an integer.
+        // Step 3 — Carry-Rippler enumeration: `(b - mask) & mask` steps
+        // through every subset of `mask` in a cycle starting and ending at
+        // 0; the subtraction intentionally wraps.
         let mut size = 0;
         let mut b = 0u64;
         loop {
@@ -743,10 +635,10 @@ fn init_magics_seeded(
         debug_assert_eq!(size, 1usize << mask.count_ones());
 
         // Step 4 — candidate search: sparse random candidates through a
-        // cheap quality prefilter (a good magic must push many mask bits
-        // into the top byte), then an O(size) collision check. Benign
-        // collisions — same attack set at the same index — are allowed, and
-        // are exactly why the packed table can be this small.
+        // cheap prefilter (a good magic pushes many mask bits into the top
+        // byte), then an O(size) collision check. Benign collisions — same
+        // attack set at the same index — are allowed; they are why the
+        // packed table can be this small.
         let mut rng = Prng::new(seeds[s.rank() as usize]);
         let square_attempts_base = attempt;
         let magic = loop {
@@ -767,9 +659,8 @@ fn init_magics_seeded(
                 }
             });
             if collision_free {
-                // The subtable at table[offset..offset + size] is now fully
-                // and consistently filled — verified against the naive
-                // oracle by construction.
+                // The subtable is now fully filled — verified against the
+                // naive oracle by construction.
                 break candidate;
             }
         };
@@ -780,16 +671,12 @@ fn init_magics_seeded(
             offset: offset as u32,
             shift,
         };
-        // Step 6 (perf study 53) — REACHABILITY, and it is the safety proof for
-        // `AttackTables::slot`'s index mask. Every index this magic can ever
-        // produce is checked to land inside its own block, hence below
-        // `TABLE_SIZE`, hence unchanged by `& TABLE_MASK`. Checked through
-        // `Magic::index` itself — the hot path's own arithmetic — over the same
-        // exhaustive Carry-Rippler enumeration the magic was verified against,
-        // which is every occupancy the lookup can be asked about (off-mask
-        // occupancy bits are masked away by `index`, so they cannot widen the
-        // range). A real `assert!`, not a `debug_assert!`: without it the mask
-        // would turn a would-be panic into a silent read of a padding slot.
+        // Step 6 — REACHABILITY: the safety proof for `slot`'s index mask.
+        // Every index this magic can ever produce must land inside its own
+        // block, hence below `TABLE_SIZE`, hence unchanged by `& TABLE_MASK`
+        // — checked through `Magic::index` itself over the exhaustive
+        // enumeration. A real `assert!`, not a `debug_assert!`: without it
+        // the mask would turn a would-be panic into a silent padding read.
         for &occ in &occupancy[..size] {
             let idx = found.index(Bitboard::from_u64(occ));
             assert!(
@@ -807,7 +694,7 @@ fn init_magics_seeded(
     }
 
     // Step 5 — packing invariant: catches any mask/enumeration bug at
-    // startup rather than as silent table overlap (doc 03 §3.6).
+    // startup rather than as silent table overlap.
     assert_eq!(
         offset - base_offset,
         slider.table_entries(),
@@ -816,56 +703,20 @@ fn init_magics_seeded(
     attempts_by_rank
 }
 
-// ---------------------------------------------------------------------------
-// Storage and slider accessors (doc 03 §3.7)
-// ---------------------------------------------------------------------------
+// --- Storage and slider accessors -------------------------------------------
 
 static TABLES: LazyLock<AttackTables> = LazyLock::new(AttackTables::new);
 
-/// Force/fetch the magic tables. Every deref of the `LazyLock` behind this
-/// costs an atomic acquire load plus a predicted branch — cheap, but hot
-/// loops (movegen, SEE, eval) should call `tables()` once at function entry
-/// and use the `&'static AttackTables` methods thereafter. `main` forces it
-/// before the UCI loop so init never happens mid-search.
+/// Force/fetch the magic tables. Every deref of the `LazyLock` costs an
+/// atomic acquire load plus a predicted branch — cheap, but hot loops
+/// should call `tables()` once at function entry and use the
+/// `&'static AttackTables` methods thereafter. `main` forces it before the
+/// UCI loop so init never happens mid-search.
 ///
-/// ⚠ **MEASURED AND REJECTED, TWICE OVER. DO NOT RE-PROPOSE "put the tables in
-/// a `Board` field" WITHOUT READING THIS.** (Perf study 69 §2; study 68 §6
-/// pre-priced it at "zero cost" and named it the largest remaining item of its
-/// class. Both halves of that were wrong.)
-///
-/// The guard really is four instructions, not three — x86 RIP-relative
-/// addressing has no index register, so `magics[sq]` also needs a `lea` to
-/// materialise the base:
-///
-/// ```text
-///   mov  <TABLES+0x1040>(%rip),%eax   ; Once state, ACQUIRE
-///   test %eax,%eax
-///   jne  <init>                       ; never taken
-///   lea  <TABLES>(%rip),%rdi
-/// ```
-///
-/// It was replaced with an `&'static AttackTables` field on `Board`, resolved
-/// once per board, at every `board.rs` / `movegen.rs` / `movepick.rs` site —
-/// node-identical, eval-hash-identical, and it removed **all 60** `TABLES`
-/// references from `search::<NonPv>` and all 16 from `qsearch::<NonPv>`. Two
-/// numbers killed it:
-///
-/// - **Non-PGO pair (the source change alone): −0.077 % instructions, 10/10 =
-///   −4.1 per node.** A win, but an ORDER OF MAGNITUDE under the disassembly's
-///   ~15, because the field read replaces the `lea` (which was free and
-///   rematerialisable) rather than adding to it, and because the guard's own
-///   load/test/branch was already partly common-subexpression-eliminated.
-/// - **PGO pair (the shipped pipeline): +0.321 % instructions, 0/16 = +16.8 per
-///   node,** against a byte-identical null of +0.000 %. The arm shrinks its
-///   callees (`see_ge` −193 B, `init_quiets` −538 B, `qsearch` −903 B), PGO
-///   then inlines differently, and the cost lands in symbols the diff does not
-///   touch (`forward_into` +0.71 share points, `i8_deltas_into_inner` −0.81).
-///   Study 55 §0.1's size curve, from the other end.
-///
-/// The guard's whole measured budget is **4.98 dispatched ops per node** across
-/// the binary (`tools/perf69/guardcost69.sh`), of which `search::<NonPv>` owns
-/// 2.20 — and half of its 22 sites never execute. It is not worth a
-/// register-pressure trade in a 45 KB function.
+/// NOTE: replacing this guard with an `&'static` field on `Board` has been
+/// measured and REJECTED — the direct saving is tiny and the shrunken
+/// callees trigger PGO inline re-decisions that cost more than the guard.
+/// Do not re-propose without new evidence.
 #[inline]
 pub fn tables() -> &'static AttackTables {
     &TABLES
@@ -907,8 +758,7 @@ mod tests {
         squares.iter().copied().collect()
     }
 
-    /// Tiny SplitMix64 PRNG for deterministic random occupancies without a
-    /// dev-dependency (same pattern as bitboard.rs, D15).
+    /// Tiny SplitMix64 PRNG: deterministic random occupancies, no dev-dependency.
     struct SplitMix64(u64);
 
     impl SplitMix64 {
@@ -923,9 +773,8 @@ mod tests {
 
     // -- Independent shift-based models (never touch safe_destination) ------
 
-    /// Knight attacks as two-step `Bitboard::shift` compositions; every
-    /// shift masks the wrapping file itself, so this path is independent of
-    /// the table builders' stepping primitive.
+    /// Knight attacks as two-step `Bitboard::shift` compositions —
+    /// independent of the table builders' stepping primitive.
     fn knight_shift_model(sq: Square) -> Bitboard {
         use Direction::*;
         let b = Bitboard::from_square(sq);
@@ -973,8 +822,7 @@ mod tests {
     ];
 
     /// Slider attacks by walking `Square::shifted` rays one step at a time —
-    /// the reference model for the naive generator (which is itself the
-    /// oracle for everything later, so it gets its own independent check).
+    /// the independent reference model for the naive generator.
     fn slider_step_model(sq: Square, dirs: [Direction; 4], occupied: Bitboard) -> Bitboard {
         let mut attacks = Bitboard::EMPTY;
         for d in dirs {
@@ -990,7 +838,7 @@ mod tests {
         attacks
     }
 
-    // -- §5.1 hand-verified sets ---------------------------------------------
+    // -- Hand-verified sets --------------------------------------------------
 
     #[test]
     fn leaper_hand_cases() {
@@ -1019,7 +867,7 @@ mod tests {
         assert_eq!(pawn_attacks(Color::Black, Square::A5), bb(&[Square::B4]));
     }
 
-    // -- §5.1 count properties ------------------------------------------------
+    // -- Count properties -----------------------------------------------------
 
     #[test]
     fn king_attack_count_distribution() {
@@ -1046,7 +894,6 @@ mod tests {
                 "knight on {sq} attacks {n} squares"
             );
         }
-        // The extremes pin the distribution's ends.
         assert_eq!(knight_attacks(Square::A1).count(), 2);
         assert_eq!(knight_attacks(Square::E4).count(), 8);
     }
@@ -1061,8 +908,7 @@ mod tests {
             for sq in Square::all() {
                 let n = pawn_attacks(color, sq).count();
                 if sq.rank() == last_rank {
-                    // No pawn can stand here; the geometrically correct
-                    // shift leaves the board (doc 03 §3.3).
+                    // No pawn can stand here; the shift leaves the board.
                     assert_eq!(n, 0, "{color:?} pawn on {sq}");
                 } else {
                     let expected = if sq.file() == 0 || sq.file() == 7 {
@@ -1076,7 +922,7 @@ mod tests {
         }
     }
 
-    // -- §5.1 edge wrapping -----------------------------------------------------
+    // -- Edge wrapping ----------------------------------------------------------
 
     #[test]
     fn no_edge_wrapping() {
@@ -1104,12 +950,12 @@ mod tests {
         }
     }
 
-    // -- §5.1 set-wise pawn attacks --------------------------------------------
+    // -- Set-wise pawn attacks -------------------------------------------------
 
     #[test]
     fn pawn_attacks_bb_matches_per_square_union() {
         for color in Color::ALL {
-            // Full-rank sets (the doc's case) ...
+            // Full-rank sets ...
             for rank in 0..8 {
                 let pawns = Bitboard::RANKS[rank];
                 let expected = pawns
@@ -1287,11 +1133,10 @@ mod tests {
         assert_eq!(E4_WHITE, bb(&[Square::D5, Square::F5]));
     }
 
-    // -- §5.2 geometry: independent coordinate-walk models ------------------------
+    // -- Geometry: independent coordinate-walk models -----------------------------
     //
-    // These recompute the geometry in (file, rank) coordinates and never touch
-    // `safe_destination`, the naive ray generator, or any table — a fully
-    // independent path to the same sets.
+    // Recomputed in (file, rank) coordinates, never touching the stepping
+    // primitive, the naive generator, or any table.
 
     /// The unit (file, rank) step from `s1` toward `s2` if the squares are
     /// aligned on a rank, file, or diagonal; `None` otherwise (incl. equal).
@@ -1359,7 +1204,7 @@ mod tests {
         b
     }
 
-    // -- §5.2 hand-verified geometry sets ------------------------------------------
+    // -- Hand-verified geometry sets -----------------------------------------------
 
     #[test]
     fn geometry_hand_cases() {
@@ -1424,7 +1269,7 @@ mod tests {
         assert_eq!(distance(Square::E4, Square::G5), 2);
     }
 
-    // -- §5.2 documented edge cases (doc 03 §4 step 2) ------------------------------
+    // -- Diagonal edge cases --------------------------------------------------------
 
     #[test]
     fn geometry_diagonal_edge_cases() {
@@ -1442,7 +1287,7 @@ mod tests {
         }
     }
 
-    // -- §5.2 exhaustive property tests over all 4096 ordered pairs ------------------
+    // -- Exhaustive property tests over all 4096 ordered pairs -----------------------
 
     #[test]
     fn between_includes_target_always() {
@@ -1450,8 +1295,7 @@ mod tests {
             for s2 in Square::all() {
                 let b = between(s1, s2);
                 assert!(b.contains(s2), "between({s1}, {s2}) misses {s2}");
-                // Exactly {s2} whenever there is nothing strictly between:
-                // unaligned, equal, or adjacent-aligned pairs (§5.2).
+                // Exactly {s2} whenever there is nothing strictly between.
                 let expect_only_target = match alignment_dir(s1, s2) {
                     None => true,
                     Some(_) => distance(s1, s2) == 1,
@@ -1486,9 +1330,8 @@ mod tests {
 
     #[test]
     fn geometry_tables_agree_with_naive_rays() {
-        // The doc 03 §3.4 defining formulas, recomputed test-side through the
-        // independent step-walker (`slider_step_model`, which the step-1 tests
-        // prove equal to the naive generator).
+        // The defining formulas, recomputed test-side through the
+        // independent step-walker.
         for s1 in Square::all() {
             for s2 in Square::all() {
                 let dirs = if pseudo_attacks(PieceType::Bishop, s1).contains(s2) {
@@ -1535,9 +1378,8 @@ mod tests {
                 } else {
                     assert!(l.is_empty(), "line({s1}, {s2}) must be empty");
                 }
-                // Extension to the edges: any point of the line regenerates
-                // the whole line — the table stores edge-to-edge lines, never
-                // segments (§5.2).
+                // Any point of the line regenerates the whole line — the
+                // table stores edge-to-edge lines, never segments.
                 for s3 in l.squares() {
                     if s3 != s1 {
                         assert_eq!(line(s1, s3), l, "line({s1}, {s3}) vs line({s1}, {s2})");
@@ -1572,36 +1414,32 @@ mod tests {
                 let d = distance(s1, s2);
                 assert_eq!(d, distance(s2, s1), "distance symmetry {s1}/{s2}");
                 assert_eq!(d == 0, s1 == s2, "distance({s1}, {s2}) zero-iff-equal");
-                // Recomputed inline (§5.2) ...
+                // Recomputed inline ...
                 let expected = s1
                     .file()
                     .abs_diff(s2.file())
                     .max(s1.rank().abs_diff(s2.rank()));
                 assert_eq!(d, expected, "distance({s1}, {s2})");
-                // ... and against the P0 reference implementation the table
-                // is built from.
+                // ... and against the reference implementation.
                 assert_eq!(d, s1.distance(s2), "table vs Square::distance");
             }
         }
     }
 
-    // -- §5.2 collinearity ------------------------------------------------------------
+    // -- Collinearity -----------------------------------------------------------------
 
     #[test]
     fn aligned_collinearity_cases() {
-        // Diagonal, file, and rank lines; s3 order doesn't matter.
         assert!(aligned(Square::A1, Square::C3, Square::E5));
         assert!(aligned(Square::A1, Square::C3, Square::B2));
         assert!(aligned(Square::E4, Square::E8, Square::E1));
         assert!(aligned(Square::A4, Square::H4, Square::C4));
-        // s3 off the line.
         assert!(!aligned(Square::A1, Square::C3, Square::D3));
-        // Unaligned generators span no line at all — nothing is collinear
-        // with them, not even the endpoints themselves.
+        // Unaligned generators span no line — nothing is collinear with
+        // them, not even the endpoints themselves.
         assert!(!aligned(Square::A1, Square::B3, Square::A1));
         assert!(!aligned(Square::A1, Square::B3, Square::C5));
 
-        // Exhaustive agreement with the coordinate model over all triples.
         for s1 in Square::all() {
             for s2 in Square::all() {
                 let l = line_model(s1, s2);
@@ -1616,7 +1454,7 @@ mod tests {
         }
     }
 
-    // -- §5.3 slider magic validation (the core gate) ------------------------------
+    // -- Slider magic validation (the core gate) -----------------------------------
 
     fn naive_rook(sq: Square, occ: Bitboard) -> Bitboard {
         Bitboard::from_u64(rook_attacks_naive(sq.index(), occ.to_u64()))
@@ -1628,8 +1466,7 @@ mod tests {
 
     #[test]
     fn magic_hand_cases() {
-        // The naive-oracle hand cases from step 1, now through the magic
-        // path and the public API.
+        // The naive-oracle hand cases, now through the magic path.
         let occ = Bitboard::from_square(Square::A4);
         assert_eq!(
             rook_attacks(Square::A1, occ),
@@ -1655,11 +1492,9 @@ mod tests {
 
     #[test]
     fn magic_lookups_match_naive_on_random_occupancies() {
-        // Doc 03 §5.3: ≥ 10,000 seeded occupancies × 64 squares ×
-        // {rook, bishop, queen} vs the naive oracle, through the
-        // free-function path (which also exercises the LazyLock). Mixed
-        // density: full-board occupancies are the point — off-mask bits
-        // exercise the `& mask` step. Seeded ⇒ reproducible failures.
+        // 10,000 seeded occupancies × 64 squares × {rook, bishop, queen} vs
+        // the naive oracle. Mixed density: off-mask bits exercise the
+        // `& mask` step. Seeded ⇒ reproducible failures.
         let mut rng = SplitMix64(0x3A61_C0DE_5EED_ED01);
         for trial in 0..10_000u32 {
             let occ = Bitboard::from_u64(match trial % 3 {
@@ -1687,9 +1522,8 @@ mod tests {
 
     #[test]
     fn magic_edge_occupancies() {
-        // Doc 03 §5.3 edge cases: empty board must reproduce the PSEUDO_*
-        // rays; full board, the magic mask itself, and the square's own bit
-        // stress the mask/index path from both ends.
+        // Empty board must reproduce the PSEUDO_* rays; full board, the
+        // mask itself, and the square's own bit stress the index path.
         let t = tables();
         for sq in Square::all() {
             let s = sq.index() as usize;
@@ -1746,8 +1580,8 @@ mod tests {
         }
     }
 
-    /// Edge squares irrelevant to a blocker mask on `sq` — the doc 03 §3.6
-    /// step-1 formula, recomputed test-side (never read from the init code).
+    /// Edge squares irrelevant to a blocker mask on `sq` — the step-1
+    /// formula, recomputed test-side (never read from the init code).
     fn irrelevant_edges(sq: Square) -> Bitboard {
         ((Bitboard::RANK_1 | Bitboard::RANK_8) & !Bitboard::RANKS[sq.rank() as usize])
             | ((Bitboard::FILE_A | Bitboard::FILE_H) & !Bitboard::FILES[sq.file() as usize])
@@ -1755,14 +1589,11 @@ mod tests {
 
     #[test]
     fn all_subsets_exact_on_every_square() {
-        // Doc 03 §5.3 all-subset exact test (the core gate): for every
-        // square and both sliders, every subset of the relevant-blocker
-        // mask — all 102,400 rook + 5,248 bishop blocker configurations —
-        // through the public API vs the naive oracle. This re-proves what
-        // init verified by construction, but it catches offset/packing
-        // bugs, not just magic-collision bugs. Masks are recomputed from
-        // the PSEUDO_* rays; `magic_masks_exclude_irrelevant_edges` proves
-        // those equal the masks init actually used.
+        // The core gate: every subset of every relevant-blocker mask,
+        // through the public API vs the naive oracle. Re-proves what init
+        // verified, but catches offset/packing bugs too. Masks recomputed
+        // test-side; `magic_masks_exclude_irrelevant_edges` proves they
+        // equal the ones init used.
         let t = tables();
         for sq in Square::all() {
             let s = sq.index() as usize;
@@ -1786,8 +1617,7 @@ mod tests {
 
     #[test]
     fn attacks_dispatch_matches_specialized_fns() {
-        // Free-fn and method dispatch agree with the specialized lookups for
-        // every non-pawn piece type (doc 03 §3.1 dispatch shape).
+        // Free-fn and method dispatch agree with the specialized lookups.
         let t = tables();
         let mut rng = SplitMix64(0xD15A_7C4E_D15A_7C4E);
         for _ in 0..100 {
@@ -1811,8 +1641,7 @@ mod tests {
 
     #[test]
     fn packing_structural_invariants() {
-        // Doc 03 §5.3 structural asserts, re-checked through the test suite:
-        // walking squares in init order, each block's offsets must tile its
+        // Walking squares in init order, each block's offsets must tile its
         // reserved range exactly — disjoint, contiguous, exhaustive — and
         // every shift must equal 64 - popcount(mask).
         let t = tables();
@@ -1843,26 +1672,18 @@ mod tests {
             "bishop block ends at the packed-table end"
         );
 
-        // Perf study 53. The ALLOCATION is rounded up to a power of two so
-        // `AttackTables::slot`'s index mask is provably in bounds and the slice
-        // bounds check folds; the PACKED CONTENT still ends at `TABLE_SIZE`.
-        // Both halves are pinned, because the mask is only sound while they
-        // differ in exactly this way.
-        // (the three purely-constant halves of this invariant are `const`
-        // assertions next to TABLE_ALLOC, so they fail the BUILD, not a test)
+        // The ALLOCATION is the padded power-of-two length; the PACKED
+        // CONTENT still ends at `TABLE_SIZE`. Both halves are pinned because
+        // the mask is only sound while they differ in exactly this way.
         assert_eq!(
             t.table.len(),
             TABLE_ALLOC,
             "allocation is the padded length"
         );
 
-        // The padding is allocated, zeroed once, and never written: a non-empty
-        // slot at or above `TABLE_SIZE` would mean some magic wrote outside its
-        // reserved block, which is precisely the corruption the mask would
-        // otherwise hide (it turns an out-of-range panic into a silent read).
-        // `init_magics` step 6 proves unreachability exhaustively at startup in
-        // every build, including release; this is the cheap standing check that
-        // the proof and the data still agree.
+        // A non-empty slot at or above `TABLE_SIZE` would mean some magic
+        // wrote outside its reserved block — precisely the corruption the
+        // index mask would otherwise hide.
         assert!(
             t.table[TABLE_SIZE..].iter().all(|b| b.is_empty()),
             "padding slots must stay empty"
@@ -1872,7 +1693,7 @@ mod tests {
     #[test]
     fn magic_masks_exclude_irrelevant_edges() {
         // The mask is the empty-board ray minus edge squares not on the
-        // square's own rank/file (doc 03 §3.6 step 1), recomputed test-side.
+        // square's own rank/file, recomputed test-side.
         let t = tables();
         for sq in Square::all() {
             let s = sq.index() as usize;
@@ -1892,10 +1713,9 @@ mod tests {
 
     #[test]
     fn init_is_deterministic() {
-        // Two independent runs must find identical magics and tables (fixed
-        // seeds; guards accidental PRNG-consumption-order changes that would
-        // silently de-tune the hardcoded seeds), and match the LazyLock
-        // instance the public API serves.
+        // Two independent runs must find identical magics and tables
+        // (guards PRNG-consumption-order changes that would silently
+        // de-tune the hardcoded seeds), and match the LazyLock instance.
         let a = AttackTables::new();
         let b = AttackTables::new();
         let t = tables();
@@ -1917,8 +1737,8 @@ mod tests {
     #[test]
     fn prng_is_deterministic_and_sparse() {
         // Same seed ⇒ same stream; sparse_rand consumes exactly three
-        // rand64 draws (the PRNG-consumption-order contract the hardcoded
-        // seeds are tuned against, doc 03 §3.6).
+        // rand64 draws (the consumption-order contract the seeds are tuned
+        // against).
         let mut a = Prng::new(MAGIC_SEEDS[0]);
         let mut b = Prng::new(MAGIC_SEEDS[0]);
         let (x, y, z) = (a.rand64(), a.rand64(), a.rand64());
@@ -1926,33 +1746,20 @@ mod tests {
         assert_eq!(a.rand64(), b.rand64(), "streams must stay in lockstep");
     }
 
-    /// REMEDIATION-PENDING harness (2026-08 originality audit, item 6a): find
-    /// and validate ARCHON's OWN per-rank magic seeds, replacing the SF row.
-    ///
-    /// Seeds only affect init time — any row yields oracle-verified magics —
-    /// so the search is: for each candidate seed, run both sliders' inits and
-    /// read the per-rank attempt counts ([`init_magics_seeded`]); a rank's
-    /// cost under a seed is independent of every other rank (the PRNG
-    /// re-seeds per square), so the best row is the per-rank argmin over one
-    /// shared candidate sweep. `#[ignore]`d because it takes minutes; run
-    ///
-    /// ```text
-    /// cargo test --release -- --ignored find_own_magic_seeds --nocapture
-    /// ```
-    ///
-    /// then paste the printed row over `MAGIC_SEEDS`, drop that constant's
-    /// REMEDIATION-PENDING notice (updating the attribution to name this
-    /// harness + the sweep parameters), and rerun the full suite — init
-    /// re-verifies every magic against the naive oracle at startup, and this
-    /// test's final section re-checks the found row against the oracle on
-    /// random occupancies, so a bad row cannot land silently.
+    /// REMEDIATION-PENDING harness (originality audit item 6a): find and
+    /// validate ARCHON's OWN per-rank magic seeds, replacing the SF row.
+    /// A rank's cost under a seed is independent of every other rank (the
+    /// PRNG re-seeds per square), so the best row is the per-rank argmin
+    /// over one shared candidate sweep. `#[ignore]`d (minutes); run with
+    /// `cargo test --release -- --ignored find_own_magic_seeds --nocapture`,
+    /// paste the printed row over `MAGIC_SEEDS`, and drop that constant's
+    /// notice. A bad row cannot land silently: init re-verifies against the
+    /// naive oracle at startup, and this test's final section re-checks it.
     #[test]
     #[ignore = "minutes-long seed sweep; audit item 6a — run at remediation time"]
     fn find_own_magic_seeds() {
-        // 4096 odd candidates. Deterministic, no RNG over the RNG: candidate
-        // k is simply 2k+1 — the seed space is arbitrary (any nonzero u64
-        // seeds the xorshift), so small odd integers are as good a family as
-        // any and make the sweep reproducible by inspection.
+        // 4096 odd candidates: candidate k is simply 2k+1, so the sweep is
+        // reproducible by inspection.
         const CANDIDATES: u64 = 4096;
 
         let mut table: Box<[Bitboard]> = vec![Bitboard::EMPTY; TABLE_ALLOC].into_boxed_slice();
@@ -1980,8 +1787,7 @@ mod tests {
             }
         }
 
-        // Validate the winner row end to end and price it against the
-        // shipped row on the identical metric.
+        // Validate the winner row and price it against the shipped row.
         let rook_new = init_magics_seeded(Slider::Rook, 0, &mut table, &mut magics, &best_seed);
         let bishop_new = init_magics_seeded(
             Slider::Bishop,
@@ -1991,8 +1797,7 @@ mod tests {
             &best_seed,
         );
         // Oracle re-check on the FINAL tables while they hold the new row's
-        // magics: for every square, random full-board occupancies must read
-        // the naive attack set through the production index arithmetic.
+        // magics, through the production index arithmetic.
         let mut rng = Prng::new(0x20260809);
         for s in Square::all() {
             for _ in 0..64 {

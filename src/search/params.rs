@@ -2,35 +2,22 @@
 //! greppable in one file (D20; conventions: design/01 §3.8).
 //!
 //! Values are SF-current starting points from Stockfish commit `eca43a97`
-//! (2026-07-06) unless noted. See
-//! `stockfish_reference/stockfish_search_notes.md`.
-//!
-//! What does NOT live here: *structural* constants (bit widths,
-//! `VALUE_MATE`, array sizes) are semantics and live with their types;
-//! piece values are `types::PIECE_VALUES` (design/02 §3.9); history
-//! gravity bounds are const generics in `history.rs` (design/09 §3.4) —
-//! only their multipliers are tunables.
+//! (2026-07-06) unless noted. Structural constants (bit widths,
+//! `VALUE_MATE`, array sizes) live with their types; piece values are
+//! `types::PIECE_VALUES`; history gravity bounds are const generics in
+//! `history.rs`.
 //!
 //! Naming: `TECHNIQUE_ROLE` screaming-snake, grouped by technique in
 //! design/07 / design/10 section order. Each constant documents only its
-//! role; the formula *shape* is documented at the use site in `search`,
-//! citing the owning design section. P0 seeds the aspiration and razoring
-//! groups (design/01 §4 step 4); the full inventory lands with designs
-//! 07, 09, and 10. The rule for reviewers: any bare numeric literal in
-//! `search/`, `movepick.rs`, or `see.rs` that a tuner could move is a
-//! defect (design/01 §3.8).
+//! role; the formula *shape* is documented at the use site in `search`.
+//! Any bare numeric literal in `search/`, `movepick.rs`, or `see.rs` that
+//! a tuner could move is a defect (design/01 §3.8).
 
 use crate::types::{Depth, Value};
 
-// The qsearch return blends and the NMP verify fraction moved INTO the
-// `tunables!` block on 2026-07-27 (the tuple-const shape made them
-// structurally untunable; D33 reviewer finding F1/#7). On 2026-08-01 the
-// blend triples were FOLDED to one beta weight each (D50) — see
-// QS_STANDPAT_BETA_W / QS_FAILHIGH_BETA_W / RFP_RET_BETA_W.
-/// The per-thread vote tempo (design/13 §3.8; SF-current `get_best_thread`).
-/// Each thread votes for its own best move with weight `score - min_score +
-/// VOTE_TEMPO`; the `+ VOTE_TEMPO` floor means even the weakest thread's
-/// opinion is counted. Value units (centipawn-ish, ply-relative).
+/// The per-thread vote tempo (design/13 §3.8): each thread votes for its own
+/// best move with weight `score - min_score + VOTE_TEMPO`, so even the
+/// weakest thread's opinion is counted. Value units.
 pub const VOTE_TEMPO: crate::types::Value = 14;
 /// Per-offset weights of the continuation-history update, offsets 1..=6
 /// (÷[`CONT_UPDATE_DIVISOR`] with the bonus).
@@ -39,10 +26,9 @@ pub const CONT_OFFSET_WEIGHTS: [i32; 6] = [1040, 780, 300, 537, 129, 423];
 /// entries along the chain: an agreeing chain amplifies the update.
 pub const CONT_CONSISTENCY_MULT: [i32; 7] = [96, 113, 101, 105, 127, 121, 126];
 
-/// History-buys-lmr_depth divisor by depth (design/10 §3.5, item 11's
-/// second half, S0): `lmr_depth += history / LMR_DIVISOR[min(depth,16)-1]`
-/// where `history` is the quiet's combined continuation/pawn score plus
-/// `2·main_history`. A tuned per-depth table (SF-current shape).
+/// History-buys-lmr_depth divisor by depth (design/10 §3.5):
+/// `lmr_depth += history / LMR_DIVISOR[min(depth,16)-1]` where `history` is
+/// the quiet's combined continuation/pawn score plus `2·main_history`.
 pub const LMR_DIVISOR: [i32; 16] = [
     3307, 2930, 2874, 2818, 3215, 3225, 3224, 2782, 2858, 2919, 3088, 3275, 3180, 2868, 3006, 3599,
 ];
@@ -58,70 +44,20 @@ const _: () = assert!(
 
 crate::tunables! {
 
-    // The eval-frame correction apparatus (FRAME_S + frame_scale/frame_expand/
-    // frame_scale_i64) was DELETED 2026-08-01 (simplification plan tier 0,
-    // item 0.1). The transforms had ZERO call sites outside this file (a
-    // documented false-negative generator: a FRAME_S sweep measured a
-    // guaranteed null), and the correction the taxonomy was built to express
-    // LANDED INSIDE THE NET with the s600 output-scale promotion — the
-    // 2026-08-01 prune-budget re-run shows every previously-starved gate live.
-    // History: docs/research/eval-frame-scale-model-2026-07-27.md.
-
     // --- Aspiration windows (design/07 §3.6) ---
 
     /// Base half-width of the window around the root move's average score.
     pub ASPIRATION_BASE_DELTA: Value = 5;
     /// Divisor of `mean_squared_score`: unstable scores widen the base delta.
-    ///
-    /// **NOT Stockfish's 10588 — this is a frame correction, 2026-07-27.**
-    /// `mean_squared_score` is a SQUARED eval quantity, and our eval frame
-    /// measures 0.64x Stockfish's, so our mss is `0.64² = 0.41x` theirs. To
-    /// make the adaptive term mean the same thing in real pawns the divisor
-    /// must scale by `r`, not by `r²` and not at all:
-    ///
-    /// ```text
-    ///   our_delta  = BASE + r²·sf_mss / DIV     want  = r · sf_delta
-    ///   sf_delta   = 5 + sf_mss / 10588         =>    DIV = r · 10588 = 6776
-    /// ```
-    ///
-    /// Dividing by the transcribed 10588 made our adaptive widening 1.56x too
-    /// small, so the window stayed narrow, the root failed high repeatedly and
-    /// reported fail-soft bounds instead of exact scores. On the position that
-    /// exposed it, our root oscillated over a 1.44-pawn range across 14
-    /// iterations where SF18 held a 0.45-pawn range with the identical PV.
-    ///
-    /// **6776 is the derived value and it is what ships.** A 4000-position
-    /// screen preferred 3000 (-19% nodes, cp better on all tiers) and I very
-    /// nearly shipped that instead — but 3000 has a CATASTROPHIC TAIL that the
-    /// screen's mean could not see. On a quiet Italian middlegame, PSQT, going
-    /// from depth 6 to depth 8 costs 3,193 nodes at 10588 and at 6776, and
-    /// **25,554 nodes at 3000** — an 8x blow-up, EBF ratio 26.7 against a
-    /// sanity ceiling of 12. The window grows so wide that aspiration stops
-    /// cutting at the root at all. It was caught by
-    /// `lmr_shrinks_the_effective_branching_factor`, which is exactly the
-    /// loose regression guard that test exists to be.
-    ///
-    /// The two self-play runs of 3000 read +27.9 and -14.7 Elo — not merely
-    /// noise, but the signature of a change that is usually mildly good and
-    /// occasionally disastrous. At 6776 the depth-6/8 node counts are
-    /// IDENTICAL to the 10588 baseline, and a 4000-position screen at the
-    /// neighbouring 6500 gave -5.6% nodes with cp -0.08/-0.18/-0.13.
-    ///
-    /// Lesson worth keeping: the dimensional argument produced the safe value
-    /// and the empirical screen produced the dangerous one. A mean over a
-    /// corpus does not see a tail that fires on a minority of positions.
-    ///
-    /// Why five eval-frame rescale campaigns missed it: they scaled constants
-    /// LINEARLY, and a squared quantity's divisor cannot be fixed that way —
-    /// and this is typed `i64`, so the `Value`-typed frame audit in
-    /// `tools/frame_audit.py` never enumerated it.
-    /// See `docs/research/aspiration-frame-bug.md`.
+    /// NOT Stockfish's 10588 — a frame correction: mss is a SQUARED eval
+    /// quantity and our frame is 0.64x SF's, so the divisor scales by `r`,
+    /// not `r²`: `DIV = r · 10588 = 6776`. NOTE: lower values (~3000) win
+    /// corpus-mean node screens but have a catastrophic root fail-high tail;
+    /// never lower this off a corpus mean.
     pub ASPIRATION_MSS_DIVISOR: i64 = 6776;
     /// Optimism numerator: `optimism = OPTIMISM_NUM·avg / (|avg| +
-    /// OPTIMISM_DEN_BASE)` at aspiration setup (design/11 §3.6's consumer,
-    /// S0). Priors are SF's 137/81 scaled by the measured winner-slope
-    /// ~0.55 (our engine frame is ~2× compressed vs SF's reported cp,
-    /// loss_forensics 2026-07-26); S2 SPSA owns the refinement.
+    /// OPTIMISM_DEN_BASE)` at aspiration setup (design/11 §3.6); SF's 137/81
+    /// scaled into our compressed eval frame.
     pub OPTIMISM_NUM: Value = 75;
     /// Optimism half-saturation denominator base (see OPTIMISM_NUM).
     pub OPTIMISM_DEN_BASE: Value = 45;
@@ -129,110 +65,41 @@ crate::tunables! {
     pub ASPIRATION_WIDEN_NUM: Value = 44;
     /// Numerator of the search-again depth damping term
     /// `3 * (search_again_counter + 1) / 4` in the aspiration loop's
-    /// `adjusted_depth` (design/07 §3.6, design/12 §3.9 — the counter itself
-    /// is TM-owned and 0 until doc 12 step 8).
+    /// `adjusted_depth` (design/07 §3.6, design/12 §3.9).
     pub ASPIRATION_SEARCH_AGAIN_NUM: Depth = 3;
 
     // --- Move ordering: capture scoring (design/09 §3.7) ---
 
     /// MVV weight on the victim value in the capture ordering score
-    /// `CAPTURE_MVV_FACTOR * victim_value + capture_history` (design/09 §3.7):
-    /// pure most-valuable-victim plus capture history, with no attacker (LVA)
-    /// term — SEE handles attacker risk at the good/bad split gate.
+    /// `CAPTURE_MVV_FACTOR * victim_value + capture_history`: no attacker
+    /// (LVA) term — SEE handles attacker risk at the good/bad split gate.
     pub CAPTURE_MVV_FACTOR: Value = 7;
 
     /// Recapture discount in the QUIESCENCE/ProbCut capture score, in 16ths
-    /// of the attacker's value (perf study 70). When the destination square is
-    /// defended, subtract `QS_CAPTURE_DEFENDED_NUM * attacker_value / 16`, so
-    /// a defended capture is ordered by roughly `7·victim − 3.5·attacker`
-    /// instead of `7·victim`.
-    ///
-    /// It applies ONLY where `depth <= DEPTH_QS`, i.e. only to the pipelines
-    /// that have no good/bad SEE split to price attacker risk with — the main
-    /// pipeline's `see_ge(m, -score/GOOD_CAPTURE_SEE_DIVISOR)` already does
-    /// that job, and study 70 measured the same term there as inert
-    /// (first-move cutoff rate −0.01 pp against a ±0.15 pp null).
-    ///
-    /// **56, not 112 — and the difference is the study's own Goodhart
-    /// warning.** 112/16 = 7 is the *principled* value: it prices the full
-    /// recapture in the same frame as `CAPTURE_MVV_FACTOR`, and it maximises
-    /// the statistic this term was built to move (quiescence first-move cutoff
-    /// rate: +4.63 pp at 112 against +3.63 at 56, both against a ±0.22 pp
-    /// null). It also makes the search WORSE: paired over 1000 positions, 112
-    /// reads +1.19 % nodes and 493/507 better/worse, while 56 reads −0.50 %
-    /// and 519/481. A full-recapture discount pushes defended captures past
-    /// `QS_LATE_MOVE_LIMIT`, which skips every non-checking non-recapture
-    /// capture after the second — so the ones whose defender is pinned or
-    /// overloaded are never searched at all. Half a recapture keeps the
-    /// ordering signal and leaves them in the window.
+    /// of the attacker's value, applied when the destination is defended.
+    /// Only where `depth <= DEPTH_QS` — the main pipeline's good/bad SEE
+    /// split already prices attacker risk. NOTE: 56 = half a recapture, not
+    /// the principled 112: a full discount pushes defended captures past
+    /// `QS_LATE_MOVE_LIMIT`, which DELETES them rather than reordering them.
     pub QS_CAPTURE_DEFENDED_NUM: Value = 56;
 
-    /// **Quiet SEE penalty (perf study 71).** Subtract this from a quiet's
-    /// ordering score when the move loses material by static exchange
-    /// evaluation (`!see_ge(m, 0)`), guarded on "the destination is in the
-    /// enemy attack map" — a quiet landing on a square no enemy attacks passes
-    /// `see_ge(m, 0)` trivially, so the guard skips most of the calls and
-    /// changes almost nothing (measured: `fhf` +0.47 guarded vs +0.45
-    /// unguarded at 65536).
+    /// Quiet SEE penalty: subtracted from a quiet's ordering score when the
+    /// move loses material by static exchange (`!see_ge(m, 0)`); guarded on
+    /// the destination being enemy-attacked and on
+    /// `value > GOOD_QUIET_THRESHOLD` (both skip pointless `see_ge` calls).
     ///
-    /// **What it adds that was not already there.** Stockfish's `score<QUIETS>`
-    /// (and ours, which is its exact transcription plus the D30 offense term)
-    /// has NO SEE term. Its nearest relative is the threat tier
-    /// `PieceValue[pt] * QUIET_THREAT_FACTOR * (attacked-at-from minus
-    /// attacked-at-to)`, and that tier knows only STRICTLY cheaper attackers —
-    /// so "rook to a square a rook attacks" is invisible to it, and for a PAWN
-    /// the tier is literally `Bitboard::EMPTY`. It is also blind to whether
-    /// the destination is defended.
-    ///
-    /// **Both halves of that matter, measured separately.** A free
-    /// approximation that only widens the tier to EQUAL-or-cheaper attackers
-    /// (`qeq`, no `see_ge` at all) reads +0.19 pp of NonPV `fhf` at its best
-    /// and turns NEGATIVE (−0.59) at this constant's magnitude: without
-    /// knowing that the destination is defended, "attacked by an equal piece"
-    /// is a bad predicate. The SEE call is what earns the term.
-    ///
-    /// **The second guard is `value > GOOD_QUIET_THRESHOLD`**, and it makes
-    /// the term both cheaper and better: a quiet already in the bad pile is
-    /// emitted after the bad captures whatever else happens to it, so paying
-    /// for its `see_ge` buys nothing. It removes **56 % of the SEE calls**
-    /// (0.354 -> 0.158 per scored quiet) and moves `fhf` from +0.43 to +0.48.
-    ///
-    /// **The demotion is CLAMPED at `GOOD_QUIET_THRESHOLD + 1`, and that is a
-    /// games-driven decision, not a stylistic one.** Unclamped, a big enough
-    /// penalty pushes the quiet into the BAD pile, where it is emitted after
-    /// the bad captures and becomes a late-move-pruning candidate — so the
-    /// term stops being ordering and starts being pruning. That version looks
-    /// better on every proxy (uho300 @ d11 nodes −6.34 %, total instructions
-    /// −3.13 %) and **lost games: −5.35 ± 9.26 Elo over 1,948 fixed-node
-    /// games**, the second instance in two studies of study 70's "ordering
-    /// quality is a proxy and it Goodharts". The mechanism is named: the
-    /// search ALREADY prunes losing quiets by SEE in the move loop, at
-    /// `-QSEE_MULT * lmr_depth²` — depth-scaled and permissive — and the
-    /// unclamped ordering demotion is a second, harsher, depth-blind copy of
-    /// the same rule. Clamped, the term cannot prune anything and keeps the
-    /// LARGER `fhf` gain (+0.50 pp overall, **+0.89 pp at TT-less nodes**).
-    ///
-    /// **The constant is not resolved inside 24576..98304 and is left to
-    /// SPSA.** Every point in that band reads +0.43..+0.56 pp of `fhf`
-    /// (14-18x its null); the ranking flips depending on which position set
-    /// and which statistic is read, which is the node metric's chaos and not
-    /// a curve.
-    ///
-    /// Ordering only: nothing downstream reads the picker's quiet score except
-    /// the emission order and the `GOOD_QUIET_THRESHOLD` split (`stat_score`,
-    /// which feeds LMR, is computed from the history tables directly), and the
-    /// clamp keeps the split itself fixed. The size- and magnitude-matched
-    /// RANDOM control — demote a pseudo-random 23 % of quiets, the same share
-    /// this predicate selects, by the same amount — reads **−1.17 pp of `fhf`
-    /// and +17.2 % nodes**, so the gain is the predicate and not the demotion.
+    /// CLAMPED at `GOOD_QUIET_THRESHOLD + 1` so it can only reorder — the
+    /// unclamped form wins every cheap proxy (nodes, instructions) and LOSES
+    /// games: it duplicates the move loop's depth-scaled quiet SEE prune as
+    /// a depth-blind copy. An ordering change that can cross
+    /// `GOOD_QUIET_THRESHOLD` is a pruning change. Value unresolved inside
+    /// 24576..98304; SPSA owns it.
     pub QUIET_SEE_PENALTY: Value = 49152;
 
     // --- Move ordering: good/bad capture split (design/09 §3.6 stage 3) ---
 
     /// Divisor of the score-dependent SEE gate `see_ge(m, -score / 18)` that
-    /// splits captures into good and bad (design/09 §3.6): a capture with a
-    /// high ordering score may lose a little material and still count as good;
-    /// a capture with terrible capture-history must win material to qualify.
+    /// splits captures into good and bad (design/09 §3.6).
     pub GOOD_CAPTURE_SEE_DIVISOR: Value = 18;
 
     // --- Move ordering: quiet scoring (design/09 §3.7) ---
@@ -244,63 +111,45 @@ crate::tunables! {
     /// Flat bonus for a quiet that gives check, gated by the SEE margin below
     /// so a check that hangs material earns nothing.
     pub QUIET_CHECK_BONUS: Value = 16384;
-    /// SEE margin gating the check bonus: a checking quiet earns it only if the
-    /// move does not lose more than this much material (`see_ge(m, -75)`).
+    /// SEE margin gating the check bonus (`see_ge(m, -75)`).
     pub QUIET_CHECK_SEE_MARGIN: Value = -75;
     /// Per-piece-value multiplier of the threat escape/entry term: fleeing a
     /// square attacked by a strictly cheaper enemy piece earns
-    /// `QUIET_THREAT_FACTOR * piece_value`, stepping onto one costs the same.
-    /// Fed by the Wave-G threat map (D30, `Board::piece_threats`).
+    /// `QUIET_THREAT_FACTOR * piece_value`, stepping onto one costs the same
+    /// (`Board::piece_threats`).
     pub QUIET_THREAT_FACTOR: Value = 20;
-    // QUIET_OFFENSE_FACTOR (the D30 offense term) was removed by basket A of
-    // the simplification plan, 2026-08-01: `offensew=0` read +0.07 pp fhf,
-    // inside study 70's census null.
     /// Weight on low-ply history in the quiet ordering score (plies 0..4 only,
     /// scaled by `/ (1 + ply)`).
     pub QUIET_LOW_PLY_WEIGHT: Value = 8;
 
     // --- Move ordering: quiet good/bad split + sort (design/09 §3.6) ---
 
-    /// Good/bad quiet partition threshold (design/09 §3.6 stages 5/7): quiets
-    /// scoring strictly above this are "good" (emitted before bad captures);
-    /// the exact complement are "bad" (emitted last). One shared threshold
-    /// partitions the quiet region with no dedup bookkeeping.
+    /// Good/bad quiet partition threshold (design/09 §3.6): quiets scoring
+    /// strictly above this are "good" (emitted before bad captures); the
+    /// exact complement are "bad" (emitted last).
     pub GOOD_QUIET_THRESHOLD: Value = -14000;
     /// Depth multiplier of the quiet partial-sort limit `-3560 * depth`
-    /// (design/09 §3.6 stage 4 / §3.8): deeper nodes sort more of the list, so
-    /// sorting work scales with what the search actually consumes.
+    /// (design/09 §3.6): deeper nodes sort more of the list.
     pub QUIET_SORT_DEPTH_FACTOR: Value = -3560;
 
     // --- Move ordering: evasion scoring (design/09 §3.7) ---
 
-    /// Constant lifting every capturing evasion above every quiet evasion
-    /// (design/09 §3.7): `2^28` dwarfs any history-based quiet-evasion score.
+    /// Constant lifting every capturing evasion above every quiet evasion:
+    /// `2^28` dwarfs any history-based quiet-evasion score.
     pub EVASION_CAPTURE_BONUS: Value = 1 << 28;
 
     // --- Quiescence search (design/07 §3.8) ---
 
-    /// Futility headroom over the corrected static eval:
-    /// `futility_base = static_eval + 335` (§3.8 step 5). A capture whose
-    /// victim cannot lift this base above alpha is skipped.
+    /// Futility headroom over the corrected static eval (§3.8 step 5): a
+    /// capture whose victim cannot lift `static_eval + 335` above alpha is
+    /// skipped.
     pub QS_FUTILITY_MARGIN: Value = 335;
-    // The class-4 eval/material frame converters (QS_PIECE_MULT,
-    // CFUT_PIECE_MULT, SEE_THRESH_MULT, LMP_DEPTH_MULT + scale_1024) were
-    // DELETED 2026-08-01 (simplification plan tier 0, item 0.14): all four
-    // were pinned at 1024 = exact identity since birth, and the eval-frame
-    // correction program they were built to express CLOSED when the s600 net
-    // rescale landed the correction inside the net (the 2026-08-01 prune
-    // budget re-run shows every gate live post-s600). Their doc blocks'
-    // frame arithmetic lives on in docs/research/eval-frame-scale-model-*.
     /// The hard SEE floor: any move whose static exchange value cannot reach
     /// this bar is never searched in qsearch (§3.8 step 7).
     pub QS_SEE_FLOOR: Value = -74;
     /// Late-move cutoff: after this many non-checking moves not aimed at the
-    /// previous move's destination, stop trying such moves entirely
-    /// (`move_count > 2`, §3.8 step 7).
+    /// previous move's destination, stop trying such moves (§3.8 step 7).
     pub QS_LATE_MOVE_LIMIT: i32 = 2;
-
-    // --- Equal-value dither (design/07 §3.7.2 step 12) ---
-
 
     // --- Razoring (design/10 §3.1; node step N9) ---
 
@@ -311,14 +160,8 @@ crate::tunables! {
 
     // --- Reverse futility pruning (design/10 §3.4; node step N10) ---
     //
-    // "Futility pruning: child" — a non-PV node whose corrected static eval
-    // already clears beta by a depth-scaled margin returns a beta-ward blend
-    // without searching (the fail-high is almost certainly real). The margin
-    // `futility_mult·depth - (RFP_IMPROVING·improving + RFP_OPP_WORSENING·
-    // opponent_worsening)·futility_mult / RFP_TREND_DEN` shrinks when the
-    // trend flags say the fail-high is well-supported. The Wave-F correction
-    // term (`|correction_value| / 182069`) is deliberately absent until
-    // correction history is plumbed into this suite (design/10 §4 Wave F).
+    // A non-PV node whose corrected static eval clears beta by a depth-scaled
+    // trend-adjusted margin returns a beta-ward blend without searching.
 
     /// Exclusive depth ceiling: RFP only runs while `depth < RFP_MAX_DEPTH`
     /// (the depth condition matters for mate finding — deep nodes never RFP).
@@ -330,77 +173,55 @@ crate::tunables! {
     pub RFP_MULT_SLOPE: Value = 4;
     /// Cap of the futility multiplier.
     pub RFP_MULT_CAP: Value = 80;
-    /// Subtracted from the futility multiplier on a TT miss (a node with no TT
-    /// data prunes a little more cautiously).
+    /// Subtracted from the futility multiplier on a TT miss (no TT data =
+    /// prune more cautiously).
     pub RFP_MULT_NO_TTHIT: Value = 20;
     /// Weight (÷[`RFP_TREND_DEN`] of `futility_mult`) by which an *improving*
-    /// node shrinks the margin — the fail-high is better supported.
+    /// node shrinks the margin.
     pub RFP_IMPROVING: Value = 2934;
     /// Weight (÷[`RFP_TREND_DEN`] of `futility_mult`) by which a *worsening*
     /// opponent shrinks the margin.
     pub RFP_OPP_WORSENING: Value = 343;
-    // RFP_THREAT_MARGIN (the D30 threat-coupled relaxation) was removed by
-    // basket A of the simplification plan, 2026-08-01: removal measured
-    // −3.5 ± 14.1 over 1185 games, and the two-margin lazy-threat machinery
-    // existed only to make the term affordable.
     /// Beta weight (in 1024ths) of the RFP return blend
     /// `(W·beta + (1024−W)·eval) / 1024` — a value ≥ beta, pulled toward beta
-    /// to damp static-eval noise (the same instability-damping idiom as the
-    /// node-exit fail-high soften). A weighted average is ONE degree of
-    /// freedom; the old (BEST_W, BETA_W, DEN) triple was folded 2026-08-01
-    /// (D50 blend fold, weights summed to the denominator already).
+    /// to damp static-eval noise (same idiom as the fail-high softens).
     pub RFP_RET_BETA_W: Value = 716;
 
     // --- Null move pruning (design/10 §3.4; node step N11) ---
     //
-    // A cut node whose static eval already clears a beta-relative bar assumes
-    // it can afford to "pass" (make a null move) and still fail high: it
-    // searches the null move at reduced depth `depth - R` and, if that fails
-    // high, returns without searching a real move. The classic zugzwang trap —
-    // where passing is illusory — is fenced off three ways: NMP runs only when
-    // the side to move has non-pawn material (`non_pawn_material(us) != 0`), a
-    // proven-mate null value is never trusted (`!is_win(null_value)`), and at
-    // high depth a same-node verification search re-confirms the fail-high with
-    // NMP disabled up to `nmp_min_ply` (recursion- and zugzwang-proof).
-    //
-    // The gate reads `ss.static_eval` (NOT the TT-substituted `eval` RFP uses —
-    // design/10 §3.4 N11 marks the site).
+    // Zugzwang is fenced three ways: NMP runs only with non-pawn material on
+    // the side to move, a proven-mate null value is never trusted, and at
+    // high depth a verification search re-confirms with NMP disabled up to
+    // `nmp_min_ply`. The gate reads `ss.static_eval` (NOT the TT-substituted
+    // `eval` RFP uses).
 
     /// Per-ply slope of the NMP static-eval bar `beta - NMP_EVAL_DEPTH·depth -
     /// NMP_EVAL_IMPROVING·improving + NMP_EVAL_BASE`: deeper nodes need less
-    /// headroom (a deeper fail-high is better supported).
+    /// headroom.
     pub NMP_EVAL_DEPTH: Value = 14;
     /// Improving discount of the NMP static-eval bar.
     pub NMP_EVAL_IMPROVING: Value = 45;
-    /// Flat base of the NMP static-eval bar (dominates at shallow depth, so the
-    /// bar sits well above beta there).
+    /// Flat base of the NMP static-eval bar.
     pub NMP_EVAL_BASE: Value = 374;
     /// Base of the null-move dynamic reduction `R = NMP_R_BASE + depth /
-    /// NMP_R_DEPTH_DIV` (in whole plies — this reduction is applied directly to
-    /// depth, not in the 1024ths the LMR table uses).
+    /// NMP_R_DEPTH_DIV` (whole plies, applied directly to depth).
     pub NMP_R_BASE: Depth = 7;
     /// Depth divisor of the null-move reduction.
     pub NMP_R_DEPTH_DIV: Depth = 3;
     /// Depth at/above which a fail-high null search is re-confirmed by the
-    /// verification search (`depth >= NMP_VERIFY_DEPTH`); below it the null
-    /// value is returned directly.
+    /// verification search; below it the null value is returned directly.
     pub NMP_VERIFY_DEPTH: Depth = 16;
 
     // --- Base reduction table + `reduction()` (design/10 §3.3) ---
     //
-    // The per-worker log reduction table `reductions[i] = int(RED_TABLE_NUM /
-    // RED_TABLE_DEN * ln(i))` (built once at `Worker` construction) and the base
-    // per-move reduction `reduction(improving, depth, move_number, delta)`, both
-    // carried in 1024ths of a ply — divide by 1024 only at the moment of
-    // application (the suite's unit convention). The table and function are
-    // wired in this Wave-A item but stay UNUSED until Wave-A item 4 applies LMR
-    // in the move loop (design/10 §4).
+    // The per-worker log table `reductions[i] = int(RED_TABLE_NUM /
+    // RED_TABLE_DEN * ln(i))`; reductions are carried in 1024ths of a ply,
+    // divided by 1024 only at the moment of application.
 
-    /// Numerator of the log reduction table `int(2834 / 128 * ln(i))`; the
-    /// division is done in floating point once, at table-build time.
+    /// Numerator of the log reduction table `int(2834 / 128 * ln(i))`.
     pub RED_TABLE_NUM: i32 = 2834;
-    /// Wide-window damping of the base reduction: a wider local window `delta`
-    /// reduces less, via `- delta * RED_DELTA_MULT / root_delta`.
+    /// Wide-window damping: a wider local window `delta` reduces less, via
+    /// `- delta * RED_DELTA_MULT / root_delta`.
     pub RED_DELTA_MULT: i32 = 617;
     /// Not-improving surcharge numerator: a not-improving node reduces more, by
     /// `+ scale * RED_NON_IMPROVING / RED_NON_IMPROVING_DEN` (~38% extra).
@@ -410,51 +231,32 @@ crate::tunables! {
 
     // --- LMR reduction finalization + search mechanics (design/10 §3.7/§3.8) ---
     //
-    // Wave-A item 4 (design/10 §4): the base [`Worker::reduction`] output `r`
-    // (1024ths of a ply) accretes the Wave-A subset of the §3.7 finalization —
-    // the flat rebase, the move-count discount, the cut-node surcharge, and the
-    // TT-move rebate — then §3.8 turns it into a reduced zero-window scout depth
-    // `d = max(1, min(new_depth - r/RED_UNIT, new_depth + RED_MAX_DEEPER)) + PV`,
-    // with the deeper/shallower re-search rule and the non-LMR dock path. Wave-C
-    // item 10 adds the `ss.stat_score` combined-history term below. The ttPv,
-    // correction (`/26131`), tt_capture, cutoffCnt and all-node terms are still
-    // deferred to their later waves (design/10 §4 Waves C/D/F), so those
-    // constants are absent here.
+    // The base [`Worker::reduction`] output `r` accretes the §3.7
+    // finalization terms; §3.8 turns it into the reduced zero-window scout
+    // depth, with the deeper/shallower re-search rule and the non-LMR dock
+    // path.
 
     /// Flat rebase added to every finalized reduction (§3.7).
     pub RED_FLAT: i32 = 714;
 
     /// Draw contempt: how much worse than equality a draw is judged, from the
-    /// ROOT side's point of view (our internal units).
-    ///
-    /// Motivated by loss P2 (2026-07-28): we take a perpetual worth −1 rather
-    /// than search for a win, and that −1 sets alpha and starves the winning
-    /// sibling by ~5× in nodes (52,407 vs 260,666 with the draw excluded). SF
-    /// never plays that blunder at any budget from 50k; we need 2M to stop.
-    ///
-    /// This is a NEW conditioning axis, not a re-tune: every existing global
-    /// pruning/reduction constant was shown to sit at a local optimum at equal
-    /// nodes (searchopt/LEDGER.md).
-    ///
+    /// ROOT side's point of view (internal units) — a draw taken at −1 sets
+    /// alpha and starves a winning sibling of nodes.
     /// DEFAULT 0 — bit-identical default build, `Bench:` pin untouched.
     pub DRAW_CONTEMPT: Value = 0;
-    /// Per-move-count reduction discount `r -= RED_MOVECOUNT * move_count`: later
-    /// moves in the list reduce a little less than the raw log table implies
-    /// (they were tried later precisely because ordering distrusted them, §3.7).
+    /// Per-move-count reduction discount `r -= RED_MOVECOUNT * move_count`:
+    /// later moves reduce a little less than the raw log table implies (§3.7).
     pub RED_MOVECOUNT: i32 = 62;
-    /// Cut-node reduction surcharge: an expected-fail-high node reduces its late
-    /// moves harder — it wants a cheap refutation, not a thorough search (§3.7).
+    /// Cut-node reduction surcharge: an expected-fail-high node reduces its
+    /// late moves harder (§3.7).
     pub RED_CUTNODE: i32 = 3995;
-    /// Extra cut-node surcharge when the node has no TT move: nothing trustworthy
-    /// to search near full depth, so reduce even more (§3.7).
+    /// Extra cut-node surcharge when the node has no TT move (§3.7).
     pub RED_CUTNODE_NO_TTMOVE: i32 = 1059;
     /// TT-move reduction rebate `r = max(0, r - RED_TTMOVE_SUB)`: the move the TT
-    /// records as best is searched close to full depth (§3.7). In Wave A this is
-    /// a plain `if m == tt.mv`; the cutoffCnt `if/else` wrapper is Wave D.
+    /// records as best is searched close to full depth (§3.7).
     pub RED_TTMOVE_SUB: i32 = 2016;
-    /// Cap on how many plies a NEGATIVE net `r` may DEEPEN the reduced scout past
-    /// `new_depth` (`min(new_depth - r/RED_UNIT, new_depth + RED_MAX_DEEPER)`,
-    /// §3.8); PV nodes get a further unconditional +1.
+    /// Cap on how many plies a NEGATIVE net `r` may DEEPEN the reduced scout
+    /// past `new_depth` (§3.8); PV nodes get a further unconditional +1.
     pub RED_MAX_DEEPER: Depth = 2;
     /// Deeper-re-search margin: after a reduced scout beats alpha, re-search one
     /// ply DEEPER when it beat the running best by more than this (§3.8).
@@ -462,38 +264,24 @@ crate::tunables! {
     /// Shallower-re-search margin: re-search one ply SHALLOWER when the scout only
     /// barely cleared the running best (`value < best_value + this`, §3.8).
     pub LMR_SHALLOWER_MARGIN: Value = 9;
-    /// Non-LMR path: a node with no TT move adds this to `r` before the depth
-    /// docks below — the full-depth analogue of the cut-node no-ttMove surcharge
-    /// (§3.8).
+    /// Non-LMR path: a node with no TT move adds this to `r` before the
+    /// depth docks below (§3.8).
     pub RED_FULLDEPTH_NO_TTMOVE: i32 = 1085;
-    /// Non-LMR path first depth dock: an `r` above this costs one ply even for a
-    /// move that does not qualify for LMR proper (§3.8).
+    /// Non-LMR path first depth dock: an `r` above this costs one ply (§3.8).
     pub RED_FULLDEPTH_DOCK1: i32 = 5039;
-    /// Non-LMR path second depth dock: an `r` above this (and `new_depth > 2`)
-    /// costs a second ply (§3.8).
+    /// Non-LMR path second depth dock: an `r` above this (and
+    /// `new_depth > 2`) costs a second ply (§3.8).
     pub RED_FULLDEPTH_DOCK2: i32 = 5223;
 
-    // --- LMR statScore: combined-history reduction + post-LMR bonus (design/10
-    //     §3.7/§3.8; Wave-C item 10) ---
+    // --- LMR statScore: combined-history reduction + post-LMR bonus
+    //     (design/10 §3.7/§3.8) ---
     //
-    // `ss.stat_score` is the per-node combined history statistic of the move about
-    // to be searched, read from PRE-move state and stored on the stack (the child
-    // reads `(ss-1).stat_score` for its fail-low parent bonus, a later wave). It
-    // grades a capture by victim value plus capture history —
-    // `STATSCORE_CAPT_NUM·piece_value(captured)/STATSCORE_CAPT_DEN + capt_hist` —
-    // and a quiet by twice its butterfly history plus the offset-1/offset-2
-    // continuation histories — `STATSCORE_MAIN_WEIGHT·main + contHist(1) +
-    // contHist(2)`. It then docks the reduction: `r -= stat_score·
-    // RED_STATSCORE_NUM / RED_STATSCORE_DEN` — a move the combined history likes
-    // searches fuller, one it distrusts is reduced harder. Rust integer division
-    // truncates toward zero exactly like C++ (design/10 §3.1), so a negative
-    // `stat_score` does NOT floor. Independently, a move that survives its reduced
-    // LMR scout earns a flat [`LMR_CONTHIST_BONUS`] along its continuation chain
-    // (design/10 §3.8) — "worth continuing from".
+    // `ss.stat_score` is computed from PRE-move state (the child reads
+    // `(ss-1).stat_score`) and docks the reduction. Rust integer division
+    // truncates toward zero exactly like C++: a negative score does NOT floor.
 
-    /// Butterfly-history weight in the quiet `stat_score` (the `2·mainHistory`
-    /// term). A dedicated tunable so the reduction statistic can move independently
-    /// of the move-ordering weight [`QUIET_MAIN_HISTORY_WEIGHT`].
+    /// Butterfly-history weight in the quiet `stat_score`; a dedicated
+    /// tunable, independent of [`QUIET_MAIN_HISTORY_WEIGHT`].
     pub STATSCORE_MAIN_WEIGHT: i32 = 2;
     /// Victim-value multiplier of the capture `stat_score`
     /// (`STATSCORE_CAPT_NUM·piece_value(captured) / STATSCORE_CAPT_DEN`).
@@ -509,17 +297,8 @@ crate::tunables! {
     // --- LMR reduction finalization: ttPv rebate / tt_capture / all-node
     //     (design/10 §3.5/§3.7) ---
     //
-    // The remaining §3.7 accretion terms that BALANCE the reduction. Their absence
-    // alongside the Wave-D cutoffCnt/singular reductions over-reduces PV-history
-    // (ttPv) lines and can hide shallow mates, so they land with item 15's cutoffCnt
-    // terms to complete the §3.7 finalization (the wave plan left them unassigned).
-    //   * §3.5 entry bump: `if ss.tt_pv { r += RED_TTPV_ENTRY }` — a provisional
-    //     bump, mostly cancelled by the rebate below.
-    //   * §3.7 rebate: `if ss.tt_pv { r -= RED_TTPV_BASE + RED_TTPV_PV·PV +
-    //     RED_TTPV_TTVALUE·(tt.value > alpha) + (tt.depth >= depth)·
-    //     (RED_TTPV_TTDEPTH_BASE + RED_TTPV_TTDEPTH_CUT·cut_node) }` — a PV-flagged
-    //     node with a trustworthy TT entry searches much fuller.
-    //   * tt_capture surcharge and the all-node scaling close the balance.
+    // The §3.7 accretion terms that BALANCE the reduction: a PV-flagged node
+    // with a trustworthy TT entry searches much fuller.
 
     /// §3.5 provisional ttPv reduction bump (mostly cancelled by the rebate).
     pub RED_TTPV_ENTRY: i32 = 1006;
@@ -549,141 +328,54 @@ crate::tunables! {
     /// IIR_MIN_DEPTH` searches one ply shallower.
     pub IIR_MIN_DEPTH: Depth = 6;
 
-    /// **Fail-low best-move store (perf study 71).** A node whose move loop
-    /// raised alpha nowhere stores `Move::NULL` today, so the position comes
-    /// back TT-less next time even though the search knows perfectly well
-    /// which move scored highest. Study 71's census priced that: of the
-    /// 435,079 NonPV node entries that arrive with a TT ENTRY but no move,
-    /// **50.6 % were written by a main-search fail-low** (34.5 % at depth
-    /// 1–3, 16.1 % deeper) — 220 k entries, 17.7 % of all NonPV nodes.
-    ///
-    /// **MEASURED DEAD — leave it at 0.** Against its own pruning control the
-    /// store reads **−0.06 pp of NonPV `fhf` and +2.3 % nodes** (uho1000 @ d10,
-    /// null ±0.03 pp); alone it reads +0.08 pp and +3.9 % nodes. Mechanism: at
-    /// a NonPV all-node with a zero window every child returns an upper bound
-    /// from a REDUCED search, and the moves that survive the §3.5 pruning
-    /// cascade far enough to get a value are the ones the static ordering
-    /// already ranked first — so the argmax carries almost nothing the next
-    /// visit did not already have. Stockfish `eca43a97` and Reckless both
-    /// store nothing there, and this is why.
-    ///
-    /// Kept as a knob, not deleted, because it is the reproduction path for
-    /// that claim; `1` = store the argmax move. It rides an UPPER-bound entry
-    /// and is therefore never a singular-extension candidate; see
-    /// [`TT_UPPER_PRUNE_BLIND`] for what it does to the gates that read
-    /// `ttMove == NULL` as "this node is unresolved".
+    /// Fail-low best-move store: `1` = store the node's argmax move on a
+    /// main-search fail low (default stores `Move::NULL`). MEASURED DEAD —
+    /// leave at 0; kept only as the reproduction path for that claim (the
+    /// argmax at an all-node is over reduced upper bounds of moves ordering
+    /// already ranked first, so it carries almost nothing; SF and Reckless
+    /// store nothing there). See [`TT_UPPER_PRUNE_BLIND`].
     pub TT_FAILLOW_MOVE: i32 = 0;
 
-    /// **The pruning gates go blind to an UPPER-bound ttMove (perf study
-    /// 71).** Four sites read `tt_data.mv == Move::NULL` as evidence that the
-    /// node is unresolved and should be reduced or pruned harder: internal
-    /// iterative reduction, reverse futility's `ttMove == NULL || ttCapture`
-    /// gate, `RED_CUTNODE_NO_TTMOVE` and `RED_FULLDEPTH_NO_TTMOVE`. A move
-    /// attached to an UPPER-bound entry never raised alpha, so it is not that
-    /// evidence — with `1` those four sites read [`Worker::search`]'s
-    /// `tt_prune_move`, which is NULL on an UPPER entry.
-    ///
-    /// It is a separate knob from [`TT_FAILLOW_MOVE`] deliberately: the two
-    /// have to be screened as a 2x2 or the store's node effect is
-    /// indistinguishable from the pruning side effect of handing 20 % of
-    /// NonPV nodes a move they did not have (study 70's standing finding,
-    /// which cost that study two retracted headline arms).
-    ///
-    /// **REJECTED IN GAMES — never put this in an SPSA campaign.** Bit 1 (IIR)
-    /// alone is a **−27.7 %** tree at fixed depth, which is why it is tempting;
-    /// the other three bits are +0.3 %, +0.6 % and −0.05 %, inside the null. As
-    /// a PGO pair at 25 k fixed nodes it reads **−24.17 ± 15.11 Elo over 792
-    /// games, LOS 0.08 %**. Our IIR is already exact SF parity
-    /// (`search.cpp:1030`) and SF's own source carries
-    /// `(*Scaler) Making IIR more aggressive scales poorly` — this is that
-    /// comment, measured on ARCHON. Perf study 71 §2.1.
+    /// `1` = the four sites that read `tt_data.mv == Move::NULL` as "this
+    /// node is unresolved" (IIR, RFP's ttMove gate, `RED_CUTNODE_NO_TTMOVE`,
+    /// `RED_FULLDEPTH_NO_TTMOVE`) ignore a move riding an UPPER-bound entry.
+    /// REJECTED IN GAMES — never put this in an SPSA campaign: the IIR bit
+    /// alone shrinks the fixed-depth tree dramatically and loses games badly
+    /// (SF: making IIR more aggressive scales poorly). Deliberately separate
+    /// from [`TT_FAILLOW_MOVE`]: the two must be screened as a 2x2.
     pub TT_UPPER_PRUNE_BLIND: i32 = 0;
 
     // --- Move-loop pruning: late move pruning (design/10 §3.5) ---
     //
-    // "Movecount pruning": once the running `move_count` clears a depth-scaled
-    // threshold at a shallow node, the picker is told to stop emitting quiets
-    // ([`MovePicker::skip_quiet_moves`]) — the late moves ordering already
-    // distrusted are never even generated. The threshold is
-    // `(LMP_BASE + depth²) / (2 - improving)`: quadratic in depth (deeper nodes
-    // try more moves before giving up) and halved for a not-improving node (a
-    // stagnant eval distrusts its late quiets, so it prunes them roughly twice
-    // as early). The whole move-loop pruning block is fenced by the mate-safety
+    // Once `move_count` clears the threshold, the picker stops emitting
+    // quiets. The whole move-loop pruning block is fenced by the mate-safety
     // guard `!is_loss(best_value)` and the zugzwang guard
-    // `non_pawn_material(us) != 0` (design/10 §3.5), never at the root.
+    // `non_pawn_material(us) != 0`, never at the root.
 
-    // --- Implicit-coefficient tunables (2026-07-27) ---
-    //
-    // Every entry below gives a NAME and a knob to a term that carried an
-    // invisible x1 or a bare literal. They all default to exact identity, so
-    // the shipped engine is unchanged and each is a clean control.
-    //
-    // Why they were missing. Design/01 §3.8's rule is "any bare numeric
-    // literal in `search/` that a tuner could move is a defect" — and that
-    // rule STRUCTURALLY CANNOT catch these, because most of them are not
-    // literals at all. `+ Depth::from(pv_node)` is a coefficient of 1 that
-    // nobody ever wrote down, so it is invisible to a grep for numbers.
-    //
-    // Why it matters. The prune budget
-    // (`docs/research/prune-budget-2026-07-27.md`) forced the distinction
-    // between a mechanism's CONTRIBUTION (what happens if it vanishes) and
-    // its LEVERAGE (what happens if its parameter moves). LMP removes ~23-47%
-    // of the tree and had exactly one low-leverage parameter, because the
-    // term that actually sets its threshold — `depth²` — had no coefficient.
-    // No SPSA campaign can find what no parameter can express.
-    //
-    // Stockfish carries the same implicit 1s, and that is not evidence they
-    // are right: SF writes an explicit coefficient wherever it has bothered
-    // to tune one (`45 * improving` in the NMP bar, `138 * !bestMove` in
-    // parent futility). The ones still at an implicit 1 are simply untuned —
-    // and never tuned for OUR eval frame or OUR tree shape at all.
+    // --- Implicit-coefficient tunables: names and knobs for terms that
+    // carried an invisible x1 or a bare literal; all default to exact
+    // identity. ---
 
     /// Base term of the LMP move-count threshold `(LMP_BASE + depth²) /
-    /// (2 - improving)` (design/10 §3.5): the constant floor of quiets always
-    /// tried before movecount pruning can bite, before the depth² growth.
+    /// (2 - improving)` (design/10 §3.5).
     pub LMP_BASE: i32 = 3;
-    // LMP_DEPTH_MULT (the depth² coefficient, identity at 1024) was deleted
-    // 2026-08-01 with the other item-0.14 identity converters. Its doc made a
-    // real point — LMP's contribution (~2-47% of the tree depending on the
-    // net era) vastly exceeds LMP_BASE's leverage, "no SPSA campaign can find
-    // what no parameter can express" — but no campaign ever asked, and D50
-    // makes such handles opt-in when one does.
 
     /// Numerator of the singular VERIFICATION depth, `new_depth *
-    /// SE_VERIFY_DEPTH_NUM / SE_VERIFY_DEPTH_DEN` (was a bare `/ 2`).
-    ///
-    /// The highest-leverage implicit constant in the search: this is the
+    /// SE_VERIFY_DEPTH_NUM / SE_VERIFY_DEPTH_DEN` (was a bare `/ 2`): the
     /// depth of an entire extra search run at every singular candidate, so it
     /// sets both the cost of singular extensions and how trustworthy their
-    /// verdict is. A bare `/ 2` fixed that trade-off with no way to measure
-    /// it.
+    /// verdict is.
     pub SE_VERIFY_DEPTH_NUM: Depth = 1;
 
     // --- Move-loop pruning: capture futility + capture/check SEE (design/10 §3.5) ---
     //
-    // The capture/check arm of the shallow-depth pruning block (Wave-B item 8),
-    // keyed by the capture history `capt_hist = capture[moved][to][captured]`
-    // (design/09). Two gates, in node order:
-    //
-    //   * Capture futility (non-checking captures, `lmr_depth < CFUT_MAX_LMRDEPTH`):
-    //     a capture whose victim value plus a depth-scaled slack and the
-    //     capture-history nudge still leaves the static eval below alpha is futile
-    //     — skip when `ss.static_eval + CFUT_BASE + CFUT_LMRDEPTH_MULT·lmr_depth +
-    //     piece_value(captured) + CFUT_HIST_MULT·capt_hist/CAPT_HIST_DEN <= alpha`.
-    //     `piece_value(captured)` is 0 for en passant (no piece on `to`) — SF
-    //     parity. There is NO `!in_check` guard (unlike parent futility below):
-    //     the block's outer `!is_loss(best_value)` fence already keeps every
-    //     evasion searched until one produces a real value.
-    //   * Capture/check SEE (captures AND checking quiets): a move that cannot win
-    //     back `-(CAP_SEE_DEPTH_MULT·depth + CAP_SEE_HIST_MULT·capt_hist/
-    //     CAPT_HIST_DEN)` in a static exchange is pruned — UNLESS `alpha <
-    //     VALUE_DRAW` and the moved piece is our LAST non-pawn material
-    //     (`non_pawn_material(us) == piece_value(moved)`): sacrificing it may be a
-    //     stalemate resource, which is never pruned.
+    // Two gates keyed by the capture history. `piece_value(captured)` is 0
+    // for en passant — SF parity; no `!in_check` guard (the outer `!is_loss`
+    // fence keeps evasions searched); the SEE gate never prunes our LAST
+    // non-pawn material when `alpha < VALUE_DRAW` — a possible stalemate
+    // resource.
 
-    /// Exclusive lmr-depth ceiling of capture futility (`lmr_depth <
-    /// CFUT_MAX_LMRDEPTH`); deeper predicted searches are trusted to see the
-    /// tactic themselves.
+    /// Exclusive lmr-depth ceiling of capture futility.
     pub CFUT_MAX_LMRDEPTH: Depth = 7;
     /// Flat base of the capture-futility optimistic value over the static eval.
     pub CFUT_BASE: Value = 231;
@@ -691,85 +383,48 @@ crate::tunables! {
     /// shallow nodes, LOWERING the bound).
     pub CFUT_LMRDEPTH_MULT: Value = 232;
     /// Capture-history nudge numerator of the capture-futility value
-    /// (`CFUT_HIST_MULT·capt_hist / CAPT_HIST_DEN`): a capture the history likes
-    /// is written off a little less readily.
+    /// (`CFUT_HIST_MULT·capt_hist / CAPT_HIST_DEN`).
     pub CFUT_HIST_MULT: i32 = 131;
     /// Depth multiplier of the capture/check SEE margin
-    /// (`CAP_SEE_DEPTH_MULT·depth + CAP_SEE_HIST_MULT·capt_hist/CAPT_HIST_DEN`):
-    /// deeper nodes tolerate a bigger static-exchange loss before pruning.
+    /// (`CAP_SEE_DEPTH_MULT·depth + CAP_SEE_HIST_MULT·capt_hist/CAPT_HIST_DEN`).
     pub CAP_SEE_DEPTH_MULT: Value = 175;
     /// Capture-history numerator of the capture/check SEE margin.
     pub CAP_SEE_HIST_MULT: i32 = 34;
 
     // --- Move-loop pruning: continuation-history pruning (design/10 §3.5) ---
     //
-    // The FIRST gate in the quiet arm of the shallow-depth pruning block (Wave-C
-    // item 11), ahead of parent futility and quiet SEE. A quiet whose combined
-    // recent history `history = contHist(1)[pc][to] + contHist(2)[pc][to] +
-    // pawnHistory[pc][to]` — the offset-1/offset-2 continuation slabs (the same
-    // contHist(1/2) move ordering reads) plus the pawn-structure slot, all from
-    // PRE-move state — is deeply negative is skipped without a search: the
-    // position's own move-ordering memory reports that this move has been failing
-    // here. The move is pruned when `history < -QHIST_PRUNE_MULT·depth`, a linear
-    // (not quadratic, unlike quiet SEE) depth scale, so a deeper node demands a
-    // proportionally more damning history before writing a quiet off. Fenced by
-    // the block's outer `!is_loss(best_value)` mate guard and the
-    // `non_pawn_material(us) != 0` zugzwang guard, never at the root, and — like
-    // every quiet gate — only off the last iteration's PV path (`!follow_pv ||
-    // !PV`); the ttMove (searched first under the `is_loss` fence), captures, and
-    // checks never reach this arm. There is no `!in_check` guard (unlike parent
-    // futility): the outer `!is_loss` fence already keeps every evasion searched
-    // until one produces a real value. Fresh histories sum to −2366, above the
-    // bar at every depth, so the gate is dormant until the search's own history
-    // updates drive a quiet's combined score below `-QHIST_PRUNE_MULT·depth`.
+    // First gate in the quiet arm: a quiet whose combined recent history
+    // (contHist(1) + contHist(2) + pawn slot, PRE-move state) falls below a
+    // depth-scaled bar is skipped. Fresh histories sum to −2366, above the
+    // bar at every depth, so the gate is dormant until updates drive a quiet
+    // below it.
 
     /// Linear depth multiplier of the continuation-history pruning threshold
-    /// `history < -QHIST_PRUNE_MULT·depth` (design/10 §3.5): a quiet whose
-    /// offset-1/offset-2 continuation histories plus its pawn history fall below
-    /// this depth-scaled bar is pruned before it is searched.
+    /// `history < -QHIST_PRUNE_MULT·depth` (design/10 §3.5).
     pub QHIST_PRUNE_MULT: i32 = 4313;
 
     // --- Move-loop pruning: parent futility (design/10 §3.5) ---
     //
-    // (The history-buys-lmr_depth divisor table sits below this macro block
-    // with the other const arrays — see `LMR_DIVISOR`.)
-    //
-    // "Futility pruning: parent node" — a shallow, not-in-check node writes off
-    // a quiet whose most optimistic outcome still fails to reach alpha. The
-    // bound is `ss.static_eval + PFUT_BASE + PFUT_NO_BESTMOVE·(no best move yet)
-    // + PFUT_LMRDEPTH_MULT·lmr_depth + PFUT_EVAL_ABOVE_ALPHA·(eval already beats
-    // alpha)`: a depth-scaled slack over the static eval, widened while the node
-    // has no alpha-raiser in hand and when the eval already clears alpha. When
-    // that bound `<= alpha` at a shallow predicted depth
-    // (`lmr_depth < PFUT_MAX_LMRDEPTH`), the quiet is skipped — after first
-    // lifting `best_value` to the bound (the fail-low value a pruned move could
-    // plausibly deliver), gated by `!is_decisive(best_value) && !is_win(bound)`
-    // so no mate score is corrupted (§8.11). The `!ss.in_check` guard keeps
-    // every check evasion searched. `lmr_depth = new_depth - r/1024` is the
-    // predicted post-LMR depth; the continuation-history nudge SF folds into it
-    // first is Wave-C item 11 — this item uses the plain derivation.
+    // A shallow, not-in-check node writes off a quiet whose most optimistic
+    // outcome still fails to reach alpha — after first lifting `best_value`
+    // to the bound, gated by `!is_decisive(best_value) && !is_win(bound)` so
+    // no mate score is corrupted (§8.11). `lmr_depth = new_depth - r/1024`.
 
     /// Flat base of the parent-futility bound over the static eval.
     pub PFUT_BASE: Value = 40;
-    /// Bound surcharge while no best move has been found yet: a node with no
-    /// established alpha-raiser writes moves off a little more optimistically.
+    /// Bound surcharge while no best move has been found yet.
     pub PFUT_NO_BESTMOVE: Value = 138;
-    /// Per-lmr-depth slope of the bound: a deeper predicted search must clear
-    /// more headroom before its quiets are futile.
+    /// Per-lmr-depth slope of the bound.
     pub PFUT_LMRDEPTH_MULT: Value = 117;
     /// Bound surcharge when the static eval already clears alpha.
     pub PFUT_EVAL_ABOVE_ALPHA: Value = 90;
-    /// Exclusive lmr-depth ceiling: parent futility runs only while
-    /// `lmr_depth < PFUT_MAX_LMRDEPTH` (deeper predicted searches are trusted).
+    /// Exclusive lmr-depth ceiling of parent futility.
     pub PFUT_MAX_LMRDEPTH: Depth = 12;
 
     // --- Move-loop pruning: quiet SEE (design/10 §3.5) ---
     //
     // After parent futility, a quiet whose static-exchange value cannot reach
-    // `-QSEE_MULT·lmr_depth²` (quadratic in the predicted post-LMR depth, floored
-    // at 0) is pruned: a material-losing quiet at shallow effective depth is
-    // almost never worth a search. At `lmr_depth == 0` the bar is 0, so any
-    // negative-SEE quiet is dropped; it slackens quadratically with depth.
+    // `-QSEE_MULT·lmr_depth²` (floored at 0) is pruned.
 
     /// Quadratic coefficient of the quiet SEE margin `-QSEE_MULT·lmr_depth²`
     /// (`lmr_depth` clamped to `>= 0` first).
@@ -779,48 +434,34 @@ crate::tunables! {
 
     /// TT cutoffs are refused once the halfmove clock reaches this (the
     /// graph-history guard of design/07 §3.7.2 step 7 / design/08 §3.12).
-    /// `i32`: matches `value_from_tt`'s rule50 parameter (doc 02).
     pub TT_CUTOFF_RULE50_LIMIT: i32 = 96;
-    /// Extra depth credited to the TT store of a no-legal-moves node
-    /// (design/07 §3.7.2 step 14): a mate/stalemate terminal is exact far
-    /// beyond its nominal depth, so make the entry hard to displace.
+    /// Extra depth credited to the TT store of a no-legal-moves node: a
+    /// mate/stalemate terminal is exact far beyond its nominal depth.
     pub TT_NO_MOVES_DEPTH_BONUS: Depth = 6;
 
-    // --- TT-cutoff history nudges (N6b extras, design/10 §3.4; Wave-C item 12) ---
+    // --- TT-cutoff history nudges (N6b extras, design/10 §3.4) ---
     //
-    // When the non-PV TT cutoff fires with `tt.value >= beta`, the stored ttMove
-    // "worked": if it is quiet, reward it (`min(TTCUT_BONUS_MULT·depth,
-    // TTCUT_BONUS_CAP)`), and if the parent played an early (`move_count < 4`)
-    // non-capturing quiet, penalize that parent move along its continuation chain
-    // (`TTCUT_PARENT_MALUS`) — a cheap cutoff here is evidence the parent's move
-    // was refutable.
+    // When the non-PV TT cutoff fires with `tt.value >= beta`: reward a
+    // quiet ttMove, penalize the parent's early quiet along its chain.
 
     /// Depth multiplier of the TT-cutoff quiet-ttMove bonus.
     pub TTCUT_BONUS_MULT: i32 = 114;
     /// Cap of the TT-cutoff quiet-ttMove bonus.
     pub TTCUT_BONUS_CAP: i32 = 724;
-    /// Continuation-history malus applied to the parent's early quiet move on a
+    /// Continuation-history malus for the parent's early quiet move on a
     /// beta-side TT cutoff.
     pub TTCUT_PARENT_MALUS: i32 = -2187;
     /// The parent's `move_count` must be below this for the TT-cutoff parent
-    /// penalty to fire (an "early" quiet the cutoff just refuted).
+    /// penalty to fire.
     pub TTCUT_PARENT_MOVECOUNT: i32 = 4;
 
-    // --- Singular extensions + multicut (design/10 §3.6; Wave-D items 13/14) ---
+    // --- Singular extensions + multicut (design/10 §3.6) ---
     //
-    // When the move under consideration is the ttMove, an exclusion search
-    // (`search::<NonPv>(singular_beta-1, singular_beta, new_depth/2, cut_node, ply)`
-    // with `excluded_move = m`) at `singular_beta = tt.value - (SE_BETA_MULT +
-    // SE_BETA_TTPV_MULT·(tt_pv && !PV))·depth / SE_BETA_DIV` decides:
-    //   * value < singular_beta → singular: extend (1 + double/triple margins),
-    //     and the WHOLE node deepens (`depth += 1`);
-    //   * value >= beta (non-decisive) → multicut: several moves beat beta, prune
-    //     the subtree (dock the tt_move_history scalar and return value);
-    //   * else if tt.value >= beta → extension = -3 (the ttMove likely fails high
-    //     anyway; search it shallower);
-    //   * else if cut_node → extension = -2.
-    // The `is_shuffling` guard suppresses extensions of back-and-forth shuffles in
-    // 50-move territory. `corr_adj` (Wave F) is 0 until item 21 plumbs correction.
+    // For the ttMove, an exclusion search (`excluded_move = m`) at a margin
+    // below `tt.value` decides: singular → extend (1 + double/triple
+    // margins) and the WHOLE node deepens; value >= beta → multicut, prune
+    // the subtree; else negative extensions (-3 tt-fail-high, -2 cut node).
+    // `is_shuffling` suppresses extensions of shuffles in 50-move territory.
 
     /// Minimum depth for the singular trigger (`depth >= SE_MIN_DEPTH + tt_pv`).
     pub SE_MIN_DEPTH: Depth = 6;
@@ -832,8 +473,8 @@ crate::tunables! {
     pub SE_BETA_TTPV_MULT: Value = 70;
     /// Divisor of the singular-beta margin.
     pub SE_BETA_DIV: Value = 59;
-    /// Divisor of the correction adjustment folded into the extension margins
-    /// (Wave F item 21; `corr_adj = |correction_value| / SE_CORR_DIV`).
+    /// Divisor of the correction adjustment folded into the extension
+    /// margins (`corr_adj = |correction_value| / SE_CORR_DIV`).
     pub SE_CORR_DIV: i32 = 194_822;
     /// Double-extension margin: base.
     pub SE_DOUBLE_BASE: Value = -3;
@@ -889,15 +530,11 @@ crate::tunables! {
     /// Extra surcharge when the current node is an all-node (`!PV && !cut_node`).
     pub RED_CUTOFFCNT_ALLNODE: i32 = 1143;
 
-    // --- ProbCut (N13, design/10 §3.4; Wave-E item 16) ---
+    // --- ProbCut (N13, design/10 §3.4) ---
     //
-    // A shallow, cheap search proving a *capture* beats `probcut_beta = beta +
-    // PROBCUT_BETA_BASE - PROBCUT_BETA_IMPROVING·improving` lets the node fail high
-    // early. Per candidate (captures clearing `see_ge(probcut_beta - static_eval)`):
-    // a qsearch probe at `probcut_beta`, then — if it held and
-    // `probcut_depth = depth - PROBCUT_DEPTH_SUB - improving > 0` — a real reduced
-    // search; a confirmed cutoff stores BOUND_LOWER and returns
-    // `value - (probcut_beta - beta)`.
+    // A shallow, cheap search proving a *capture* beats `probcut_beta` lets
+    // the node fail high early; a confirmed cutoff stores BOUND_LOWER and
+    // returns `value - (probcut_beta - beta)`.
 
     /// Flat base of the ProbCut beta margin.
     pub PROBCUT_BETA_BASE: Value = 214;
@@ -911,29 +548,22 @@ crate::tunables! {
     /// The in-check small-ProbCut beta margin (N14): `probcut_beta = beta + 428`.
     pub PROBCUT_CHECK_BETA: Value = 428;
 
-    // --- Correction-history couplings (Wave F, design/10 §4.6; item 21) ---
+    // --- Correction-history couplings (design/10 §4.6) ---
     //
-    // `correction_value` (the UNSCALED weighted correction sum, design/09 §3.10)
-    // is plumbed into the pruning suite: it corrects the static eval (N6, via
-    // `to_corrected_static_eval`), WIDENS the RFP margin when the corrector says
-    // our eval is unreliable (`+ |correction_value| / RFP_CORR_DIV`), reduces a
-    // touch LESS under eval uncertainty (`r -= |correction_value| / RED_CORR_DIV`),
-    // tightens the singular margins (`corr_adj = |correction_value| / SE_CORR_DIV`,
-    // consumed by Wave D once this lands), and the node-result correction update
-    // (`correction_bonus` + `update_correction_history`) learns the eval error.
+    // `correction_value` (the UNSCALED weighted correction sum, design/09
+    // §3.10) widens the RFP margin under eval unreliability, reduces a touch
+    // less, and tightens the singular margins.
 
     /// Divisor of the RFP margin correction-widening term.
     pub RFP_CORR_DIV: i32 = 182_069;
     /// Divisor of the reduction correction-slackening term.
     pub RED_CORR_DIV: i32 = 26_131;
 
-    // --- Hindsight depth adjustments (N6, design/10 §3.4; Wave-E item 17) ---
+    // --- Hindsight depth adjustments (N6, design/10 §3.4) ---
     //
-    // From the parent's LMR bookkeeping (`prior_reduction = (ss-1).reduction`
-    // before it is reset): if the parent reduced us hard yet the position did not
-    // turn their way, the reduction looks unjustified — search one ply deeper;
-    // conversely a moderate parent reduction plus a healthy combined eval sum
-    // searches one ply shallower.
+    // If the parent reduced us hard yet the position did not turn their way,
+    // search one ply deeper; a moderate parent reduction plus a healthy
+    // combined eval sum searches one ply shallower.
 
     /// `prior_reduction >= HINDSIGHT_RED_UP && !opponent_worsening` → `depth += 1`.
     pub HINDSIGHT_RED_UP: i32 = 3;
@@ -943,33 +573,29 @@ crate::tunables! {
     /// The `ss.static_eval + (ss-1).static_eval` threshold of the depth-down arm.
     pub HINDSIGHT_EVAL_SUM: Value = 173;
 
-    // --- TT-cutoff hardening (N6b, design/10 §3.4; Wave-E item 20) ---
+    // --- TT-cutoff hardening (N6b, design/10 §3.4) ---
     //
-    // Beyond the base non-PV cutoff (depth slack + rule50 guard, already live):
-    // require the stored bound direction to AGREE with the expected node type at
-    // shallow depth (`cut_node == (tt.value >= beta) || depth > TTCUT_AGREE_DEPTH`),
-    // re-verify a deep cutoff against the ttMove's child entry
-    // (`depth >= TTCUT_VERIFY_DEPTH`), and — in the else branch — age out an entry
-    // whose bound points the wrong way (`penalize(1)` at `depth > TTCUT_PENALIZE_DEPTH`).
+    // Beyond the base non-PV cutoff: require the stored bound direction to
+    // AGREE with the expected node type at shallow depth, re-verify a deep
+    // cutoff against the ttMove's child entry, and age out an entry whose
+    // bound points the wrong way.
 
-    /// Shallow cutoffs (`depth <= TTCUT_AGREE_DEPTH`) require the stored direction
-    /// to match the node type; deeper cutoffs skip the agreement test.
+    /// Shallow cutoffs (`depth <= TTCUT_AGREE_DEPTH`) require the stored
+    /// direction to match the node type.
     pub TTCUT_AGREE_DEPTH: Depth = 4;
-    /// At/above this depth, a candidate cutoff is re-verified against the ttMove's
-    /// child TT entry (one make/probe/unmake).
+    /// At/above this depth, a candidate cutoff is re-verified against the
+    /// ttMove's child TT entry (one make/probe/unmake).
     pub TTCUT_VERIFY_DEPTH: Depth = 7;
-    /// A wrong-direction bound at `depth > TTCUT_PENALIZE_DEPTH` costs the stored
-    /// entry one ply of depth (`penalize(1)`), aging it out faster.
+    /// A wrong-direction bound at `depth > TTCUT_PENALIZE_DEPTH` costs the
+    /// stored entry one ply of depth (`penalize(1)`).
     pub TTCUT_PENALIZE_DEPTH: Depth = 5;
 
-    // --- Fail-low parent history bonus (N-result, design/10 §3.10; Wave-E item 19) ---
+    // --- Fail-low parent history bonus (N-result, design/10 §3.10) ---
     //
-    // When a node fails low with no best move and the parent played a quiet
-    // (`prev_sq` set, `!prior_capture`), the parent's move "worked" — reward it.
-    // `bonus_scale` accumulates several signals; `scaled_bonus = min(FL_BONUS_MULT·
-    // depth - FL_BONUS_SUB, FL_BONUS_CAP) * bonus_scale` is then distributed to the
-    // parent conthist / main / pawn histories at the weights below. A fail low
-    // under a parent capture instead flat-rewards capture history (FL_CAPTURE_BONUS).
+    // A fail low with no best move under a parent quiet rewards the parent's
+    // move: `bonus_scale` accumulates signals, `scaled_bonus` is distributed
+    // to the parent conthist / main / pawn histories. Under a parent capture,
+    // flat-reward capture history instead.
 
     /// Flat base (negative) of `bonus_scale`.
     pub FL_SCALE_BASE: i32 = -245;
@@ -1004,14 +630,10 @@ crate::tunables! {
     /// Flat capture-history bonus on a fail low under a parent capture.
     pub FL_CAPTURE_BONUS: i32 = 901;
 
-    // --- Eval-diff parent nudge (N8, design/10 §3.4; Wave-C item 12) ---
+    // --- Eval-diff parent nudge (N8, design/10 §3.4) ---
     //
-    // Grade the opponent's last quiet by the static-eval swing it produced.
-    // `eval_diff = clamp(-(ss-1).static_eval - ss.static_eval, EVALDIFF_CLAMP_LO,
-    // EVALDIFF_CLAMP_HI) + EVALDIFF_OFFSET`; the parent's move (indexed by the
-    // *opponent* color) takes `main_history << EVALDIFF_MAIN_MULT·eval_diff`, and —
-    // on a TT miss for a non-pawn, non-promotion parent move — its pawn-history
-    // slot takes `<< EVALDIFF_PAWN_MULT·eval_diff`.
+    // Grade the opponent's last quiet by the static-eval swing it produced
+    // (history nudges indexed by the *opponent* color).
 
     /// Low clamp of the eval swing feeding the eval-diff nudge.
     pub EVALDIFF_CLAMP_LO: Value = -183;
@@ -1025,32 +647,14 @@ crate::tunables! {
     pub EVALDIFF_PAWN_MULT: i32 = 13;
 
     // --- Time management: soft stop (design/12 §3.9) ---
-
-
-    // The TM_SCORE_* head-free decisiveness family (score_tm_factor) was
-    // DELETED 2026-08-01 (simplification tier 0, item 0.7): default 0 = exact
-    // 1.0 since birth, and the TM back-loading hypothesis it existed to test
-    // was refuted at real TC (−36.6 ± 22.5). The 18%/33% under-allocation
-    // measurement that motivated it lives in `searchopt/LEDGER.md`
-    // ("TIME ALLOCATION"); a future head-driven factor re-enters as one line
-    // in `soft_stop`'s multiplicative product.
-
-    // The four soft-stop factors multiply into the plain `optimum` budget
-    // (design/12 §3.9, step 8). Each is an SF-current fitted value (D20); the
+    //
+    // The soft-stop factors multiply into the plain `optimum` budget; the
     // formula SHAPES are documented at the use site in `search::soft_stop`.
-
 
     /// reduction factor 2, stability lerp x0: best-move-stability in iterations
     /// `root_depth − last_best_move_depth`, mapped LO→[TIME_REDUCTION_MIN].
-    ///
-    /// 2026-07-26 depth-redenomination (TM front-load fix): SF's window is
-    /// [5,18], tuned for SF's iteration counts. Measured on 60 shared
-    /// middlegames at 3 s (tools note in docs/research/value-foundation-state
-    /// 2026-07-26): we complete 3.3 fewer iterations than SF16 at equal time
-    /// (24.2 vs 27.5) while last-best-move-change ply is EQUAL (12.7 vs 12.3),
-    /// so our stability input runs ~3.6 iterations lower (11.6 vs 15.2) for
-    /// identical decision behavior — the lerp read us as "unstable" on moves
-    /// SF banks time on. Both endpoints shift down by the measured deficit;
+    /// NOTE: window shifted down from SF's [5, 18] — we complete ~3.5 fewer
+    /// iterations at equal time, so SF's endpoints read us as "unstable";
     /// the y-range is untouched.
     pub TIME_REDUCTION_STABILITY_LO: f64 = 2.0;
     /// reduction: stability lerp x1, mapped HI→[TIME_REDUCTION_MAX].
@@ -1063,43 +667,14 @@ crate::tunables! {
 
     /// bestMoveInstability: per-iteration aging divisor of the accumulated
     /// root best-move-change count (SF: `totBestMoveChanges /= 2`).
-    ///
-    /// 2026-07-26 depth-redenomination (TM front-load fix): a root flip's
-    /// weight at the stop decision is `decay^-(iterations since the flip)`.
-    /// We complete ~3.3 fewer iterations than SF16 at equal time with EQUAL
-    /// flip counts per search (4.08 vs 4.05, 60 shared middlegames at 3 s),
-    /// so the same wobble reads ~2^3.3 ≈ 10× hotter through SF's /2. Matching
-    /// SF's effective weight at our measured stability (d^11.6 = 2^15.2)
-    /// gives d ≈ 2.48; pinned at 2.5.
+    /// NOTE: 2.5, not SF's 2 — we complete ~3.3 fewer iterations at equal
+    /// time, so the same wobble reads ~10x hotter through /2; 2.5 matches
+    /// SF's effective weight at our measured stability.
     pub INSTABILITY_CHANGES_DECAY: f64 = 2.5;
 
-
-
-
-    // --- Stop cadence (design/07 §3.9, design/12 §3.8; Reckless bundle D31) ---
-
-    /// `check_time` does real work once per this many main-search node
-    /// entries. The poll is gated by a bitmask on the node counter (`nodes &
-    /// mask`, D31 robustness bundle) rather than a decrementing field, so the
-    /// added qsearch-entry re-poll shares the exact same cadence for free.
-    /// Under a `go nodes` limit the mask tightens to a power of two `<=
-    /// min(512, limits.nodes / 1024)` so tiny node budgets are honored.
-    // (CHECK_TIME_CALLS is a plain const above the macro: its power-of-two
-    // compile-time assert cannot hold for a runtime tunable, and poll cadence
-    // is not a strength parameter.)
-
-    // The poll mask is `CHECK_TIME_CALLS - 1` (default branch) / a power-of-two
-    // `<= CHECK_TIME_CALLS` (nodes branch). `x & (CALLS - 1) == CALLS - 1` is a
-    // valid contiguous low-bit gate ONLY when CALLS is 2^k; a non-power-of-two
-    // would open silent gaps far wider than the cadence between real clock
-    // checks. Enforce the invariant at compile time so nobody can retune it into
-    // a forfeit-latency bug.
-
-
-
-
-    // --- Lazy-SMP best-thread voting (design/13 §3.8, D20) ---
-
+    // (Stop cadence: CHECK_TIME_CALLS is a plain const above the macro — its
+    // poll mask needs a compile-time power-of-two guarantee, and cadence is
+    // not a strength knob.)
 
     // --- History updates: node-result bonus/malus (design/09 §3.9) ---
     //
@@ -1127,15 +702,13 @@ crate::tunables! {
     /// Ceiling of the stat malus.
     pub STAT_MALUS_MAX: i32 = 2218;
     /// Divisor of the non-PV breadth multiplier `bonus += bonus·tried /
-    /// STAT_BREADTH_DIVISOR` (a wide node that tried many moves taught us more).
-    /// `i64`: the product is widened to avoid the 32-bit overflow SF guards
-    /// against (design/09 §9 open-question 3 — ours is plain i64 truncation).
+    /// STAT_BREADTH_DIVISOR`. `i64`: the product is widened to avoid 32-bit
+    /// overflow (plain i64 truncation).
     pub STAT_BREADTH_DIVISOR: i64 = 256;
     /// Best-quiet bonus weight (`bonus·824/1024`).
     pub QUIET_BEST_BONUS_NUM: i32 = 824;
     /// Geometric quiet-malus start weight (`malus·1136/1024`), decayed by
-    /// [`QUIET_MALUS_DECAY_NUM`] before each successive non-best quiet — earliest
-    /// failures punished hardest.
+    /// [`QUIET_MALUS_DECAY_NUM`] per non-best quiet — earliest punished hardest.
     pub QUIET_MALUS_START_NUM: i32 = 1136;
     /// Per-move decay of the geometric quiet malus (`m·956/1024` each step).
     pub QUIET_MALUS_DECAY_NUM: i32 = 956;
@@ -1199,10 +772,7 @@ crate::tunables! {
 
     // --- Correction history: bonus computation (call site, design/10 §4.6) ---
     //
-    // The gated, clamped bonus fed to `update_correction_history`. Owned by
-    // design/10's node-result step; colocated with the callee here (design/09
-    // §3.9 records external write-site formulas for grep-ability) so the P8
-    // integration wave can compute it in one call.
+    // The gated, clamped bonus fed to `update_correction_history`.
 
     /// Depth multiplier when a best move exists (`err·depth·12/128`).
     pub CORR_BONUS_DEPTH_MULT_BESTMOVE: i32 = 12;
@@ -1213,94 +783,60 @@ crate::tunables! {
     /// Numerator of the outer correction-bonus scaling (`·1114/1024`).
     pub CORR_BONUS_SCALE_NUM: i32 = 1114;
 
-    // --- SF-parity structural toggles (2026-07-27 D33 reference-fidelity pass) ---
-    //
-    // Four mechanisms where our transcription structurally deviated from SF
-    // `eca43a97`, found by side-by-side reading. Each was wired as a 0/1
-    // toggle, OFF by default, to be screened and folded in or deleted.
-    // RESOLVED 2026-08-01 (tier 0 of the simplification plan): QS_UPREP and
-    // RED_TTPV_TTMISS_REBATE both MEASURED WORSE ON (2026-07-27, net-live,
-    // n=1600 paired: +0.47/+0.20/+0.23 cp at +0.6% nodes; +0.44/+0.30/+0.34 cp
-    // at +5.3% nodes) — toggles deleted, divergence-from-SF comments left at
-    // the use sites. FOLLOW_PV_MODE never won a measurement since P9 —
-    // deleted with the whole followPV apparatus.
+    // --- SF-parity structural toggles: RESOLVED. QS_UPREP and
+    // RED_TTPV_TTMISS_REBATE measured worse ON and were deleted (divergence
+    // notes at the use sites); FOLLOW_PV_MODE went with the followPV
+    // apparatus. PROBCUT_IN_VERIF is a de facto no-op (the stored-value
+    // clause blocks the ProbCut block in both engines) — do not re-propose.
 
-    // PROBCUT_IN_VERIF was here briefly (2026-07-27) and was DELETED the same
-    // day: inside a verification `probcut_beta ≈ tt_value - margin +
-    // PROBCUT_BETA_BASE` and margin ≪ base at any practical depth, so the
-    // stored-value clause blocks the ProbCut block in both engines and the
-    // apparent SF deviation is a de facto no-op — measured bit-identical at
-    // 50k nodes and depth 13. Recorded so it is not re-proposed.
-
-    // --- Implicit-coefficient batch 2 (2026-07-27 D33 reviewer findings) ---
-    //
-    // Terms that carried an invisible coefficient (a bare literal, a tuple
-    // const, or a hard-coded ×1) on high-traffic paths. All wired at identity:
-    // the pinned bench is bit-identical at these defaults.
+    // --- Implicit-coefficient batch 2: terms that carried an invisible
+    // coefficient on high-traffic paths, wired at identity. ---
 
     /// Beta weight (in 1024ths) of the stand-pat fail-high softening
-    /// `((1024−W)·best + W·beta) / 1024` — applied to non-decisive stand pats
-    /// at or above beta (§3.8 step 5). Every qsearch stand-pat cutoff returns
-    /// through this blend. One degree of freedom (D50 blend fold).
+    /// `((1024−W)·best + W·beta) / 1024` — applied to non-decisive stand
+    /// pats at or above beta (§3.8 step 5).
     pub QS_STANDPAT_BETA_W: Value = 557;
-    /// Beta weight (in 1024ths) of the node-exit fail-high softening —
-    /// applied to non-decisive qsearch best values strictly above beta
-    /// (§3.8 step 11). Same folded shape as the stand-pat blend.
+    /// Beta weight (in 1024ths) of the node-exit fail-high softening
+    /// (§3.8 step 11); same folded shape as the stand-pat blend.
     pub QS_FAILHIGH_BETA_W: Value = 543;
     /// Numerator of the verification's NMP-disable window `nmp_min_ply =
-    /// ply + NUM·(depth - R) / DEN`: NMP stays off for the whole subtree up
-    /// to that ply, so the verification cannot recursively null-move its way
-    /// back to the same false cutoff.
+    /// ply + NUM·(depth - R) / DEN`: the verification cannot recursively
+    /// null-move its way back to the same false cutoff.
     pub NMP_VERIFY_NUM: Depth = 3;
     /// The singular block's negative extension when the non-excluded search
-    /// already proved `tt_value >= beta` (multicut-adjacent: the ttMove is
-    /// expected to fail high anyway, so it searches SHALLOWER in favor of
-    /// alternatives). SF's bare `-3`; fires on every ttMove at
-    /// `depth >= 6 + ttPv` that is neither singular nor multicut.
+    /// already proved `tt_value >= beta` (the ttMove is expected to fail
+    /// high anyway; search it SHALLOWER). SF's bare `-3`.
     pub SE_NEG_EXT_TT_FAILHIGH: Depth = -3;
     /// The singular block's negative extension at a cut node that is neither
     /// singular nor tt-fail-high. SF's bare `-2`.
     pub SE_NEG_EXT_CUTNODE: Depth = -2;
-    /// LMR entry gate: minimum depth (`depth >= 2 && move_count > 1`). The
-    /// largest tree-shaper's ENTRY condition, previously hard-coded.
+    /// LMR entry gate: minimum depth (`depth >= 2 && move_count > 1`).
     pub LMR_MIN_DEPTH: Depth = 2;
     /// LMR entry gate: minimum move count (strictly greater-than).
     pub LMR_MIN_MOVECOUNT: i32 = 1;
     /// Numerator of the main-history term in the history-buys-lmr_depth
     /// formula `history += NUM·main / DEN` (SF writes `64·h/32`, deliberately
-    /// leaving 1/32 granularity for the tuner; ours had collapsed it to `2·`).
+    /// leaving 1/32 granularity for the tuner).
     pub LMRDEPTH_MAIN_NUM: i32 = 64;
 
 }
 
-// ─── D50 constified handles (2026-08-01) ───
+// ─── D50 constified handles ───
 //
-// Same `NAME()` spelling as the tunables above, but compile-time constant
-// in EVERY build: none of these is on the SPSA surface. D50 (decisions.md)
-// reversed design/01 §3.8's default — a constant becomes a tunable when a
-// campaign wants it, not by default. Three families:
-//   * structural denominators / fixed-point scales — a numerator/
-//     denominator pair is ONE degree of freedom; the denominator is
-//     representation, not a strength knob;
-//   * non-strength knobs (poll cadence, info throttle, dither shape);
-//   * never-turned handles: the implicit-×1 batch and the TM soft-stop
-//     f64 family (fixed-node testing is structurally blind to TM).
-// Promote one back by moving its line into the `tunables!` block.
+// Same `NAME()` spelling as the tunables above, but compile-time constant in
+// EVERY build: none is on the SPSA surface (D50: a constant becomes a
+// tunable when a campaign wants it, not by default; a num/den pair is ONE
+// degree of freedom). Promote one back by moving its line into `tunables!`.
 crate::constants! {
 
-    /// Period of the lazy-SMP aspiration jitter (design/13 §3.1): helper thread
-    /// `t` adds `t % ASPIRATION_JITTER_PERIOD` to the base delta so helpers search
-    /// slightly different windows and seed the shared TT divergently. Vacuous at
-    /// `thread_idx == 0` (main/detached/bench), keeping Threads=1 bit-identical
-    /// (D24).
+    /// Period of the lazy-SMP aspiration jitter (design/13 §3.1): helper `t`
+    /// adds `t % ASPIRATION_JITTER_PERIOD` to the base delta. Vacuous at
+    /// `thread_idx == 0`, keeping Threads=1 bit-identical (D24).
     pub ASPIRATION_JITTER_PERIOD: usize = 8;
     /// Denominator of the per-re-search widening (~x1.34 per fail).
     pub ASPIRATION_WIDEN_DEN: Value = 128;
     /// Denominator of the search-again depth damping.
     pub ASPIRATION_SEARCH_AGAIN_DEN: Depth = 4;
-    // DITHER_NODE_MASK / DITHER_PLY_MARGIN (the step-12 equal-value dither)
-    // were removed with basket A, 2026-08-01 — an ARCHON original that was
-    // never validated by games and produced one illegal-PV bug class.
     /// Denominator of the improving/opponent-worsening margin discounts.
     pub RFP_TREND_DEN: Value = 1024;
     /// Denominator of the log reduction table (a power of two — exactly
@@ -1308,9 +844,8 @@ crate::constants! {
     pub RED_TABLE_DEN: i32 = 128;
     /// Not-improving surcharge denominator (the `/512` of the term above).
     pub RED_NON_IMPROVING_DEN: i32 = 512;
-    /// The application unit of the reduction accumulator: reductions are carried
-    /// in 1024ths of a ply and divided by this only at the moment they become a
-    /// depth (`new_depth - r / RED_UNIT`, §3.8 — the suite's unit convention).
+    /// The application unit of the reduction accumulator: reductions are
+    /// carried in 1024ths of a ply, divided only when they become a depth.
     pub RED_UNIT: i32 = 1024;
     /// Divisor of the capture `stat_score` victim term.
     pub STATSCORE_CAPT_DEN: i32 = 128;
@@ -1319,18 +854,9 @@ crate::constants! {
     pub RED_STATSCORE_DEN: i32 = 4096;
     /// Plies the internal iterative reduction removes (was a bare
     /// `depth -= 1`).
-    ///
-    /// The 17th implicit-x1 found: IIR's *threshold* was tunable while its
-    /// *magnitude* was not, so the only question anyone could ask about the
-    /// mechanism was "at what depth", never "by how much". `IIR_MIN_DEPTH`
-    /// 6 -> 8 is currently the strongest single arm measured
-    /// (`docs/research/SCREENING.md` §10), which makes the untunable half of
-    /// the same mechanism worth exposing.
     pub IIR_REDUCTION: Depth = 1;
-    /// Divisor base of the LMP threshold: `(… ) / (LMP_IMPROVING_DEN -
-    /// improving)`. At the default 2 a not-improving node prunes at half the
-    /// move count, which is a large structural asymmetry that was previously
-    /// hard-coded and therefore never tested.
+    /// Divisor base of the LMP threshold `(…) / (LMP_IMPROVING_DEN -
+    /// improving)`: at 2 a not-improving node prunes at half the move count.
     pub LMP_IMPROVING_DEN: i32 = 2;
     /// Denominator of the singular verification depth (see
     /// [`SE_VERIFY_DEPTH_NUM`]).
@@ -1338,9 +864,8 @@ crate::constants! {
     /// Base extension granted to a confirmed-singular move, before the
     /// double/triple bonuses: `extension = SE_EXT_BASE + (double) + (triple)`.
     pub SE_EXT_BASE: Depth = 1;
-    /// Extra depth the WHOLE node gains when its ttMove proves singular (was
-    /// a bare `depth += 1`). Distinct from [`SE_EXT_BASE`], which extends only
-    /// the singular move.
+    /// Extra depth the WHOLE node gains when its ttMove proves singular;
+    /// distinct from [`SE_EXT_BASE`], which extends only the singular move.
     pub SE_NODE_DEEPEN: Depth = 1;
     /// Depth surcharge for entering the singular test at a ttPv node
     /// (`depth >= SE_MIN_DEPTH + SE_TTPV_DEPTH_BONUS * tt_pv`).
@@ -1363,8 +888,7 @@ crate::constants! {
     /// Depth docked from the skipped-LMR full-depth search at each of the two
     /// reduction thresholds (`- LMR_FULLDEPTH_DOCK_STEP` per threshold met).
     pub LMR_FULLDEPTH_DOCK_STEP: Depth = 1;
-    /// Minimum `new_depth` for the SECOND full-depth dock to apply — a bare
-    /// `new_depth > 2` guard that stops the dock eating a shallow search.
+    /// Minimum `new_depth` for the SECOND full-depth dock to apply.
     pub LMR_DOCK2_MIN_DEPTH: Depth = 2;
     /// Depth slack allowed on a TT cutoff when the stored value is a lower
     /// bound: `tt_depth > depth - TTCUT_BOUND_SLACK * (tt_value <= beta)`.
@@ -1372,9 +896,8 @@ crate::constants! {
     /// Extension level at or above which a node stops counting child cutoffs
     /// (`cutoff_cnt += (extension < CUTOFFCNT_EXT_GATE || PV)`).
     pub CUTOFFCNT_EXT_GATE: Depth = 2;
-    /// Shared `/1024` divisor of the capture-history reads in both capture gates
-    /// above (the capture history itself is carried at design/09's `CAPT_D`
-    /// gravity scale; this is only the pruning read weight).
+    /// Shared `/1024` divisor of the capture-history reads in both capture
+    /// gates (the pruning read weight only).
     pub CAPT_HIST_DEN: i32 = 1024;
     /// Double-extension margin: tt_move_history divisor.
     pub SE_DOUBLE_TMH_DEN: i32 = 117_824;
@@ -1391,37 +914,20 @@ crate::constants! {
     /// Pawn-history divisor.
     pub FL_PAWN_DEN: i32 = 8192;
     /// Single-reply cap on the soft time budget (`min(561.7, total_time)`,
-    /// design/12 §3.9): with exactly one legal move at the root the search
-    /// result cannot change the move played, so never sit on it longer than
-    /// this — a viewer-experience cap, not a strength knob. In TM units:
-    /// milliseconds, or nodes under `nodestime` (doc 12 §3.11), like every
-    /// budget the soft stop compares against.
+    /// design/12 §3.9): with one legal move the result cannot change the move
+    /// played — a viewer-experience cap. TM units (ms, or nodes under
+    /// `nodestime`).
     pub ONE_REPLY_TOTAL_TIME_CAP: f64 = 561.7;
-    /// DIS-TM: the bar, in internal centipawns, on REMAINING predicted
-    /// movement — the head's root prediction minus what the live search has
-    /// already moved the eval. The arm buys time only above this.
-    ///
-    /// No depth term: an earlier version scaled the bar by depth and the
-    /// census showed it pinned at the cap through depth 5 then went silent
-    /// from depth 6, i.e. off exactly where the stop decision happens. The
-    /// remaining-movement form scales itself, because the search's own
-    /// progress consumes the budget. Inert unless `ARCHON_DIS_TM_C` is set.
+    /// DIS-TM: the bar, in internal cp, on REMAINING predicted movement (the
+    /// head's root prediction minus what the search has already moved the
+    /// eval); the arm buys time only above this. Inert unless
+    /// `ARCHON_DIS_TM_C` is set.
     pub DIS_TM_T0: f64 = 40.0;
-    /// DIS-TM pivot: the REMAINING-movement value the arm treats as neutral,
-    /// internal cp. Above it the arm spends time, below it the arm saves time.
-    ///
-    /// Set to the MEASURED median of REMAINING itself — census over 578 live
-    /// decisions: p10 0, p25 84, **median 127**, p75 178, p90 211 — so the arm
-    /// is mean-neutral by construction. At a real TC the clock is fixed, so an
-    /// arm that only ever adds time is not redistributing, it is front-loading
-    /// the game and letting the other TM factors pay for it later.
-    ///
-    /// FIRST ATTEMPT USED THE WRONG DISTRIBUTION: the median of `dismag` (179)
-    /// rather than of `remaining`. `remaining = dismag - found` is
-    /// systematically smaller because `found` grows as the search moves the
-    /// eval, so 76 % of decisions fell below the pivot and the arm became a
-    /// net time-SAVER (mean factor 0.895) instead of neutral. Pivot on the
-    /// quantity the comparison actually uses, not on its parent.
+    /// DIS-TM pivot: the REMAINING-movement value treated as neutral; the
+    /// MEASURED median of REMAINING itself, so the arm is mean-neutral by
+    /// construction. NOTE: pivot on the quantity the comparison actually
+    /// uses — pivoting on the parent distribution `dismag` made the arm a
+    /// net time-saver.
     pub DIS_TM_PIVOT: f64 = 127.0;
     /// fallingEval factor 1: constant term of `(11.87 + 2.21·Δavg + 1.0·Δiter)
     /// / 100`, clamped to `[0.572, 1.708]` — think longer when the score drops.
@@ -1453,8 +959,7 @@ crate::constants! {
     pub EFFORT_LERP_HI: f64 = 101_822.0;
     /// highBestMoveEffort: scale at low effort (also the upper clamp).
     pub EFFORT_SCALE_AT_LO: f64 = 0.924;
-    /// highBestMoveEffort: scale at high effort (also the lower clamp) — stop
-    /// sooner once the lion's share of nodes already went into the best move.
+    /// highBestMoveEffort: scale at high effort (also the lower clamp).
     pub EFFORT_SCALE_AT_HI: f64 = 0.71;
     /// highBestMoveEffort: the per-100k fixed-point scale of the effort ratio.
     pub EFFORT_UNIT_SCALE: i64 = 100_000;
@@ -1468,18 +973,14 @@ crate::constants! {
     /// Soft-stop mate early-stop: stop once we are mated in exactly this many
     /// plies (`rootMoves[0].score == mated_in(2)`, design/12 §3.9).
     pub SOFT_STOP_MATED_PLIES: Depth = 2;
-    /// Flat epsilon shaved off every enforced *wall-clock* bound — `maximum()`
-    /// and `movetime` (design/12 §3.8; Reckless bundle D31). Cuts fast-TC
-    /// forfeit risk by stopping a few ms early to cover the unwind-and-print
-    /// tail after `stop`. Deliberately NOT applied to the `nodes` budget
-    /// (an exactness/testing bound, not a clock forfeit risk). In TM units:
-    /// milliseconds, or nodes under `nodestime`.
+    /// Flat epsilon shaved off every enforced *wall-clock* bound
+    /// (`maximum()`, `movetime`) to cover the unwind-and-print tail after
+    /// `stop`; deliberately NOT applied to the `nodes` budget (an exactness
+    /// bound, not a forfeit risk). TM units.
     pub CHECK_TIME_EPSILON_MS: i64 = 15;
-    /// `info` throttle (design/12 §3.13, SF's `NODES_LIMIT_OUTPUT`): below
-    /// this many nodes the whole MultiPV block is published only when the
-    /// iteration's LAST line finishes; above it, after every line (more
-    /// frequent updates on long searches). At MultiPV 1 the block is a single
-    /// line, published every iteration either way.
+    /// `info` throttle (design/12 §3.13): below this many nodes the MultiPV
+    /// block is published only when the iteration's LAST line finishes;
+    /// above it, after every line.
     pub INFO_THROTTLE_NODES: u64 = 10_000_000;
     /// Shared `/1024` denominator of every history-update weight below.
     pub STAT_WEIGHT_DEN: i32 = 1024;
@@ -1498,32 +999,19 @@ crate::constants! {
     pub NMP_VERIFY_DEN: Depth = 4;
     /// Denominator of the main-history lmr_depth term.
     pub LMRDEPTH_MAIN_DEN: i32 = 32;
-    /// Additive offset of the log reduction table, in the table's own
-    /// pre-division units: `reductions[i] = (NUM/DEN)·ln(i) + OFFSET/DEN`.
-    /// The ONLY new degree of freedom the product form `f(d)·f(mn)` admits:
-    /// per-axis multipliers are all redundant with RED_TABLE_NUM (only the
-    /// product of the two slopes survives), while an additive constant
-    /// introduces independent linear `ln(depth)` / `ln(move_count)` terms —
-    /// the knob that weighs depth against move count. 0 = identity.
+    /// Additive offset of the log reduction table:
+    /// `reductions[i] = (NUM/DEN)·ln(i) + OFFSET/DEN`. The ONLY new degree
+    /// of freedom the product form `f(d)·f(mn)` admits (per-axis multipliers
+    /// are redundant with RED_TABLE_NUM); an additive constant weighs depth
+    /// against move count independently. 0 = identity.
     pub RED_TABLE_OFFSET: i32 = 0;
-    /// Multiplier on `failed_high_cnt` in the aspiration loop's
-    /// `adjusted_depth = root_depth - MULT·failed_high_cnt - …`: each
+    /// Multiplier on `failed_high_cnt` in the aspiration loop: each
     /// consecutive root fail-high re-searches this many plies shallower.
     pub ASPIRATION_FAILHIGH_DEPTH_MULT: Depth = 1;
     /// Beta weight of the MAIN-search fail-high softening `(best·depth +
-    /// W·beta) / (depth + W)` — the search() analogue of the qsearch
-    /// fail-high blend, which SF parameterised and this one never was.
+    /// W·beta) / (depth + W)` — the search() analogue of the qsearch blend.
     pub FH_SOFTEN_BETA_W: i32 = 1;
     /// The sibling depth-reduction step (`depth -= 2` on a non-cutoff alpha
-    /// raise inside the SIBLING_DEPTH_MIN..MAX window). The window was
-    /// tunable; the step was not — the mechanism could only be moved by
-    /// window, never softened.
+    /// raise inside the SIBLING_DEPTH_MIN..MAX window).
     pub SIBLING_DEPTH_STEP: Depth = 2;
 }
-
-// The eval-frame transform family (frame_scale / frame_expand /
-// frame_scale_i64 / scale_1024 and their tests) lived here until 2026-08-01
-// (simplification plan tier 0, items 0.1/0.14). See the deletion note at the
-// top of the `tunables!` block; the class taxonomy and the rounding lessons
-// (truncation silently merged two sweep arms) are preserved in
-// docs/research/eval-frame-scale-model-2026-07-27.md.

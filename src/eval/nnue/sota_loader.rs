@@ -2,12 +2,10 @@
 //! (design/11 §12.6). Two versions are readable — `CEN2` and `CEN5` — and both
 //! produce the same [`SotaNetwork`].
 //!
-//! Completely separate from the v1 CENN loader ([`super::loader`]) — the arch
-//! constants, payload shape, and returned type (`SotaNetwork` vs `Network`) are
-//! all different. The magic keeps every container family apart: `CENN` is v1,
-//! `CEN3` is [`super::simple_halfka`], `CEN4` is [`super::protected_halfka`],
-//! and this module owns `CEN2` and `CEN5`. Each loader rejects the others with
-//! `BadMagic`.
+//! Completely separate from the v1 CENN loader ([`super::loader`]). The magic
+//! keeps every container family apart: `CENN` is v1, `CEN3` is
+//! [`super::simple_halfka`], `CEN4` is [`super::protected_halfka`], and this
+//! module owns `CEN2` and `CEN5`. Each loader rejects the others' magics.
 //!
 //! ```text
 //! CENN-v2 header (64 bytes)
@@ -29,12 +27,10 @@
 //! 56      8     payload_checksum: u64 LE (FNV-1a-64)
 //! ```
 //!
-//! **CENN-v5 (`CEN5`, perf study 30) — the same container plus `threat_quant`.**
-//! The v2 header is FULL: every one of its 64 bytes is spoken for, with no
-//! reserved slot, which is why adding one field costs a magic. v5 therefore
-//! keeps bytes `0..64` byte-for-byte identical in meaning (only the magic and
-//! version differ) and APPENDS, so the two versions share one parser for
-//! everything above and a v2 net cannot be perturbed by the change:
+//! **CENN-v5 (`CEN5`) — the same container plus `threat_quant`.** The v2
+//! header has no reserved slot, so adding one field costs a magic. v5 keeps
+//! bytes `0..64` identical in meaning (only the magic and version differ) and
+//! APPENDS, so both versions share one parser for everything above:
 //! ```text
 //! CENN-v5 header (72 bytes) = the v2 header, with
 //! 0       4     magic = b"CEN5"
@@ -46,15 +42,9 @@
 //! and the payload starts at 72 instead of 64.
 //!
 //! `threat_quant` is the scale at which the FullThreats table was exported to
-//! i8, and it is a property of the NET, not of the engine: a non-QAT net's
-//! weights span ±1.98 and clip catastrophically above 64, while a QAT net
-//! trained at `qat_threat_scale = 256` is clipped to ±127/256 and wastes two
-//! bits of the i8 at 64 (measured: `max|w| 32/127`, 65 of 256 levels, against
-//! 127/127 and 247/256 for a healthy net — and −128.7 ± 9.6 Elo over 1600
-//! calibrated games). A `CEN2` file has no field for it, so it means
-//! [`sota_head::THREAT_QUANT_CEN2`] = 64 — which is exactly what every engine
-//! before this change assumed, so **loading a v2 net is bit-identical**.
-//! The runtime consumes it as [`sota_head::threat_shift_for`].
+//! i8 — a property of the NET, not the engine. A `CEN2` file has no field for
+//! it and means [`sota_head::THREAT_QUANT_CEN2`] = 64, so loading a v2 net is
+//! bit-identical. The runtime consumes it as [`sota_head::threat_shift_for`].
 //!
 //! Payload (all little-endian, in order):
 //! ```text
@@ -74,20 +64,17 @@
 //! ```text
 //! b"PSQ1" | u32 num_buckets (= out_buckets) | u32 rows | i32[rows · num_buckets]
 //! ```
-//! row-major, where `rows = halfka_dims + threat_dims` (HalfKA rows FIRST, then
-//! threats; a no-threats net carries only the HalfKA rows). Row indexing is the
-//! engine's canonical feature index: HalfKA feature `f` → row `f`, threat
-//! feature `t` → row `halfka_dims + t`. Each stored value is
-//! `round_half_away(w · 0.5 · 400 · 256)` — the stm-canonical 0.5 and the cp
-//! scale 400 are folded in, 8 fractional bits — so the head adds
-//! `(psqt_stm[b] − psqt_ntm[b]) >> 8` centipawns (arithmetic shift). The
-//! section rides OUTSIDE the header checksum (like its quant.bin counterpart);
-//! nets without it load and evaluate exactly as before.
+//! row-major, `rows = halfka_dims + threat_dims` (HalfKA rows FIRST, then
+//! threats; a no-threats net carries only the HalfKA rows), indexed by the
+//! engine's canonical feature index. Each stored value is
+//! `round_half_away(w · 0.5 · 400 · 256)` — stm-canonical 0.5 and cp scale 400
+//! folded in, 8 fractional bits — so the head adds
+//! `(psqt_stm[b] − psqt_ntm[b]) >> 8` centipawns (arithmetic shift). Rides
+//! OUTSIDE the header checksum; nets without it load and evaluate as before.
 //!
 //! Parsing NEVER panics on user-supplied bytes — every anomaly is a
-//! [`SotaNnueError`]. The loader validates every dimension against the
-//! compile-time architecture constants from [`super::sota_head`] and
-//! [`super::sota_features`].
+//! [`SotaNnueError`], and every dimension is validated against this build's
+//! compile-time architecture constants.
 
 use super::aligned::{Aligned, Blocks};
 use super::sota_features::{ACC, HALFKA_DIMS, THREAT_DIMS, ThreatRemap};
@@ -105,16 +92,13 @@ pub const CENN_V2_VERSION: u16 = 2;
 /// Fixed header size in bytes.
 pub const HEADER_V2_LEN: usize = 64;
 /// CENN-v5 magic bytes — the same container plus a `threat_quant` field.
-///
-/// **Five, not three**: `CEN3` and `CEN4` are already taken by
-/// [`super::simple_halfka`] and [`super::protected_halfka`], both routed by
-/// `uci.rs`'s magic peek, so reusing `CEN3` would misroute a SOTA net into the
-/// HalfKA loader — precisely the collision the magic exists to prevent.
+/// Five, not three: `CEN3`/`CEN4` are taken by [`super::simple_halfka`] and
+/// [`super::protected_halfka`], routed by `uci.rs`'s magic peek.
 pub const MAGIC_V5: [u8; 4] = *b"CEN5";
 /// Container version for [`MAGIC_V5`].
 pub const CENN_V5_VERSION: u16 = 5;
-/// Fixed header size in bytes for [`MAGIC_V5`]: the v2 header plus
-/// `threat_quant: i32` at 64 and a zero `reserved: u32` at 68.
+/// Fixed header size in bytes for [`MAGIC_V5`] (v2 header + `threat_quant` +
+/// reserved).
 pub const HEADER_V5_LEN: usize = 72;
 /// Flag bit: threats feature transformer is present.
 pub const FLAG_HAS_THREATS: u16 = 1;
@@ -124,15 +108,13 @@ pub const PSQT_MAGIC: [u8; 4] = *b"PSQ1";
 /// skip_section_bytes — b"SKP1" | u32 num_buckets | u32 hl | f32[hl·buckets],
 /// row-major, raw f32; rides AFTER the PSQ1 section).
 pub const SKIP_MAGIC: [u8; 4] = *b"SKP1";
-/// TRM1 magic (the Recode POC threat re-coding,
-/// `docs/research/learned-feature-code-study-2026-07-30.md` §6.1 mode (ii)):
+/// TRM1 magic (threat re-coding):
 /// `b"TRM1" | u32 dims (= THREAT_DIMS) | u32 rows | u16[dims]` little-endian,
 /// riding after the SKP1 section (or after PSQ1 / the payload when the earlier
 /// sections are absent). When present, the header's `threat_dims` field
 /// carries `rows` — the actual threat weight-table row count, `1..=60720` —
 /// and every remap entry must be `< rows`. A net whose header says 60,720 may
-/// still carry a TRM1 (the identity/shuffle instrumentation arms); a net whose
-/// header says less MUST.
+/// still carry a TRM1; a net whose header says less MUST.
 pub const REMAP_MAGIC: [u8; 4] = *b"TRM1";
 /// DIS1 magic — the OPTIONAL disagreement head (contract: jax
 /// `checkpoint.py::dis_section_bytes`), riding after the TRM1 section (or
@@ -145,22 +127,19 @@ pub const REMAP_MAGIC: [u8; 4] = *b"TRM1";
 ///         | f32[outs]      out_b
 /// ```
 /// `hl` must equal this build's [`sota_head::L1`] and `outs` must be
-/// [`sota_head::DIS_OUTS`]; `proj` is free (it is a per-net width). f32 rather
-/// than i8 deliberately: the head is polled selectively and never runs on the
-/// per-node eval path, so there is no cycle argument for a quantisation frame
-/// nobody has calibrated — see the jax-side comment for the full reasoning.
-/// Every net without the section loads and evaluates exactly as before.
+/// [`sota_head::DIS_OUTS`]; `proj` is free (a per-net width). f32 deliberately:
+/// the head is polled selectively, never on the per-node eval path. Every net
+/// without the section loads and evaluates exactly as before.
 pub const DIS_MAGIC: [u8; 4] = *b"DIS1";
 /// DIS1 section header length: magic + u32 hl + u32 proj + u32 outs.
 const DIS_HEADER_LEN: usize = 16;
-/// OBL1 magic (2026-08 originality-audit item 1 — the per-net output-bucket
-/// layout): `b"OBL1" | u32 bins (= 33) | u8[33]`, the LAST optional section
+/// OBL1 magic (per-net output-bucket layout):
+/// `b"OBL1" | u32 bins (= 33) | u8[33]`, the LAST optional section
 /// (after DIS1 / TRM1 / SKP1 / PSQ1 / the payload, whichever of those exist).
 /// Entry `c` is the output bucket the head selects for total piece count `c`;
-/// every entry must be `< out_buckets`. Absent ⇒ the container predates the
-/// section and implies [`sota_head::LEGACY_BUCKET_LAYOUT`], which keeps every
-/// pre-2026-08 net bit-identical. Rides OUTSIDE the header checksum, like
-/// every other trailer.
+/// every entry must be `< out_buckets`. Absent ⇒ the container implies
+/// [`sota_head::LEGACY_BUCKET_LAYOUT`], keeping older nets bit-identical.
+/// Rides OUTSIDE the header checksum, like every other trailer.
 pub const BUCKETS_MAGIC: [u8; 4] = *b"OBL1";
 /// PSQ1 section header length: magic + u32 num_buckets + u32 rows.
 const PSQT_HEADER_LEN: usize = 12;
@@ -176,32 +155,21 @@ const _: () = assert!(
 #[derive(Debug)]
 pub struct SotaNetwork {
     /// HalfKAv2_hm FT weights, feature-major: `[HALFKA_DIMS · ACC]` **i8**.
-    ///
     /// The CENN-v2 payload carries these as i16 in the `FT_QUANT = 255` frame;
-    /// [`quantise_halfka`] halves them at load, one integer scale per
-    /// accumulator column ([`sota_head::SotaHead::ft_scale`]). The FORMAT is
-    /// unchanged — every existing net loads — and the 57.7 MB table the fold
-    /// streams cold on every node becomes 28.9 MB, which is the whole point
-    /// (perf study 32; study 31 §4.3 priced it at −463 cycles/node).
+    /// [`quantise_halfka`] converts to i8 at load with one integer scale per
+    /// accumulator column ([`sota_head::SotaHead::ft_scale`]).
     pub halfka_weights: Aligned<i8>,
     /// Shared FT bias: `[ACC]` i16 (seeds the HalfKA accumulator; threats seed 0).
     pub ft_bias: Aligned<i16>,
     /// FullThreats FT weights, feature-major: `[threat_rows · ACC]` i8.
     /// Empty if the net has no threats channel.
     pub threat_weights: Aligned<i8>,
-    /// Perf study 66 — the per-feature ROW MAP over
-    /// [`threat_weights`](Self::threat_weights): `map[f]` is the byte offset of
-    /// feature `f`'s row, with **bit 0 set when the row is stored narrow**
-    /// ([`row_entry`](super::sota_simd::row_entry)). Empty when the table was
-    /// left in its flat 8-bit form (no `narrow65` feature, `ARCHON_NARROW=0`, or
-    /// a CPU without the AVX512_VBMI the decode needs), in which case every
-    /// consumer falls back to `feature · ACC`.
-    ///
-    /// It replaces study 65's narrow BITMAP. A bitmap can only say *whether* a
-    /// row is packed, which forced that study to leave every packed row inside
-    /// its unshrunk 1280-byte slot — the dead-tail layout its §2.3 measured at
-    /// +13.23 % L2 misses. A map says *where*, which is what lets the table be
-    /// compacted ([`pack_threat_plane`]).
+    /// Per-feature ROW MAP over [`threat_weights`](Self::threat_weights):
+    /// `map[f]` is the byte offset of feature `f`'s row, bit 0 set when the
+    /// row is stored narrow ([`row_entry`](super::sota_simd::row_entry)).
+    /// Empty when the table is flat 8-bit (no `narrow65` feature,
+    /// `ARCHON_NARROW=0`, or no AVX512_VBMI); consumers then use
+    /// `feature · ACC`.
     pub threat_rowmap: Vec<u32>,
     /// Number of rows in [`threat_weights`](Self::threat_weights):
     /// `THREAT_DIMS` for every identity-coded net, the compressed row count
@@ -211,19 +179,17 @@ pub struct SotaNetwork {
     /// [`super::sota_features::ThreatRemap`]. A sized box, so the hot paths
     /// carry a thin pointer and fixed-size indexing.
     pub threat_remap: Option<Box<ThreatRemap>>,
-    /// T6c FT PSQT skip table, row-major `[rows · BUCKETS]` i32 with the HalfKA
-    /// rows first, then the threat rows (module docs). Empty when the net has
-    /// no PSQ1 section — every psqt path is then inert and the eval is
-    /// bit-identical to a pre-T6c build.
+    /// T6c FT PSQT skip table, row-major `[rows · BUCKETS]` i32, HalfKA rows
+    /// first then threat rows (module docs). Empty when the net has no PSQ1
+    /// section — every psqt path is then inert.
     pub psqt_weights: Aligned<i32>,
     /// The multi-layer bucketed head (owns its own weight boxes).
     pub head: SotaHead,
 }
 
 impl SotaNetwork {
-    /// The HalfKA slice of the PSQT skip table (`[HALFKA_DIMS · BUCKETS]`),
-    /// indexed by `halfka_index · BUCKETS + bucket`; empty when the net has no
-    /// skip.
+    /// The HalfKA slice of the PSQT skip table, indexed by
+    /// `halfka_index · BUCKETS + bucket`; empty when the net has no skip.
     pub fn halfka_psqt(&self) -> &[i32] {
         if self.psqt_weights.is_empty() {
             &[]
@@ -232,9 +198,8 @@ impl SotaNetwork {
         }
     }
 
-    /// The threat slice of the PSQT skip table (`[THREAT_DIMS · BUCKETS]`),
-    /// indexed by `threat_index · BUCKETS + bucket`; empty when the net has no
-    /// skip or no threats channel.
+    /// The threat slice of the PSQT skip table, indexed by
+    /// `threat_index · BUCKETS + bucket`; empty without a skip or threats.
     pub fn threat_psqt(&self) -> &[i32] {
         if self.psqt_weights.len() > HALFKA_DIMS * BUCKETS {
             &self.psqt_weights[HALFKA_DIMS * BUCKETS..]
@@ -244,10 +209,9 @@ impl SotaNetwork {
     }
 }
 
-/// `PartialEq`/`Eq` are implemented for **bit-exact round-trip testing only**.
-/// The f32 head weights are compared with `==`, which is sound for serializer
-/// round-trips (bit-identical bytes → bit-identical f32) but would be incorrect
-/// in contexts where NaN is possible. Do not use for fuzzy comparison.
+/// `PartialEq`/`Eq` exist for **bit-exact round-trip testing only**: f32
+/// weights compare with `==`, which is sound for serializer round-trips but
+/// wrong wherever NaN is possible. Do not use for fuzzy comparison.
 impl PartialEq for SotaNetwork {
     fn eq(&self, other: &Self) -> bool {
         self.halfka_weights == other.halfka_weights
@@ -270,10 +234,8 @@ impl PartialEq for SotaNetwork {
     }
 }
 
-/// Compare two OPTIONAL disagreement heads. Included in the net's `eq` — and so
-/// in the four round-trip tests — because unlike the SKP1 lane, DIS1 is f32 on
-/// disk and f32 in memory, so `load ∘ serialize` really is the identity here
-/// and there is no reason to exempt it.
+/// Compare two OPTIONAL disagreement heads. DIS1 is f32 on disk and in memory,
+/// so `load ∘ serialize` is the identity and it belongs in the net's `eq`.
 fn dis_heads_equal(a: &Option<sota_head::DisHead>, b: &Option<sota_head::DisHead>) -> bool {
     match (a, b) {
         (None, None) => true,
@@ -290,17 +252,10 @@ fn dis_heads_equal(a: &Option<sota_head::DisHead>, b: &Option<sota_head::DisHead
 
 impl Eq for SotaNetwork {}
 
-/// Compare two nets' FullThreats tables **logically** — row by row, each
-/// through its own row map — instead of byte by byte.
-///
-/// Perf study 66: the same net can now be held in three different physical
-/// layouts (flat i8; study 65's pack-in-place; study 66's compacted two-plane),
-/// and the physical bytes differ in all three. `serialize` already unpacks
-/// through the map, so a byte comparison here would report `load ∘ serialize`
-/// as "not the identity" for a reason that has nothing to do with the net —
-/// which is precisely the false alarm a round-trip test must not raise. What
-/// the four round-trip tests are actually asserting is *these two evaluate
-/// identically*, and that is what this checks.
+/// Compare two nets' FullThreats tables **logically** — row by row through
+/// each net's own row map — because the same net can be held in three physical
+/// layouts (flat i8, pack-in-place, compacted two-plane), so a byte comparison
+/// would falsely fail the round-trip tests.
 fn threat_rows_equal(a: &SotaNetwork, b: &SotaNetwork) -> bool {
     use super::sota_simd::{NARROW_BYTES, row_entry, unpack_narrow_lane};
     let rows = |n: &SotaNetwork| {
@@ -317,9 +272,8 @@ fn threat_rows_equal(a: &SotaNetwork, b: &SotaNetwork) -> bool {
         let (ba, na) = row_entry(&a.threat_rowmap, r * ACC);
         let (bb, nb) = row_entry(&b.threat_rowmap, r * ACC);
         match (na, nb) {
-            // The overwhelmingly common case in both directions: a memcmp,
-            // which keeps this O(bytes) rather than O(lanes × decode) and so
-            // keeps the round-trip tests fast in a DEBUG build.
+            // The common case: a memcmp, keeping debug-build round-trip tests
+            // O(bytes) rather than O(lanes × decode).
             (false, false) => {
                 if a.threat_weights[ba..ba + ACC] != b.threat_weights[bb..bb + ACC] {
                     return false;
@@ -536,7 +490,7 @@ fn fnv1a64(data: &[u8]) -> u64 {
 /// a [`SotaNnueError`]; never panics on the input bytes.
 pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     // ── Header ─────────────────────────────────────────────────────────
-    // The shorter of the two headers first, so a truncated file still reports
+    // Check the shorter header length first so a truncated file reports
     // TooShort rather than reading past its end for the magic.
     if bytes.len() < HEADER_V2_LEN {
         return Err(SotaNnueError::TooShort {
@@ -581,11 +535,10 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         Ok(())
     };
     check_dim(8, "halfka_dims", HALFKA_DIMS)?;
-    // The threat_dims field carries the threat weight-table ROW count. For
-    // every net before the TRM1 re-coding that is exactly THREAT_DIMS (or 0
-    // without the flag); a compressed net says how many rows it actually
-    // carries, and the TRM1 trailer (validated below) maps the 60,720
-    // geometric codes onto them.
+    // The threat_dims field carries the threat weight-table ROW count:
+    // THREAT_DIMS for an identity-coded net (0 without the flag); a compressed
+    // net says how many rows it carries, and the TRM1 trailer (validated
+    // below) maps the geometric codes onto them.
     let threat_rows = read_u32(bytes, 12) as usize;
     if has_threats {
         if !(1..=THREAT_DIMS).contains(&threat_rows) {
@@ -627,8 +580,7 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         });
     }
 
-    // threat_quant: read from a v5 header, IMPLIED by a v2 one. This is the
-    // whole point of the version bump — see the module docs.
+    // threat_quant: read from a v5 header, IMPLIED by a v2 one (module docs).
     let threat_quant = if header_len == HEADER_V5_LEN {
         let reserved = read_u32(bytes, 68);
         if reserved != 0 {
@@ -681,10 +633,9 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     let mut cur = 0usize;
 
     // HalfKA FT weights: i16[HALFKA_DIMS · ACC] on disk, feature-major,
-    // QUANTISED TO i8 on the way in (perf study 32 — see `quantise_halfka`).
-    // Read straight from the payload bytes rather than through `read_i16s`:
-    // materialising the 57.7 MB i16 table first would double the loader's peak
-    // footprint, and a screen runs 2 x concurrency of these processes at once.
+    // quantised to i8 on the way in (see `quantise_halfka`). Read straight
+    // from the payload bytes rather than through `read_i16s`: materialising
+    // the i16 table first would double the loader's peak footprint.
     let n_halfka = HALFKA_DIMS * ACC;
     let halfka_raw = &payload[cur..cur + n_halfka * 2];
     cur += n_halfka * 2;
@@ -706,30 +657,21 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     } else {
         Aligned::from_iter_len(0, std::iter::empty())
     };
-    // Perf studies 65/66 — pack the narrow rows. See `threat_rowmap`.
+    // Pack the narrow rows; see `threat_rowmap`.
     let (threat_weights, threat_rowmap) = pack_threat_plane(threat_weights);
 
-    // The head's five bucket-major tables. Read as `Blocks`, not as one flat
-    // aligned run: the bucket stride is fixed at load, so it belongs in the
-    // type rather than in a range slice re-derived on every eval (perf study
-    // 26 §3). The on-disk layout is unchanged — `Blocks` is block-major
-    // contiguous with no interior padding, which `Blocks::LAYOUT_OK` asserts
-    // at compile time.
+    // The head's five bucket-major tables, read as `Blocks` so the bucket
+    // stride lives in the type. The on-disk layout is unchanged — `Blocks` is
+    // block-major contiguous with no interior padding (`Blocks::LAYOUT_OK`),
+    // and every block starts on a cache line.
     //
     // L1 weights: i8[BUCKETS][L2 · L1], group-interleaved within a bucket.
     let l1_weights: L1Weights = read_i8_blocks(payload, &mut cur);
-    // L1 biases: f32[BUCKETS][L2]. Every block starts on a cache line now,
-    // not just the table (perf study 21 arm B4 fixed the base; this fixes all
-    // BUCKETS of them by construction).
+    // L1 biases: f32[BUCKETS][L2].
     let l1_biases: L1Biases = read_f32_blocks(payload, &mut cur);
-    // L2 weights: f32[BUCKETS][L2 · L3].
     let l2_weights: L2Weights = read_f32_blocks(payload, &mut cur);
-    // L2 biases: f32[BUCKETS][L3].
     let l2_biases: L2Biases = read_f32_blocks(payload, &mut cur);
-    // L3 weights: f32[BUCKETS][L3].
     let l3_weights: L3Weights = read_f32_blocks(payload, &mut cur);
-
-    // L3 biases: f32[BUCKETS].
     let l3_biases = read_f32s(payload, &mut cur, BUCKETS);
 
     debug_assert_eq!(
@@ -741,16 +683,9 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     // Only bytes that START with the PSQ1 magic are interpreted; any other
     // trailing bytes are ignored exactly as this loader always has.
     let rest = &bytes[total_need..];
-    // ★ PERF STUDY 48 — `nopsqt48` is a SUBTRACTIVE DIAGNOSTIC PROBE, never a
-    // shipping configuration. It drops the PSQ1 trailer at load, which switches
-    // off every psqt path (both channels hand-unswitch on
-    // `psqt_weights.is_empty()`), so differencing it against the base prices
-    // the WHOLE psqt channel: 7.18 random 32-byte reads per node out of a
-    // 2.7 MB table that does not fit beside everything else in a 1 MB L2.
-    //
-    // It changes the EVAL, so the search tree differs — but `bench … nodes`
-    // pins the node count, so per-node counters stay comparable. Read it as a
-    // CEILING on any psqt-layout arm, not as a speedup.
+    // NOTE: `nopsqt48` is a subtractive diagnostic probe, never a shipping
+    // configuration — it drops the PSQ1 trailer at load, which switches off
+    // every psqt path (both channels unswitch on `psqt_weights.is_empty()`).
     let psqt_weights = if rest.len() >= 4 && rest[0..4] == PSQT_MAGIC && !cfg!(feature = "nopsqt48")
     {
         parse_psqt_section(rest, threat_rows)?
@@ -770,9 +705,9 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     } else {
         Vec::new().into_boxed_slice()
     };
-    // Recode POC: optional TRM1 trailer after SKP1 (or directly after PSQ1 /
-    // the payload). Mandatory when the header's threat row count is
-    // compressed; `None` = the identity code = every net before this change.
+    // Optional TRM1 trailer after SKP1 (or directly after PSQ1 / the payload).
+    // Mandatory when the header's threat row count is compressed; `None` = the
+    // identity code.
     let skip_len = if skip_weights.is_empty() {
         0
     } else {
@@ -790,8 +725,7 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         });
     }
     // Disagreement head: optional DIS1 trailer after TRM1 (or directly after
-    // SKP1 / PSQ1 / the payload). `None` = every net before 2026-08-03, whose
-    // load and eval are bit-identical to before.
+    // SKP1 / PSQ1 / the payload). `None` = no head, bit-identical to before.
     let remap_len = match &threat_remap {
         Some(_) => 12 + THREAT_DIMS * 2,
         None => 0,
@@ -802,10 +736,8 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     } else {
         None
     };
-    // OBL1 (2026-08): optional per-net output-bucket layout, the LAST
-    // section — after DIS1 when that is present. Absent = the legacy map =
-    // bit-identical to every net and every build before the section existed
-    // (see BUCKETS_MAGIC).
+    // OBL1: optional per-net output-bucket layout, the LAST section — after
+    // DIS1 when that is present. Absent = the legacy map (see BUCKETS_MAGIC).
     let dis_len = match &dis_head {
         Some(d) => {
             DIS_HEADER_LEN
@@ -852,10 +784,9 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
 }
 
 /// Parse a TRM1 section (starting at its magic): the threat re-coding table.
-/// Strict: `dims` must equal [`THREAT_DIMS`], `rows` must equal the header's
-/// threat row count, and every entry must be `< rows` — that validation is
-/// what lets the fold paths index the weight table without per-event bounds
-/// checks. Tolerant of further trailing bytes (future sections).
+/// `dims` must equal [`THREAT_DIMS`], `rows` the header's threat row count,
+/// and every entry `< rows` — that validation is what lets the fold paths
+/// index the weight table without per-event bounds checks.
 fn parse_remap_section(sec: &[u8], threat_rows: usize) -> Result<Box<ThreatRemap>, SotaNnueError> {
     const HDR: usize = 12;
     if sec.len() < HDR {
@@ -901,11 +832,9 @@ fn parse_remap_section(sec: &[u8], threat_rows: usize) -> Result<Box<ThreatRemap
 }
 
 /// Parse an OBL1 section (starting at its magic): the net's piece-count →
-/// output-bucket layout ([`BUCKETS_MAGIC`]). Strict: the bin count must be
-/// exactly [`sota_head::PIECE_COUNT_BINS`] and every entry `< BUCKETS` — the
-/// forward pass indexes the per-bucket weight tables with these values, and
-/// the load-time check is what keeps that index unchecked-cheap. Tolerant of
-/// further trailing bytes (future sections).
+/// output-bucket layout ([`BUCKETS_MAGIC`]). The bin count must be exactly
+/// [`sota_head::PIECE_COUNT_BINS`] and every entry `< BUCKETS` — the load-time
+/// check is what keeps the forward pass's bucket index unchecked-cheap.
 fn parse_bucket_section(sec: &[u8]) -> Result<sota_head::BucketLayout, SotaNnueError> {
     const HDR: usize = 8;
     let need = HDR + sota_head::PIECE_COUNT_BINS;
@@ -937,15 +866,10 @@ fn parse_bucket_section(sec: &[u8]) -> Result<sota_head::BucketLayout, SotaNnueE
     Ok(layout)
 }
 
-/// Parse an SKP1 section (starting at its magic). Strict on this build's
-/// [`BUCKETS`] and accumulator width [`crate::eval::nnue::sota_head::L1`];
-/// tolerant of further trailing bytes (future sections).
-/// Round `n / d` half-away-from-zero in integer arithmetic (`d > 0`).
-///
-/// The project's quantisation convention (`_round_half_away` in the trainer),
-/// and it matters here rather than being cosmetic: at `scale = 2` HALF the
-/// weights land exactly on a tie, so a half-to-even rule would move a quarter
-/// of that column's table by one step.
+/// Round `n / d` half-away-from-zero in integer arithmetic (`d > 0`) — the
+/// project's quantisation convention (`_round_half_away` in the trainer). The
+/// rule is load-bearing: at `scale = 2` half the weights land exactly on a
+/// tie, so a half-to-even rule would move a quarter of that column's table.
 #[inline]
 fn round_half_away(n: i32, d: i32) -> i32 {
     debug_assert!(d > 0);
@@ -954,15 +878,8 @@ fn round_half_away(n: i32, d: i32) -> i32 {
 }
 
 /// Per-accumulator-column integer scale for the i8 HalfKA table: the smallest
-/// `s` for which every weight in the column fits `[-127, 127]` after division.
-///
-/// **Why per-column and why no clipping.** Measured offline over the 800-FEN
-/// battery (perf study 32 §1): one GLOBAL scale of 4 costs p95 6.76 / p99 10.15
-/// SF cp; per-column no-clip costs **p95 4.35 / p99 7.25**; and a per-column
-/// scale tuned to minimise weight MSE — which clips 0.008% of the table — is
-/// BETTER on weight MSE (1.78% vs 1.98%) and WORSE on eval error (p95 4.83).
-/// The weight-MSE proxy misranks the schemes, so the no-clip rule is the one
-/// the eval battery chose, not the one the L2 norm chose.
+/// `s` for which every weight in the column fits `[-127, 127]` after division
+/// (per-column, no clipping — chosen on measured eval error, not weight MSE).
 fn halfka_column_scales(raw: &[u8]) -> sota_head::FtScale {
     let mut peak = vec![0u16; ACC];
     for row in raw.chunks_exact(ACC * 2) {
@@ -971,76 +888,34 @@ fn halfka_column_scales(raw: &[u8]) -> sota_head::FtScale {
             *p = (*p).max(v);
         }
     }
-    // `div_ceil` is the no-clip condition; the `max(1)` covers an all-zero
-    // column (1024 of the 22528 HalfKA rows are all-zero in the canonical net,
-    // and three whole columns are), where any scale is exact and 1 keeps the
-    // reduced frame the identity.
+    // `div_ceil` is the no-clip condition; the clamp's lower bound covers an
+    // all-zero column (scale 1 keeps the reduced frame the identity). The u8
+    // saturation at 255 is unreachable for any net that can work.
     sota_head::FtScale::from_flat_iter(
         peak.iter()
-            // Perf study 50: stored as u8. The saturation is one notch
-            // tighter than the `i16::MAX` it replaces and is unreachable for
-            // any net that can work: a column scale above 255 needs a peak
-            // above 32,385 in the FT_QUANT frame, and the reduced frame then
-            // requires |acc| <= 127 for `acc * scale` to stay in i16 — which
-            // the `activate` debug_assert already enforces and which no
-            // accumulator summing dozens of rows satisfies. Canonical net:
-            // 8 distinct values, max 8 (`FOLDVALHIST ft_scale`).
             .map(|&p| u32::from(p).div_ceil(127).clamp(1, u8::MAX as u32) as u8),
     )
 }
 
 /// Reciprocal of `2·scale` for the [`round_half_away`] division, one per
-/// accumulator column — perf study 57's startup arm.
+/// accumulator column: [`quantise_halfka`] runs ~28.8 M divisions per engine
+/// start and `idiv` does not pipeline, so matches/screens pay real wall clock.
 ///
-/// # Why this exists
-///
-/// [`quantise_halfka`] runs `HALFKA_DIMS · ACC` = **28,835,840 integer
-/// divisions** at every engine start, and `idiv` is the one common integer op
-/// Zen 4 does not pipeline (~14–20 cycles, no overlap). A match spawns one
-/// process per game and `tools/screen.sh` spawns them by the thousand, so this
-/// is real wall clock, not a denominator to shrink — study 36 §6 dismissed the
-/// symbol as "startup" and that is exactly the reasoning this arm rejects.
-///
-/// # Why it is EXACT, not an approximation
-///
-/// Standard round-up reciprocal (Granlund–Montgomery). With
-/// `M = ⌊2³²/D⌋ + 1` and `e = M·D − 2³²`, we have `0 < e ≤ D`, and
-/// `⌊N·M / 2³²⌋ = ⌊N/D⌋` for every `0 ≤ N < 2³²/e`.
-///
-/// Both bounds are structural here, not hoped for:
-/// * `D = 2·scale ∈ [2, 510]` — `scale` is a `u8` clamped to `[1, 255]` by
-///   [`halfka_column_scales`];
-/// * `N = 2·|w| + scale ≤ 2·32768 + 255 = 65,791` — `w` is an `i16`, so
-///   `|w| ≤ 32768` (`i16::MIN`).
-///
-/// So the requirement is `65,791 < 2³²/e`, and `2³²/510 = 8,421,504`. The
-/// margin is **128×**. `reciprocal_division_is_exact_over_the_whole_input
-/// _domain` sweeps every `(scale, N)` pair in those ranges against the real
-/// division rather than trusting the algebra.
+/// EXACT, not an approximation (round-up Granlund–Montgomery reciprocal):
+/// `⌊N·M / 2³²⌋ = ⌊N/D⌋` needs `N < 2³²/e` with `e = M·D − 2³² ≤ D`, and both
+/// bounds are structural — `D = 2·scale ≤ 510` (`scale` is a clamped u8) and
+/// `N = 2·|w| + scale ≤ 65,791` (`w` is an i16) — leaving ~128× margin.
+/// `reciprocal_division_is_exact_over_the_whole_input_domain` sweeps every
+/// `(scale, N)` pair against the real division rather than trusting algebra.
 #[inline]
 fn round_half_away_reciprocal(scale: u8) -> u64 {
     (1u64 << 32) / (2 * u64::from(scale)) + 1
 }
 
-/// Perf study 65 — rewrite every ≤ 6-bit FullThreats row into its packed form,
-/// in place, and return the bitmap that tells the fold kernel which rows those
-/// are.
-///
-/// Returns empty (and touches nothing) unless the `narrow65` feature is on AND
-/// [`narrow_supported`] says the kernel that will run can decode the format.
-/// That predicate is evaluated **here, once**, rather than in the kernel: the
-/// packing and the decode have to agree, and the only way to make that
-/// impossible to get wrong is to let one decision produce both.
-///
-/// [`narrow_supported`]: super::sota_simd::narrow_supported
-/// Perf study 66 — the FullThreats block transpose as a row permutation, or
-/// empty when the net's row space is not the identity-coded geometric one (a
-/// TRM1 re-coded net has already permuted it, and composing two permutations
-/// without the net's own map would be wrong).
-///
-/// `perm[f]` is the slot feature `f`'s row moves to. See
-/// [`threat_blocks`](super::sota_features::threat_blocks) for what the
-/// transpose is and why it is bit-exact.
+/// The FullThreats block transpose as a row permutation (`perm[f]` = the slot
+/// feature `f`'s row moves to), or empty when the net's row space is not the
+/// identity-coded geometric one (a TRM1 re-coded net has already permuted it).
+/// See [`threat_blocks`](super::sota_features::threat_blocks).
 #[cfg(feature = "narrow65")]
 fn threat_transpose(rows: usize) -> Vec<usize> {
     use super::sota_features::{THREAT_DIMS, threat_blocks};
@@ -1056,43 +931,34 @@ fn threat_transpose(rows: usize) -> Vec<usize> {
         }
     }
     // A permutation or nothing: a half-built map would silently evaluate a
-    // different net, which is exactly the failure mode this whole route can
-    // produce and the gate would only catch by luck.
+    // different net.
     if perm.contains(&usize::MAX) {
         return Vec::new();
     }
     perm
 }
 
-/// Perf study 66 — **the compacted two-plane layout**, and study 65's
-/// slot-preserving one, as two DATA modes of the same binary.
+/// Rewrite every ≤ 6-bit FullThreats row into its packed narrow form. Does
+/// nothing (empty map) unless the `narrow65` feature is on AND
+/// [`narrow_supported`](super::sota_simd::narrow_supported) says the kernel
+/// that will run can decode the format — that predicate is evaluated **here,
+/// once**, so the packing and the decode cannot disagree.
 ///
-/// Study 65 packed each ≤ 6-bit row into 960 B *inside its own unshrunk 1280 B
-/// slot*, which kept `feature · ACC` addressing free and left a dead 320 B tail
-/// in every narrow row. It was bit-exact and it LOST: +3.53 % L1d load misses
-/// and **+13.23 % L2 misses** against its own null, with `l2_pf_hit_l2.all`
-/// +18.90 % — the L2 streaming prefetcher fetching the tail anyway. Its own §6
-/// item 1 names the surviving version: *compact* the table so the hole is gone,
-/// and pay for it with a per-feature offset table.
-///
-/// This function builds either, selected at run time so control and arm share a
-/// `.text` byte for byte:
+/// Three layouts, selected at run time so control and arm share one `.text`:
 ///
 /// | `ARCHON_NARROW` | `ARCHON_PACK` | layout |
 /// |---|---|---|
-/// | `0` | — | none — flat i8, `map` empty, the pre-study-65 path |
-/// | else | `0` | study 65: narrow rows packed in place, 1280 B stride, dead tail |
-/// | else | else (default) | study 66: **wide plane at 1280 B, narrow plane at 960 B**, no hole |
+/// | `0` | — | none — flat i8, `map` empty |
+/// | else | `0` | narrow rows packed in place, 1280 B stride, dead tail |
+/// | else | else (default) | **wide plane at 1280 B, narrow plane at 960 B**, no hole |
 ///
 /// In the compacted layout `960 = 15 · 64` and `1280 = 20 · 64`, so every row
-/// still starts on a cache line and a narrow row occupies **exactly 15 lines
-/// with nothing dead behind it**. The wide plane comes first so that the last
-/// narrow row's 8-byte tail overread (the last 32-byte group of a tile reads
-/// through byte 967 of a 960-byte row) lands in the trailing pad rather than
-/// past the allocation.
+/// still starts on a cache line. The wide plane comes first so the last
+/// narrow row's 8-byte tail overread (the decode reads through byte 967 of a
+/// 960-byte row) lands in the trailing pad, not past the allocation.
 ///
-/// Returns the table to keep and the row map (see
-/// [`row_entry`](super::sota_simd::row_entry)).
+/// Returns the table to keep and the row map
+/// ([`row_entry`](super::sota_simd::row_entry)).
 fn pack_threat_plane(weights: Aligned<i8>) -> (Aligned<i8>, Vec<u32>) {
     #[cfg(not(feature = "narrow65"))]
     {
@@ -1101,12 +967,8 @@ fn pack_threat_plane(weights: Aligned<i8>) -> (Aligned<i8>, Vec<u32>) {
     #[cfg(feature = "narrow65")]
     {
         use super::sota_simd::{NARROW_BYTES, NARROW_MAX, narrow_supported, pack_narrow_row};
-        // `ARCHON_NARROW=0` is the arm's NULL: the same binary, the same
-        // `.text`, the same dispatch — and no packed rows. Every instruction
-        // and cache counter the arm moves is then attributable to the DATA
-        // change alone, which is the only way to tell the decode's cost apart
-        // from the new dispatch's. CLAUDE.md rule 1 wants the null run first,
-        // and the only null that cannot drift from the arm is one inside it.
+        // `ARCHON_NARROW=0` is the in-binary null: same `.text`, same
+        // dispatch, no packed rows.
         if std::env::var("ARCHON_NARROW").is_ok_and(|v| v == "0") {
             return (weights, Vec::new());
         }
@@ -1115,14 +977,9 @@ fn pack_threat_plane(weights: Aligned<i8>) -> (Aligned<i8>, Vec<u32>) {
         }
         let rows = weights.len() / ACC;
 
-        // ── Perf study 66's SECOND arm: the block TRANSPOSE. ────────────────
-        //
-        // `ARCHON_PERM=id` builds an identity map with no packing at all — the
-        // null that isolates the map LOOKUP's cost. `ARCHON_PERM=1` permutes
-        // the table by [`threat_blocks`]'s transpose, which moves the victim
-        // relation from the slowest axis of each attacker block to the fastest
-        // and so collapses the address span of a fold's rows. Neither packs, so
-        // the decode is out of the comparison and only the LAYOUT differs.
+        // `ARCHON_PERM=id` builds an identity map with no packing (isolates
+        // the map lookup's cost); `ARCHON_PERM=1` permutes the table by
+        // [`threat_blocks`]'s transpose. Neither packs — only LAYOUT differs.
         if let Ok(mode) = std::env::var("ARCHON_PERM") {
             let perm = threat_transpose(rows);
             let mut map = vec![0u32; rows];
@@ -1153,8 +1010,7 @@ fn pack_threat_plane(weights: Aligned<i8>) -> (Aligned<i8>, Vec<u32>) {
             .collect();
 
         if !compact {
-            // Study 65's layout, rebuilt on top of the row map so the two arms
-            // differ ONLY in where rows live.
+            // Pack-in-place: narrow rows packed inside their unshrunk slot.
             let mut weights = weights;
             let mut map = vec![0u32; rows];
             let mut packed = [0u8; NARROW_BYTES];
@@ -1166,10 +1022,9 @@ fn pack_threat_plane(weights: Aligned<i8>) -> (Aligned<i8>, Vec<u32>) {
                 }
                 let row = &mut weights[r * ACC..r * ACC + ACC];
                 pack_narrow_row(row, &mut packed);
-                // The tail of the slot is now dead. It is deliberately NOT
-                // zeroed: nothing reads it, and leaving it makes an accidental
-                // wide read of a packed row produce a WRONG evaluation the gate
-                // catches rather than a plausible one it does not.
+                // The dead slot tail is deliberately NOT zeroed: an accidental
+                // wide read of a packed row then produces a loudly wrong
+                // evaluation the gate catches, not a plausible one.
                 for (dst, &src) in row.iter_mut().zip(packed.iter()) {
                     *dst = src as i8;
                 }
@@ -1214,77 +1069,29 @@ fn pack_threat_plane(weights: Aligned<i8>) -> (Aligned<i8>, Vec<u32>) {
     }
 }
 
-/// Divide the FT_QUANT-frame i16 table by its per-column scale into i8.
+/// Divide the FT_QUANT-frame i16 table by its per-column scale into i8, via
+/// an exact reciprocal multiply ([`round_half_away_reciprocal`]) instead of
+/// `idiv`.
 ///
-/// Perf study 57 replaced the `idiv` with a reciprocal multiply
-/// ([`round_half_away_reciprocal`]) and **changed nothing else**. The iterator
-/// shape is deliberately the same single-level `chunks_exact(2).enumerate()`
-/// with the `i % ACC` column recovery it always had.
+/// NOTE (measured regression — do not re-propose): a `flat_map(...).collect()`
+/// rewrite loses `Vec::extend`'s `TrustedLen` specialisation and costs far
+/// more than the per-element work it removes. This version has no collector:
+/// the destination is allocated once and filled by a nested loop whose three
+/// inner slices are all exactly `ACC` long, so every index is discharged by
+/// construction; `as_chunks::<2>()` lets LLVM emit one 16-bit load per weight.
 ///
-/// # ⚠ THE ROW-MAJOR REWRITE WAS BUILT AND IT LOST — DO NOT RE-PROPOSE IT
-///
-/// The obvious companion change is to walk the table row-outer
-/// (`raw.chunks_exact(ACC * 2).flat_map(|row| row.chunks_exact(2).zip(scale))`)
-/// so the modulo disappears and `scale` becomes a sequential stream. Measured,
-/// 40 paired rounds on the 1-node startup frame, against this same reciprocal:
-/// **+10.668% instructions (0/40, se 0.000), +19.018% branches (0/40),
-/// +36.661% L1d loads (0/40), +5.294% cycles (0/40, p < 0.0001).** A loss on
-/// every counter including cycles, which on this box almost never resolves.
-///
-/// The mechanism is the collector, not the arithmetic: `Aligned::from_iter_len`
-/// ends in `Vec::extend`, and a `FlatMap` is neither `TrustedLen` nor
-/// exact-size, so `extend` degrades to the per-element `extend_desugared` path
-/// with a capacity check per weight — 28.8 M of them. The flat `Map<ChunksExact>`
-/// keeps the specialised bulk path. **A modulo per element is cheaper than
-/// losing the `extend` specialisation**, which is not a trade anyone would
-/// guess from the source.
-///
-/// # Perf study 59 — the column is a ROW WALK, and the collector is gone
-///
-/// The ⚠ above is a warning about `Vec::extend`'s specialisation, not about
-/// row-major order, and this version keeps the warning's lesson by **not
-/// collecting at all**: the destination is allocated once and filled by an
-/// explicit nested loop, so there is no `extend` to specialise or de-specialise
-/// and `FlatMap` never appears. Study 57's arm and this one differ in the one
-/// thing its own §4.4 identified as causal.
-///
-/// What the shipped `imul`-era disassembly spent per weight, read off
-/// `objdump` (2×-unrolled body, 24 instructions per weight):
-///
-/// * **6 instructions maintaining the column** — `cmp`/`mov`/`cmovb` for a
-///   range clamp plus `inc`/`cmp`/`cmovne` for the wrap — to walk a counter
-///   that a row loop gets for free. (Study 57's shape spent even more: a magic
-///   multiply, a high-half multiply, a shift and a multiply-subtract for
-///   `i % 1280`, `ACC` not being a power of two.)
-/// * **4 instructions assembling the `i16`** — `movzbl`, `movzbl`, `shl`, `or`.
-///   `chunks_exact(2)` yields a `&[u8]` of runtime length, so LLVM would not
-///   merge the two byte loads; `as_chunks::<2>()` yields `&[[u8; 2]]` and it
-///   emits one 16-bit load.
-/// * **a bounds check and panic edge on `recip`**, which was a `Vec` whose
-///   length LLVM cannot relate to the column. A `[u64; ACC]` states the same
-///   fact where the compiler reads it.
-///
-/// The three lists the inner loop walks are all exactly `ACC` long, so the trip
-/// count is a compile-time constant and every index is discharged by
-/// construction rather than by a hint.
-///
-/// Bit-identical to the study-57 form by construction: same numerator, same
-/// denominator, same rounding rule, same clamp, same column for every weight,
-/// same order. `quantise_halfka_column_cycle_matches_the_modulo` sweeps the one
-/// thing the existing arithmetic tests cannot see — which column each weight is
-/// divided by.
+/// Bit-identical to the scalar reference;
+/// `quantise_halfka_column_cycle_matches_the_modulo` pins which column each
+/// weight is divided by.
 fn quantise_halfka(raw: &[u8], scale: &[u8; ACC]) -> Aligned<i8> {
     let mut recip = [0u64; ACC];
     for (r, &s) in recip.iter_mut().zip(scale.iter()) {
         *r = round_half_away_reciprocal(s);
     }
     let n = raw.len() / 2;
-    // One allocation, filled with a bulk memset (`repeat_n` is `TrustedLen`, so
-    // this is the specialised `extend` path the ⚠ above is about) and then
-    // overwritten in place. A partial last row — impossible for a well-formed
-    // section, since `HALFKA_DIMS · ACC` weights arrive — simply keeps its
-    // zeros, which is the same "shorter iterator ⇒ shorter payload" tolerance
-    // `from_iter_len` already documents.
+    // One allocation, bulk-memset (`repeat_n` is `TrustedLen`), overwritten in
+    // place. A partial last row — impossible for a well-formed section —
+    // keeps its zeros, matching `from_iter_len`'s documented tolerance.
     let mut out: Aligned<i8> = Aligned::from_iter_len(n, core::iter::repeat_n(0i8, n));
     for (dst_row, src_row) in out.chunks_mut(ACC).zip(raw.chunks_exact(2 * ACC)) {
         let (src, _) = src_row.as_chunks::<2>();
@@ -1306,24 +1113,16 @@ fn quantise_halfka(raw: &[u8], scale: &[u8; ACC]) -> Aligned<i8> {
     out
 }
 
-/// Quantise the D47V output-skip lane to i8, one scale per bucket
-/// (perf study 8 §4.7).
-///
-/// `w[b][i] ≈ q[b·L1 + i] · scale[b]`, with `scale[b] = max|w[b]| / 127` so each
-/// bucket spends its full i8 range on its own dynamic range. The lane arrives
-/// bucket-major and contiguous from [`parse_skip_section`], so a bucket is one
-/// slice.
-///
-/// This is a lossy step and it is measured, not asserted: the study reports the
-/// cp deltas over the 800-FEN battery. It buys a ~6x cheaper lane — `vpdpbusd`
-/// takes 64 u8 x i8 pairs per instruction, where the f32 form needed a widen, a
-/// convert and an FMA per 16 lanes — for the one channel Stockfish gets free as
-/// the `FC_0_OUTPUTS + 1`-th row of the sparse matmul it already runs.
+/// Quantise the D47V output-skip lane to i8, one scale per bucket:
+/// `w[b][i] ≈ q[b·L1 + i] · scale[b]`, with `scale[b] = max|w[b]| / 127` so
+/// each bucket spends its full i8 range on its own dynamic range. The lane
+/// arrives bucket-major and contiguous from [`parse_skip_section`], so a
+/// bucket is one slice. Lossy, deliberately — the i8 lane feeds `vpdpbusd`,
+/// ~6x cheaper than the f32 form.
 fn quantise_skip_lane(w: &[f32]) -> sota_head::SkipLane {
     let hl = w.len() / BUCKETS;
-    // Built as a plain `Vec` and converted once: the i8 lane is read by
-    // `skip_dot_i8` as 32-byte loads, so it is one of the tables that has to
-    // start on a cache line (perf study 20 §5).
+    // Built as a plain `Vec` and converted once: `skip_dot_i8` reads the i8
+    // lane as 32-byte loads, so it must start on a cache line.
     let mut q = vec![0i8; w.len()];
     let mut scale = vec![0.0f32; BUCKETS].into_boxed_slice();
     for b in 0..BUCKETS {
@@ -1342,6 +1141,8 @@ fn quantise_skip_lane(w: &[f32]) -> sota_head::SkipLane {
     sota_head::SkipLane { q: q.into(), scale }
 }
 
+/// Parse an SKP1 section (starting at its magic). Strict on this build's
+/// [`BUCKETS`] and accumulator width; tolerant of further trailing bytes.
 fn parse_skip_section(sec: &[u8]) -> Result<Box<[f32]>, SotaNnueError> {
     const HDR: usize = 12;
     if sec.len() < HDR {
@@ -1374,10 +1175,9 @@ fn parse_skip_section(sec: &[u8]) -> Result<Box<[f32]>, SotaNnueError> {
             got: sec.len(),
         });
     }
-    // §6-S2a (perf study): transpose the file's row-major [hl][BUCKETS] to
-    // bucket-major [BUCKETS][hl] at load, so the per-eval lane is hl
-    // contiguous f32 instead of a stride-BUCKETS gather. Values and the
-    // head's summation order are unchanged — bit-identical.
+    // Transpose the file's row-major [hl][BUCKETS] to bucket-major
+    // [BUCKETS][hl] at load, so the per-eval lane is hl contiguous f32 instead
+    // of a stride-BUCKETS gather. Values and summation order unchanged.
     let hl = hl as usize;
     let mut out = vec![0.0f32; count];
     for i in 0..hl {
@@ -1409,11 +1209,8 @@ fn parse_dis_section(sec: &[u8]) -> Result<sota_head::DisHead, SotaNnueError> {
         });
     }
     let proj = read_u32(sec, 8);
-    // 1..=65536: zero is a head with nothing in it, and the upper bound is what
-    // makes `hl · proj` un-overflowable on the usize arithmetic below (L1 is at
-    // most 2048 in any shipped arch, so this is ~7 orders of margin over any
-    // real width — it exists to bound untrusted bytes, not to express a design
-    // limit).
+    // 1..=65536: zero is an empty head; the upper bound makes `hl · proj`
+    // un-overflowable below. It bounds untrusted bytes, not a design limit.
     if proj == 0 || proj > 65536 {
         return Err(SotaNnueError::BadDisProj(proj));
     }
@@ -1500,15 +1297,12 @@ pub fn load_v2(path: impl AsRef<Path>) -> Result<SotaNetwork, SotaNnueError> {
     load_v2_bytes(&bytes)
 }
 
-/// EXP-UNC-1 (search study bet 1): load the OPTIONAL value-uncertainty head into
-/// `head` from the sidecar named by `D40_UNC_HEAD`, if set. Kept out of the CENN
-/// (so the net format is unchanged) — the head is small (`BUCKETS·L3` weights +
-/// `BUCKETS` biases) and rides a tiny companion file, extracted from the
-/// trainer's raw checkpoint. Layout: flat little-endian f32, `l3_var_weights`
-/// (bucket-major `[b·L3 + j]`, identical layout to `l3_weights`) then
-/// `l3_var_biases` (`[b]`). Absent env or any read/shape error leaves the head
-/// variance-less (σ̂ = `None`, every uncertainty consumer off) — so a net without
-/// the sidecar is bit-identical to today. Called once at net-load time.
+/// Load the OPTIONAL value-uncertainty head into `head` from the sidecar named
+/// by `D40_UNC_HEAD`, if set — kept out of the CENN so the net format is
+/// unchanged. Layout: flat little-endian f32, `l3_var_weights` (bucket-major
+/// `[b·L3 + j]`, same layout as `l3_weights`) then `l3_var_biases` (`[b]`).
+/// Absent env or any read/shape error leaves the head variance-less (every
+/// uncertainty consumer off). Called once at net-load time.
 pub(crate) fn load_uncertainty_sidecar(head: &mut SotaHead) {
     let Some(path) = std::env::var_os("D40_UNC_HEAD") else {
         return;
@@ -1540,11 +1334,11 @@ pub(crate) fn load_uncertainty_sidecar(head: &mut SotaHead) {
     eprintln!("D40_UNC_HEAD: loaded value-uncertainty head from {path:?}");
 }
 
-/// D41 rich-net: load the co-trained WDL head from a `D40_WDL_HEAD` sidecar (flat
-/// LE f32: `[3·L3]` weights row-major `[o·L3+j]`, o ∈ {L,D,W}, then `[3]` biases —
-/// the layout `tools/nnue/extract_head.py l3_wdl` writes). Absent env ⇒ no head
-/// (`wdl = None`) ⇒ bit-identical to today; the head is NOT in the CENN, so the
-/// value net is unchanged. Called once at net-load, beside `load_uncertainty_sidecar`.
+/// Load the co-trained WDL head from a `D40_WDL_HEAD` sidecar (flat LE f32:
+/// `[3·L3]` weights row-major `[o·L3+j]`, o ∈ {L,D,W}, then `[3]` biases —
+/// the layout `tools/nnue/extract_head.py l3_wdl` writes). Absent env ⇒ no
+/// head ⇒ bit-identical to today; the head is NOT in the CENN. Called once at
+/// net-load, beside `load_uncertainty_sidecar`.
 pub(crate) fn load_wdl_sidecar(head: &mut SotaHead) {
     let Some(path) = std::env::var_os("D40_WDL_HEAD") else {
         return;
@@ -1579,14 +1373,13 @@ pub(crate) fn load_wdl_sidecar(head: &mut SotaHead) {
 // ─── Serializer (tests + netpack cross-check) ──────────────────────────────
 
 /// Serialize a `SotaNetwork` (the inverse of [`load_v2_bytes`]). Used by tests
-/// to build deterministic nets and round-trip them; also lets the Rust side
-/// produce a reference `.cenn` for cross-checking the Python packer.
+/// to round-trip deterministic nets and to produce a reference `.cenn` for
+/// cross-checking the Python packer.
 ///
 /// **Emits the OLDEST container that can represent the net**: `CEN2` when the
 /// threat frame is the one a v2 header implies
-/// ([`sota_head::THREAT_QUANT_CEN2`]), `CEN5` otherwise. So every net that
-/// round-tripped to v2 bytes before perf study 30 still does, byte for byte,
-/// and only a net that genuinely needs the new field pays the version bump.
+/// ([`sota_head::THREAT_QUANT_CEN2`]), `CEN5` otherwise — only a net that
+/// genuinely needs the new field pays the version bump.
 pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
     let has_threats = !net.threat_weights.is_empty();
     let flags: u16 = if has_threats { FLAG_HAS_THREATS } else { 0 };
@@ -1602,15 +1395,10 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
     };
     let mut payload = Vec::with_capacity(expected_payload);
 
-    // HalfKA FT weights. The in-memory table is i8 + a per-column scale
-    // (perf study 32), so the FT_QUANT-frame i16 the format carries is
-    // reconstructed as `q · scale`. That is lossy against the ORIGINAL file —
-    // exactly like the D47V skip lane, which the serializer simply drops — but
-    // it is IDEMPOTENT: reloading these bytes derives the same scales (a
-    // column's peak is `127 · scale` at most and never below `126 · scale`
-    // unless the column is degenerate) and the same quotients, so
-    // `load(serialize(load(x))) == load(x)`, which is what the round-trip
-    // tests assert.
+    // HalfKA FT weights: the in-memory i8 table is reconstructed to the
+    // FT_QUANT-frame i16 as `q · scale`. Lossy against the ORIGINAL file but
+    // IDEMPOTENT: reloading derives the same scales and quotients, so
+    // `load(serialize(load(x))) == load(x)` — what the round-trip tests assert.
     for (i, &q) in net.halfka_weights.iter().enumerate() {
         let w = i16::from(q).wrapping_mul(i16::from(net.head.ft_scale.block(0)[i % ACC]));
         payload.extend_from_slice(&w.to_le_bytes());
@@ -1620,18 +1408,10 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
         let b = b.wrapping_mul(i16::from(net.head.ft_scale.block(0)[j]));
         payload.extend_from_slice(&b.to_le_bytes());
     }
-    // Threats FT weights (if present).
-    //
-    // Perf studies 65/66: a loaded net's threat table may be PACKED (rows whose
-    // peak fits six signed bits are rewritten into 960 bytes) and, under study
-    // 66's layout, COMPACTED into two planes so a row is no longer at
-    // `feature · ACC` at all. Serialisation has to undo both, or `serialize ∘
-    // load` would stop being the identity and every net-surgery tool that
-    // round-trips a net — `uci.rs`'s `EvalFile` rewrite among them — would
-    // silently write a corrupt file. The round-trip test is what caught this,
-    // and it is the reason the unpack lives here rather than in a comment.
-    // Walking the ROW MAP rather than the table is what makes the same loop
-    // correct for all three layouts.
+    // Threats FT weights (if present). A loaded net's threat table may be
+    // packed and compacted; serialisation must undo both or `serialize ∘ load`
+    // stops being the identity and net-surgery tools silently write corrupt
+    // files. Walking the ROW MAP makes one loop correct for all three layouts.
     if has_threats {
         let rows = if net.threat_rowmap.is_empty() {
             net.threat_weights.len() / ACC
@@ -1652,27 +1432,21 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
             }
         }
     }
-    // L1 weights (i8).
     for &w in net.head.l1_weights.iter() {
         payload.push(w as u8);
     }
-    // L1 biases (f32).
     for &b in net.head.l1_biases.iter() {
         payload.extend_from_slice(&b.to_le_bytes());
     }
-    // L2 weights (f32).
     for &w in net.head.l2_weights.iter() {
         payload.extend_from_slice(&w.to_le_bytes());
     }
-    // L2 biases (f32).
     for &b in net.head.l2_biases.iter() {
         payload.extend_from_slice(&b.to_le_bytes());
     }
-    // L3 weights (f32).
     for &w in net.head.l3_weights.iter() {
         payload.extend_from_slice(&w.to_le_bytes());
     }
-    // L3 biases (f32).
     for &b in net.head.l3_biases.iter() {
         payload.extend_from_slice(&b.to_le_bytes());
     }
@@ -1709,8 +1483,7 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
 
     out.extend_from_slice(&payload);
 
-    // Optional PSQ1 trailer (T6c): present only when the net carries a skip
-    // table, so a psqt-less net serializes byte-identically to before.
+    // Optional PSQ1 trailer (T6c): only when the net carries a skip table.
     if !net.psqt_weights.is_empty() {
         debug_assert_eq!(net.psqt_weights.len() % BUCKETS, 0);
         out.extend_from_slice(&PSQT_MAGIC);
@@ -1721,8 +1494,7 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
             out.extend_from_slice(&w.to_le_bytes());
         }
     }
-    // Optional TRM1 trailer (Recode POC): present only when the net carries a
-    // threat re-coding, so every other net serializes byte-identically.
+    // Optional TRM1 trailer: only when the net carries a threat re-coding.
     if let Some(remap) = &net.threat_remap {
         out.extend_from_slice(&REMAP_MAGIC);
         out.extend_from_slice(&(THREAT_DIMS as u32).to_le_bytes());
@@ -1731,11 +1503,8 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
             out.extend_from_slice(&r.to_le_bytes());
         }
     }
-    // Optional DIS1 trailer (the disagreement head). Round-trips EXACTLY —
-    // unlike the SKP1 lane, which this serializer drops because it is
-    // quantised at load and cannot be reconstructed. Being f32 on disk and f32
-    // in memory is what makes `serialize ∘ load` the identity here, and it is
-    // the second reason (after parity) not to quantise it.
+    // Optional DIS1 trailer. Round-trips EXACTLY — unlike the SKP1 lane, which
+    // is quantised at load, cannot be reconstructed, and is dropped here.
     if let Some(dis) = &net.head.dis_head {
         out.extend_from_slice(&DIS_MAGIC);
         out.extend_from_slice(&(L1 as u32).to_le_bytes());
@@ -1751,9 +1520,8 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
             out.extend_from_slice(&w.to_le_bytes());
         }
     }
-    // Optional OBL1 trailer (2026-08): present only when the net's
-    // piece-count → bucket layout differs from the legacy default, so every
-    // existing net serializes byte-identically. LAST, after DIS1.
+    // Optional OBL1 trailer: only when the bucket layout differs from the
+    // legacy default. LAST, after DIS1.
     if net.head.bucket_layout != sota_head::LEGACY_BUCKET_LAYOUT {
         out.extend_from_slice(&BUCKETS_MAGIC);
         out.extend_from_slice(&(sota_head::PIECE_COUNT_BINS as u32).to_le_bytes());
@@ -1764,25 +1532,12 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
 
 // ─── Payload element readers ───────────────────────────────────────────────
 //
-// These four run once per net load, but "once" is 84 MB — and the load is not
-// the rare event it looks like. Every SPSA/screen game pair spawns two
-// engines, so at fn20k the loader was measured (2026-07-27) at **12.2% of an
-// SPSA unit's instructions**: 1.68 G to load against 24.1 G to play. Test
-// throughput is our binding constraint, so that is worth more than its zero
-// effect on NPS at depth suggests.
-//
-// The old shape was `for _ in 0..count { v.push(payload[*cur] ...) }`, which
-// pays a bounds check AND a capacity check per ELEMENT — 84 million of each.
-// The rewrite slices the whole run once (one bounds check) and hands `collect`
-// a `chunks_exact` iterator. Two properties make that fast: `chunks_exact`
-// yields only whole chunks, so the compiler knows each `c` is exactly N bytes
-// and elides the inner bounds checks; and it is an `ExactSizeIterator`, so
-// `collect` preallocates exactly once instead of growing. The loop then
-// vectorises.
-//
-// Panic behaviour is deliberately unchanged: an over-short payload panicked on
-// the element index before and panics on the slice range now. Section sizes are
-// validated upstream; this is a speed patch, not an error-model change.
+// These run once per net load, but a load is 84 MB and screens/SPSA spawn
+// engine processes by the thousand, so loader speed is real test throughput.
+// Each reader slices the whole run once and hands `collect` a `chunks_exact`
+// iterator: whole chunks elide inner bounds checks, `ExactSizeIterator`
+// preallocates once, the loop vectorises. Section sizes are validated
+// upstream; an over-short payload panics on the slice range.
 
 fn read_i16s(payload: &[u8], cur: &mut usize, count: usize) -> Aligned<i16> {
     let end = *cur + 2 * count;
@@ -1796,16 +1551,14 @@ fn read_i16s(payload: &[u8], cur: &mut usize, count: usize) -> Aligned<i16> {
 
 fn read_i8s(payload: &[u8], cur: &mut usize, count: usize) -> Box<[i8]> {
     let end = *cur + count;
-    // `i8` and `u8` share a layout, so this is a pure reinterpret that LLVM
-    // lowers to a memcpy — no per-byte work at all.
+    // `i8`/`u8` share a layout, so this lowers to a memcpy.
     let out = payload[*cur..end].iter().map(|&b| b as i8).collect();
     *cur = end;
     out
 }
 
 /// [`read_i8s`] into a cache-line-aligned buffer — for the FullThreats FT
-/// table, whose 1280 B rows `i8_deltas_into` walks as whole `zmm` loads.
-/// See `super::aligned` for why the base pointer decides every one of them.
+/// table, whose rows the fold kernels walk as whole `zmm` loads.
 fn read_i8s_aligned(payload: &[u8], cur: &mut usize, count: usize) -> Aligned<i8> {
     let end = *cur + count;
     let out = Aligned::from_iter_len(count, payload[*cur..end].iter().map(|&b| b as i8));
@@ -1865,21 +1618,10 @@ pub(crate) mod tests {
     use super::*;
     use crate::attacks::Prng;
 
-    /// Perf study 57: [`quantise_halfka`] divides by a reciprocal multiply
-    /// instead of `idiv`, 28.8 M times per engine start. That is only safe if
-    /// the reciprocal is EXACT over the entire input domain, so this asserts
-    /// it against the real division for **every** `(scale, N)` pair that can
-    /// occur — not a sample, and not the algebra.
-    ///
-    /// Domain, and each half is structural (see
-    /// [`round_half_away_reciprocal`]'s doc for why):
-    /// * `scale ∈ [1, 255]` — `halfka_column_scales` clamps a `u8`;
-    /// * `N = 2·|w| + scale ≤ 65,791` — `w` is an `i16`.
-    ///
-    /// A wrong reciprocal is the worst class of bug this loader can have: it
-    /// perturbs a handful of weights out of 28.8 M, so the net still loads,
-    /// still benches, and evaluates subtly wrong. The eval-hash gate would
-    /// catch it on the canonical net — this catches it on every net.
+    /// The reciprocal divide must be EXACT over the entire input domain, so
+    /// this asserts it against the real division for every `(scale, N)` pair
+    /// that can occur (see [`round_half_away_reciprocal`] for the bounds). A
+    /// wrong reciprocal loads and benches fine but evaluates subtly wrong.
     #[test]
     fn reciprocal_division_is_exact_over_the_whole_input_domain() {
         for scale in 1u8..=255 {
@@ -1895,9 +1637,8 @@ pub(crate) mod tests {
         }
     }
 
-    /// The reciprocal path reproduces [`round_half_away`] — including the sign
-    /// rule and the `i16::MIN` corner — for every `(w, scale)` the loader can
-    /// see. This is the whole quantiser body, not just its division.
+    /// The reciprocal path reproduces [`round_half_away`] — sign rule and
+    /// `i16::MIN` corner included — for every `(w, scale)` the loader can see.
     #[test]
     fn quantise_halfka_matches_the_scalar_reference_for_every_weight() {
         for scale in 1u8..=255 {
@@ -1912,16 +1653,9 @@ pub(crate) mod tests {
         }
     }
 
-    /// Perf study 59: the quantiser walks its column index as a CYCLE instead
-    /// of `i % ACC`. The two arithmetic tests above sweep the *division* and
-    /// would both pass if every weight were divided by the WRONG column, so
-    /// this is the test that actually pins the change.
-    ///
-    /// Every column gets a distinct scale (`1 + c % 255`, so no two adjacent
-    /// columns agree and a one-off in the counter shows up immediately), the
-    /// weights are pseudo-random and large enough to survive the clamp, and the
-    /// reference is the pre-study `i % ACC` spelling written out longhand.
-    /// Three full rows, so the wrap is exercised twice.
+    /// The two arithmetic tests above would pass even if every weight were
+    /// divided by the WRONG column; this pins the column pairing against the
+    /// longhand `i % ACC` reference, with three full rows to exercise the wrap.
     #[test]
     fn quantise_halfka_column_cycle_matches_the_modulo() {
         let mut scale = [0u8; ACC];
@@ -1943,9 +1677,8 @@ pub(crate) mod tests {
         assert_eq!(&got[..], &want[..]);
     }
 
-    /// Build a deterministic synthetic SOTA net (with threats) for round-trip
-    /// tests. NOT a trained net — weights are small random values.
-    /// `pub(crate)` so sibling modules' tests can use it.
+    /// Deterministic synthetic SOTA net (with threats) for round-trip tests —
+    /// small random weights. `pub(crate)` for sibling modules' tests.
     pub(crate) fn test_net_with_threats_pub() -> SotaNetwork {
         test_net_with_threats()
     }
@@ -1958,8 +1691,7 @@ pub(crate) mod tests {
         let small_f32 = |prng: &mut Prng| -> f32 { ((prng.rand64() % 201) as f32 - 100.0) * 0.01 };
 
         // Small enough that every column's scale comes out 1, so the synthetic
-        // net's reduced accumulator frame IS the FT_QUANT frame and the round
-        // trip is exact (perf study 32).
+        // net's reduced frame IS the FT_QUANT frame and the round trip is exact.
         let halfka_weights: Aligned<i8> = (0..HALFKA_DIMS * ACC)
             .map(|_| small_i8(&mut prng))
             .collect();
@@ -2007,15 +1739,9 @@ pub(crate) mod tests {
         }
     }
 
-    /// Every f32 block the head streams per eval must START on a cache line.
-    ///
-    /// A GATE (perf study 21 arm B4). `l1_biases`/`l2_biases`/`l3_weights`
-    /// were plain `Box<[f32]>` while their weight siblings were already
-    /// `Aligned` -- perf study 20 arm 5 fixed the weights and missed the
-    /// biases. Each is read per eval as a whole `[f32; L2]` (64 B) or
-    /// `[f32; L3]` (128 B) block at a `bucket`-strided offset, and both
-    /// strides are multiples of 64, so the base pointer alone decides whether
-    /// every one of those `_mm512_loadu_ps` crosses a cache line.
+    /// Every f32 block the head streams per eval must START on a cache line:
+    /// each is read whole at a `bucket`-strided offset whose stride is a
+    /// multiple of 64, so the base pointer alone decides every load's split.
     #[test]
     fn head_f32_blocks_start_on_a_cache_line() {
         let net = test_net_with_threats();
@@ -2051,21 +1777,16 @@ pub(crate) mod tests {
         net
     }
 
-    /// The Recode POC fixture pair: a **compressed** net (`ROWS` threat rows +
-    /// a TRM1 surjection) and its **scattered twin** (full 60,720-row tables
-    /// with `W'[t] = Wsmall[remap[t]]`, carrying an identity-sized TRM1 so
-    /// both nets exercise the remap path). The two must evaluate
-    /// bit-identically on every position — that equality is the whole
-    /// correctness argument for deploy mode (ii), and `recode_pair_is_eval
-    /// _identical_over_a_game` in `sota_context` pins it end-to-end through
-    /// the incremental accumulators. Both carry PSQ1 threat rows so the skip
-    /// channel is exercised too.
+    /// The recode fixture pair: a **compressed** net (`ROWS` threat rows + a
+    /// TRM1 surjection) and its **scattered twin** (full-size tables with
+    /// `W'[t] = Wsmall[remap[t]]`, identity TRM1). The two must evaluate
+    /// bit-identically on every position; both carry PSQ1 threat rows so the
+    /// skip channel is exercised too.
     pub(crate) fn test_recode_pair_pub() -> (SotaNetwork, SotaNetwork) {
         const ROWS: usize = 4096;
         let mut prng = Prng::new(0x5EC0_DE01);
 
-        // A deterministic surjection covering every target row (entry i % ROWS
-        // guarantees surjectivity for i < ROWS; the rest scatter pseudo-randomly).
+        // A deterministic surjection covering every target row.
         let mut remap = Box::new([0u16; THREAT_DIMS]);
         for (i, r) in remap.iter_mut().enumerate() {
             *r = if i < ROWS {
@@ -2082,7 +1803,6 @@ pub(crate) mod tests {
             .map(|_| (prng.rand64() % 20001) as i32 - 10000)
             .collect();
 
-        // The compressed net.
         let mut compressed = test_net_with_threats();
         compressed.threat_weights = w_small.iter().copied().collect();
         compressed.threat_rows = ROWS;
@@ -2094,8 +1814,7 @@ pub(crate) mod tests {
             .chain(psqt_small.iter().copied())
             .collect();
 
-        // The scattered twin: full-size tables that read the SAME values
-        // through the identity code.
+        // The scattered twin: full-size tables reading the SAME values.
         let mut scattered = test_net_with_threats();
         scattered.threat_weights = remap
             .iter()
@@ -2162,8 +1881,7 @@ pub(crate) mod tests {
     }
 
     /// The scattered twin and the compressed net produce identical
-    /// from-scratch accumulators (the projection identity, one position).
-    /// The end-to-end game-walk twin lives in `sota_context`.
+    /// from-scratch accumulators; the end-to-end game walk is in `sota_context`.
     #[test]
     fn recode_pair_matches_on_refresh() {
         use super::super::sota_features::refresh_threat_into;
@@ -2204,10 +1922,8 @@ pub(crate) mod tests {
         assert_eq!(net, back);
     }
 
-    /// **The perf-study-30 safety property, in-tree.** A `CEN2` container has
-    /// no `threat_quant` field, so it must keep meaning 64 ⇒ shift 2 — the
-    /// literal every backend hardcoded before the version bump. If this moves,
-    /// every shipped net's evaluation moves with it.
+    /// A `CEN2` container has no `threat_quant` field, so it must keep meaning
+    /// 64 ⇒ shift 2. If this moves, every shipped net's evaluation moves too.
     #[test]
     fn cen2_implies_the_legacy_threat_frame() {
         let bytes = serialize(&test_net_with_threats());
@@ -2241,7 +1957,6 @@ pub(crate) mod tests {
         assert_eq!(read_i32(&v5_bytes, 64), 256);
         assert_eq!(read_u32(&v5_bytes, 68), 0, "reserved must be written zero");
         assert_eq!(v5_bytes.len(), v2_bytes.len() + 8);
-        // Bytes 4..64 (version aside) and the whole payload are identical.
         assert_eq!(v5_bytes[6..64], v2_bytes[6..64]);
         assert_eq!(v5_bytes[HEADER_V5_LEN..], v2_bytes[HEADER_V2_LEN..]);
 
@@ -2274,8 +1989,7 @@ pub(crate) mod tests {
             Err(SotaNnueError::BadThreatQuant(512))
         ));
 
-        // The reserved word is a future field: a non-zero value means the file
-        // was written by something newer, so refuse rather than misread it.
+        // A non-zero reserved word means a newer writer: refuse, don't misread.
         let mut bytes = good.clone();
         bytes[68..72].copy_from_slice(&1u32.to_le_bytes());
         assert!(matches!(
@@ -2338,9 +2052,8 @@ pub(crate) mod tests {
         );
     }
 
-    /// A deterministic DIS1 head for the tests: `proj = 5`, weights from the
-    /// same `Prng` the other synthetic tables use, so nothing is symmetric and
-    /// a transposed / mis-sliced read cannot pass.
+    /// A deterministic DIS1 head for the tests; nothing is symmetric, so a
+    /// transposed / mis-sliced read cannot pass.
     fn test_dis_head(proj: usize) -> sota_head::DisHead {
         let mut rng = Prng::new(0x00D15EA5E);
         let mut draw = |n: usize| -> Box<[f32]> {
@@ -2364,8 +2077,7 @@ pub(crate) mod tests {
     }
 
     /// The DIS1 section round-trips byte-exactly, sits AFTER every other
-    /// trailer, and — the property that matters most — a net without one is
-    /// unaffected: `serialize` emits nothing and `load` returns `None`.
+    /// trailer, and a net without one is entirely unaffected.
     #[test]
     fn round_trip_with_dis_head() {
         let plain = test_net_with_psqt_pub();
@@ -2395,9 +2107,8 @@ pub(crate) mod tests {
             &net.head.dis_head.as_ref().unwrap().proj_w[..]
         );
 
-        // The whole compatibility claim, asserted rather than argued: the same
-        // net without the section is byte-identical to a pre-DIS1 build's
-        // output, and loads with no head.
+        // Compatibility, asserted: the same net without the section is
+        // byte-identical to a pre-DIS1 build's output, and loads with no head.
         assert_eq!(serialize(&plain), bytes[..plain_len]);
         assert!(
             load_v2_bytes(&bytes[..plain_len])
@@ -2444,15 +2155,14 @@ pub(crate) mod tests {
             })
         ));
 
-        // Truncated payload: an error, not an out-of-bounds slice.
         let bytes = &good[..good.len() - 4];
         assert!(matches!(
             load_v2_bytes(bytes),
             Err(SotaNnueError::TooShort { .. })
         ));
 
-        // A proj wide enough to overflow the length arithmetic on a 32-bit
-        // read is rejected on the header alone, before any slicing.
+        // A proj wide enough to overflow the length arithmetic is rejected on
+        // the header alone, before any slicing.
         let mut bytes = good.clone();
         bytes[base + 8..base + 12].copy_from_slice(&0xFFFF_FFFFu32.to_le_bytes());
         assert!(matches!(
@@ -2477,7 +2187,6 @@ pub(crate) mod tests {
         let net = test_net_with_psqt_pub();
         let base_len = serialize(&test_net_with_threats()).len();
 
-        // Wrong bucket count.
         let mut bytes = serialize(&net);
         bytes[base_len + 4..base_len + 8].copy_from_slice(&7u32.to_le_bytes());
         assert!(matches!(
@@ -2488,7 +2197,6 @@ pub(crate) mod tests {
             })
         ));
 
-        // Wrong row count.
         let mut bytes = serialize(&net);
         bytes[base_len + 8..base_len + 12].copy_from_slice(&(HALFKA_DIMS as u32).to_le_bytes());
         assert!(matches!(
@@ -2499,7 +2207,6 @@ pub(crate) mod tests {
             })
         ));
 
-        // Truncated table.
         let bytes = serialize(&net);
         assert!(matches!(
             load_v2_bytes(&bytes[..bytes.len() - 4]),
@@ -2518,13 +2225,10 @@ pub(crate) mod tests {
         assert!(back.threat_psqt().is_empty());
     }
 
-    /// 2026-08 originality audit, item 1 — the OBL1 contract:
-    /// (a) legacy-default preservation — a container without the section
-    ///     loads with [`sota_head::LEGACY_BUCKET_LAYOUT`] and its serialized
-    ///     bytes are untouched by the section's existence;
-    /// (b) round-trip — an ARCHON-layout net appends exactly the 41-byte
-    ///     OBL1 trailer and loads back equal (PartialEq covers the layout);
-    /// (c) new-layout selection — the loaded head selects through its OWN map.
+    /// The OBL1 contract: (a) a container without the section loads with
+    /// [`sota_head::LEGACY_BUCKET_LAYOUT`] and its bytes are untouched;
+    /// (b) an ARCHON-layout net appends exactly the 41-byte trailer and loads
+    /// back equal; (c) the loaded head selects through its OWN map.
     #[test]
     fn obl1_round_trip_and_legacy_byte_identity() {
         let legacy = test_net_with_threats();
@@ -2564,8 +2268,7 @@ pub(crate) mod tests {
     }
 
     /// OBL1 is the LAST trailer: it stacks after PSQ1 + TRM1 in one container
-    /// and the whole thing round-trips. (SKP1 is dropped by the serializer,
-    /// so the recode fixture covers the deepest real trailer chain.)
+    /// and the whole thing round-trips.
     #[test]
     fn obl1_rides_after_the_other_trailers() {
         let (mut compressed, _) = test_recode_pair_pub();
@@ -2607,7 +2310,6 @@ pub(crate) mod tests {
             })
         ));
 
-        // Truncated section.
         assert!(matches!(
             load_v2_bytes(&good[..good.len() - 1]),
             Err(SotaNnueError::TooShort { .. })
@@ -2637,7 +2339,6 @@ pub(crate) mod tests {
     #[test]
     fn rejects_wrong_dims() {
         let mut bytes = serialize(&test_net_with_threats());
-        // Tamper halfka_dims.
         bytes[8..12].copy_from_slice(&9999u32.to_le_bytes());
         assert!(matches!(
             load_v2_bytes(&bytes),
@@ -2651,7 +2352,6 @@ pub(crate) mod tests {
     #[test]
     fn rejects_wrong_quant() {
         let mut bytes = serialize(&test_net_with_threats());
-        // Tamper ft_quant at offset 32.
         bytes[32..36].copy_from_slice(&999i32.to_le_bytes());
         assert!(matches!(
             load_v2_bytes(&bytes),
@@ -2665,7 +2365,6 @@ pub(crate) mod tests {
     #[test]
     fn rejects_bad_payload_len() {
         let mut bytes = serialize(&test_net_with_threats());
-        // Tamper payload_len at offset 48.
         let bad_len = 12345u64;
         bytes[48..56].copy_from_slice(&bad_len.to_le_bytes());
         assert!(matches!(
@@ -2677,12 +2376,11 @@ pub(crate) mod tests {
     #[test]
     fn rejects_truncated() {
         let bytes = serialize(&test_net_with_threats());
-        // Truncate to less than header.
+        // Shorter than the header, then truncated mid-payload.
         assert!(matches!(
             load_v2_bytes(&bytes[..10]),
             Err(SotaNnueError::TooShort { .. })
         ));
-        // Truncate mid-payload.
         assert!(matches!(
             load_v2_bytes(&bytes[..bytes.len() - 4]),
             Err(SotaNnueError::TooShort { .. })
@@ -2714,7 +2412,6 @@ pub(crate) mod tests {
 
     #[test]
     fn payload_len_sanity() {
-        // With threats: the expected payload is the sum of all tensor byte sizes.
         let expected = HALFKA_DIMS * ACC * 2  // halfka i16 ON DISK (i8 in memory)
             + ACC * 2                         // bias i16
             + THREAT_DIMS * ACC               // threats i8
@@ -2726,7 +2423,6 @@ pub(crate) mod tests {
             + BUCKETS * 4; // l3b f32
         assert_eq!(payload_len_with_threats(THREAT_DIMS), expected);
 
-        // Verify the serialized net has the right total size.
         let net = test_net_with_threats();
         let bytes = serialize(&net);
         assert_eq!(bytes.len(), HEADER_V2_LEN + expected);

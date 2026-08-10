@@ -1,29 +1,17 @@
 //! Marcel van Kervinck's cuckoo tables — the machinery behind
-//! `upcoming_repetition` (design/04 §3.9, design/10 item 19 "N1").
+//! `upcoming_repetition` (design/04 §3.9).
 //!
-//! This is the last search feature the P9 waves left deferred: item 19 landed
-//! its fail-low bonuses, ttPv backprop and TT no-moves store, but the
-//! upcoming-repetition early draw was blocked on these tables never being
-//! built.
+//! A side that can reach a position already on the path can force a draw, so
+//! the search may return a draw score immediately instead of exploring the
+//! subtree. Every REVERSIBLE non-pawn move `s1 -> s2` changes the position
+//! key by exactly `psq[pc][s1] ^ psq[pc][s2] ^ side`; precomputing that delta
+//! for every such move turns the repetition test into: XOR two path keys and
+//! ask whether the difference is a single reversible move. Two slots per key
+//! (`h1`/`h2`) with cuckoo displacement gives worst-case two-probe lookup.
+//! Stockfish's table holds exactly 3668 entries; the build asserts the same
+//! count as a hard oracle on the enumeration.
 //!
-//! **What it buys.** A side that can reach a position already on the path can
-//! force a draw, so the search may return a draw score immediately instead of
-//! exploring the subtree — a large pruning win in blocked or fortress-like
-//! positions, and the reason SF checks it before every other early exit.
-//!
-//! **The scheme.** Every REVERSIBLE non-pawn move `s1 -> s2` changes the
-//! position key by exactly `psq[pc][s1] ^ psq[pc][s2] ^ side`, independent of
-//! everything else on the board. Precompute that delta for all such moves into
-//! a hash table, and a repetition test becomes: XOR two path keys together and
-//! ask whether the difference is a single reversible move.
-//!
-//! Two slots per key (`H1`/`H2`) with cuckoo displacement gives worst-case
-//! two-probe lookup. The build is exact — Stockfish's own table holds exactly
-//! **3668** entries and [`tables`] asserts the same count, which is a hard
-//! oracle on the enumeration being right.
-//!
-//! Built lazily alongside the magics (D12): it needs empty-board slider
-//! attacks, so it cannot be a `const` table.
+//! Built lazily (needs the magic slider attacks), so it cannot be `const`.
 
 use std::sync::LazyLock;
 
@@ -37,8 +25,7 @@ use crate::zobrist::{Key, ZOBRIST};
 const SIZE: usize = 8192;
 const MASK: u64 = (SIZE as u64) - 1;
 
-/// Stockfish's exact entry count for the same enumeration. A build that
-/// disagrees has the piece set, the attack sets, or the pair ordering wrong.
+/// Stockfish's exact entry count for the same enumeration.
 const EXPECTED_ENTRIES: usize = 3668;
 
 /// First slot: the low 13 bits.
@@ -47,8 +34,7 @@ fn h1(k: Key) -> usize {
     (k & MASK) as usize
 }
 
-/// Second slot: bits 16..29. Disjoint from `h1`'s bits so a displaced entry
-/// lands somewhere unrelated.
+/// Second slot: bits 16..29, disjoint from `h1`'s bits.
 #[inline]
 fn h2(k: Key) -> usize {
     ((k >> 16) & MASK) as usize
@@ -75,7 +61,7 @@ impl Cuckoo {
 
 static CUCKOO: LazyLock<Cuckoo> = LazyLock::new(build);
 
-/// The cuckoo tables, built on first use (needs the magic slider attacks).
+/// The cuckoo tables, built on first use.
 #[inline]
 pub fn tables() -> &'static Cuckoo {
     &CUCKOO
@@ -94,14 +80,12 @@ fn build() -> Cuckoo {
             PieceType::Queen,
             PieceType::King,
         ] {
-            // Pawns are excluded: their moves are irreversible, so they can
-            // never close a repetition.
+            // Pawns are excluded: their moves are irreversible.
             let pc = Piece::new(color, pt);
             for s1 in 0..64u8 {
                 let from = Square::new(s1);
-                // Empty-board attack set: reversibility means nothing may be
-                // in the way, and the emptiness of the path is re-checked at
-                // query time against the ACTUAL occupancy.
+                // Empty-board attack set; the path's actual emptiness is
+                // re-checked at query time.
                 let targets = attacks::attacks(pt, from, Bitboard::EMPTY);
                 for to in targets {
                     // Each unordered pair once: s1 < s2.
@@ -111,8 +95,8 @@ fn build() -> Cuckoo {
                     let delta = ZOBRIST.psq[pc.index()][usize::from(from.index())]
                         ^ ZOBRIST.psq[pc.index()][usize::from(to.index())]
                         ^ ZOBRIST.side;
-                    // Cuckoo insertion: sit in h1; whoever is evicted moves to
-                    // its own alternate slot, repeating until an empty one.
+                    // Cuckoo insertion: each evictee hops to its alternate
+                    // slot until an empty one is displaced.
                     let mut k = delta;
                     let mut mv = Move::normal(from, to);
                     let mut slot = h1(k);
@@ -122,7 +106,6 @@ fn build() -> Cuckoo {
                         if k == 0 {
                             break; // displaced an empty slot: done
                         }
-                        // Send the evictee to its OTHER slot.
                         slot = if slot == h1(k) { h2(k) } else { h1(k) };
                     }
                     count += 1;
@@ -146,7 +129,6 @@ mod tests {
     fn build_matches_stockfishs_exact_entry_count() {
         // The assert lives in build(); touching the table runs it.
         let t = tables();
-        // And the tables must actually be populated.
         let filled = t.keys.iter().filter(|k| **k != 0).count();
         assert_eq!(filled, EXPECTED_ENTRIES, "occupied slots");
     }
@@ -154,9 +136,8 @@ mod tests {
     #[test]
     fn every_reversible_move_delta_is_findable() {
         let t = tables();
-        // Spot-check across piece types: the delta of a legal empty-board
-        // move must resolve back to that move (or its mirror — the table
-        // stores each unordered pair once, in s1<s2 order).
+        // Spot-check: a delta must resolve back to its move (or its mirror —
+        // each unordered pair is stored once, in s1<s2 order).
         for (pt, from, to) in [
             (PieceType::Knight, Square::G1, Square::F3),
             (PieceType::Bishop, Square::C1, Square::H6),

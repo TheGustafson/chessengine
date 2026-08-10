@@ -22,13 +22,8 @@
 //!               out_bias:   i32
 //! ```
 //!
-//! Parsing NEVER panics on user-supplied bytes (CLAUDE.md): every anomaly is a
-//! [`NnueError`]. The default net will eventually be embedded via
-//! `include_bytes!` (zero runtime deps, D15); this step only provides the
-//! parse/validate/serialize primitives (the loader is exercised by the
-//! `nnue-eval` dev subcommand and tests). The **vs-`bullet` cross-check** —
-//! wrapping bullet's raw quantised.bin in this container and confirming
-//! identical inference — folds in at step 3 when a real trained net exists.
+//! Parsing NEVER panics on user-supplied bytes: every anomaly is a
+//! [`NnueError`].
 
 use super::network::{Activation, Network};
 use super::{INPUT, L1, QA, QB, SCALE};
@@ -76,12 +71,10 @@ pub enum NnueError {
     /// The recomputed FNV-1a-64 payload checksum did not match the header.
     ChecksumMismatch { expected: u64, found: u64 },
     /// An `out_weights` value fell outside the AVX2 SCReLU clip `|w| ≤ 127`
-    /// (design/11 §3.4.3). The `_mm256_mullo_epi16` trick in the SIMD forward
-    /// pass (§3.4.6) is bit-exact vs the scalar reference ONLY under this clip;
-    /// bullet guarantees the i16 range at save, not this tighter bound (§3.4.5
-    /// packer note), so a checksum-clean net could otherwise mis-evaluate on
-    /// AVX2. Rejected at load so the AVX2/scalar contract is a checked
-    /// precondition rather than a silent divergence.
+    /// (design/11 §3.4.3). The SIMD `mullo` trick is bit-exact vs scalar ONLY
+    /// under this clip, and bullet guarantees just the i16 range at save —
+    /// rejected at load so the contract is a checked precondition rather than
+    /// a silent divergence.
     OutWeightOutOfClip { index: usize, value: i16 },
 }
 
@@ -305,13 +298,10 @@ pub fn load_bytes(bytes: &[u8]) -> Result<Network, NnueError> {
     let ft_bias = read_i16s(&mut cur, L1);
     let out_weights = read_i16s(&mut cur, 2 * L1);
 
-    // AVX2 bit-exactness precondition (design/11 §3.4.3, §3.4.6): every output
-    // weight must lie within the training clip |w| ≤ 127, or the SIMD
-    // `_mm256_mullo_epi16` SCReLU trick would overflow i16 and the AVX2 forward
-    // would silently disagree with the scalar reference. bullet only guarantees
-    // the i16 range at save, so enforce the tighter bound here — one O(2·L1)
-    // pass. (Only `out_weights` take the mullo path; the ft/accumulator weights
-    // do NOT, so they are deliberately left unclipped.)
+    // AVX2 bit-exactness precondition: every output weight must lie within
+    // the training clip |w| ≤ 127 (see `OutWeightOutOfClip`). Only
+    // `out_weights` take the mullo path; the ft/accumulator weights are
+    // deliberately left unclipped.
     if let Some((index, &value)) = out_weights
         .iter()
         .enumerate()
@@ -353,8 +343,7 @@ mod tests {
         Network::deterministic_test_net(0x0051_EED5, Activation::SCReLU)
     }
 
-    // design/11 §3.4.5: serialize → load round-trips exactly, and the bytes
-    // have the documented shape.
+    // serialize → load round-trips exactly; the bytes have the documented shape.
     #[test]
     fn round_trip_is_identity() {
         let net = test_net();
@@ -399,8 +388,8 @@ mod tests {
             Err(NnueError::WrongInputDims(769))
         ));
 
-        // A width differing from THIS build's L1 (256 default, 512 under
-        // `nnue-l1-512`) must be rejected — use L1+1 so the test is width-agnostic.
+        // A width differing from THIS build's L1 must be rejected — use L1+1
+        // so the test is width-agnostic.
         let mut bytes = serialize(&test_net());
         let wrong_l1 = L1 as u32 + 1;
         bytes[12..16].copy_from_slice(&wrong_l1.to_le_bytes());
@@ -430,7 +419,7 @@ mod tests {
     #[test]
     fn rejects_wrong_quant_qb_and_scale() {
         // qb lives at header bytes 22..24; a mismatch is rejected before the
-        // checksum is even consulted (the payload is left intact here).
+        // checksum is consulted.
         let mut bytes = serialize(&test_net());
         bytes[22..24].copy_from_slice(&7u16.to_le_bytes());
         assert!(matches!(
@@ -449,11 +438,9 @@ mod tests {
 
     #[test]
     fn rejects_wrong_payload_len_field() {
-        // A tampered `payload_len` header field that is NOT a plain truncation:
-        // every real payload byte is present, but the declared length disagrees
-        // with this architecture's fixed size, so the loader rejects it with
-        // BadPayloadLen (before the checksum check) rather than reading past the
-        // buffer or panicking.
+        // A tampered `payload_len` that is NOT a plain truncation must be
+        // rejected with BadPayloadLen (before the checksum check) rather than
+        // reading past the buffer or panicking.
         let mut bytes = serialize(&test_net());
         bytes[32..40].copy_from_slice(&((PAYLOAD_LEN as u64) + 2).to_le_bytes());
         assert!(matches!(
@@ -489,14 +476,10 @@ mod tests {
 
     #[test]
     fn rejects_out_weight_out_of_clip() {
-        // The AVX2 SCReLU `mullo_epi16` trick is bit-exact vs the scalar path
-        // only while every out_weight satisfies |w| ≤ 127 (design/11 §3.4.3,
-        // §3.4.6). A net can pass every structural + checksum check yet violate
-        // this (bullet caps only the i16 range at save), so the loader must
-        // reject it — not panic, not load a net the two backends score
-        // differently. Build a valid net, tamper ONE out_weight past the clip,
-        // reserialize (so the checksum covers the tampered payload and the
-        // rejection is the clip check, not ChecksumMismatch), and confirm.
+        // A net can pass every structural + checksum check yet violate the
+        // |w| ≤ 127 clip; the loader must reject it. Tamper ONE out_weight
+        // past the clip and reserialize, so the rejection is the clip check,
+        // not ChecksumMismatch.
         let mut net = test_net(); // out_weights start in [-100, 100]
         net.out_weights[3] = 200; // > 127: out of clip
         let bytes = serialize(&net);

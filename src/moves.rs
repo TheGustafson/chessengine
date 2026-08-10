@@ -3,13 +3,9 @@ use std::fmt;
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 
-/// A move packed into 16 bits, Stockfish-style:
-///
-/// - bits 0-5:   from square
-/// - bits 6-11:  to square
-/// - bits 12-13: promotion piece (0 = knight, ..., 3 = queen)
-/// - bits 14-15: kind (0 = normal, 1 = promotion, 2 = en passant, 3 = castling)
-///
+/// A move packed into 16 bits, Stockfish-style: bits 0-5 from square,
+/// 6-11 to square, 12-13 promotion piece (0 = knight, ..., 3 = queen),
+/// 14-15 kind (0 = normal, 1 = promotion, 2 = en passant, 3 = castling).
 /// Castling is encoded as the king's move (e1g1), matching UCI notation.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Move(u16);
@@ -79,33 +75,25 @@ impl Move {
         }
     }
 
-    /// The FULL 16-bit encoding as an integer: the index into the butterfly
-    /// main history `[color][65536]` and the TT's `move16` field
-    /// (design/02-core-types.md §3.7, D2, D19).
-    ///
-    /// Full — not just from/to — so promotions to different pieces and the
-    /// castling flag get distinct history slots.
+    /// The FULL 16-bit encoding: the butterfly-history and TT `move16`
+    /// index. Full — not just from/to — so promotions to different pieces
+    /// and the castling flag get distinct slots.
     pub const fn raw16(self) -> u16 {
         self.0
     }
 
-    /// Rebuild a `Move` from raw bits (the TT probe path).
-    ///
-    /// Every `u16` decodes to a structurally valid `Move` (from/to are 6-bit
-    /// fields, all kind values are meaningful), so this is total. SEMANTIC
-    /// validity is the caller's job: TT consumers must run pseudo-legality +
-    /// legality checks on any probed move before playing it (D19).
+    /// Rebuild a `Move` from raw bits (the TT probe path). Total: every
+    /// `u16` decodes to a structurally valid `Move`. SEMANTIC validity is
+    /// the caller's job — TT consumers must run pseudo-legality + legality
+    /// checks on any probed move before playing it (D19).
     pub const fn from_raw16(bits: u16) -> Move {
         Move(bits)
     }
 
-    /// True for every real move, false for a none/null sentinel.
-    ///
-    /// The invariant is `from() != to()` (design/09 §3.4, D2): a legal move
-    /// always changes the moving piece's square, whereas [`Move::NULL`]
-    /// (a1→a1) and any future null-move sentinel share `from == to`. History
-    /// writes and the continuation-history walk gate on this so a null move
-    /// or the padding slots below the root never poison a table.
+    /// True for every real move, false for a none/null sentinel. The
+    /// invariant is `from() != to()`; history writes and the
+    /// continuation-history walk gate on this so null moves and the padding
+    /// slots below the root never poison a table.
     pub const fn is_ok(self) -> bool {
         (self.0 & 0x3F) != ((self.0 >> 6) & 0x3F)
     }
@@ -131,58 +119,37 @@ impl fmt::Debug for Move {
 /// Upper bound on moves in any legal position (the known record is 218).
 pub const MAX_MOVES: usize = 256;
 
-/// A fixed-capacity, stack-allocated list of moves.
+/// A fixed-capacity, stack-allocated list of moves; `Deref`s to `[Move]`.
 ///
-/// Dereferences to `[Move]`, so slice methods (`len`, `iter`, indexing,
-/// `sort_unstable_by_key`, ...) all work on it.
-///
-/// **UNINITIALISED backing array** (perf study 20 arm 4) — the same exemption,
-/// for the same reason, that `MovePicker::buf` has carried since perf study 2
-/// option C. `moves: [Move; MAX_MOVES]` forced `MoveList::new()` to write 512
-/// bytes of `Move::NULL` before every single move generation, and LLVM cannot
-/// eliminate it: `generate` takes `&mut MoveList` across an outlined call, so
-/// it cannot prove the callee fills the buffer. Measured in the shipped binary
-/// as eight `vmovups %zmm0` plus a `vxorps`/`movq`/`vzeroupper` at the head of
-/// `init_quiets`, `init_captures` and `init_evasions` — and `generate` then
-/// overwrites exactly the prefix that is ever read.
+/// NOTE: the backing array is deliberately UNINITIALISED — zero-filling 512
+/// bytes before every generation is wasted work LLVM cannot eliminate,
+/// because `generate` fills the buffer across an outlined call.
 ///
 /// SAFETY ARGUMENT. [`push`](Self::push) is the ONLY writer, and it writes
-/// index `len` before incrementing `len`; `len` moves down only in
-/// [`clear`](Self::clear) and [`swap_remove`](Self::swap_remove). So
-/// `moves[..len]` is initialised at every observable point, which is exactly
-/// the range [`Deref`] hands out. The invariant is machine-checked in debug
-/// builds by the `high_water` tracker below — every write raises it, every read
-/// asserts `len <= high_water` — so a future edit that advances `len` without
-/// writing trips a debug assertion rather than reading a stale move in release.
-/// Release compiles the tracker out.
+/// index `len` before incrementing `len`; `len` moves down only in `clear`
+/// and `swap_remove`. So `moves[..len]` is initialised at every observable
+/// point — exactly the range [`Deref`] hands out. Debug builds machine-check
+/// this with the `high_water` tracker; release compiles it out.
 #[derive(Clone)]
 pub struct MoveList {
     moves: [MaybeUninit<Move>; MAX_MOVES],
     len: usize,
-    /// Debug-only: one past the highest index ever written by `push`. See the
-    /// safety argument above.
+    /// Debug-only: one past the highest index ever written by `push`.
     #[cfg(debug_assertions)]
     high_water: usize,
 }
 
 impl MoveList {
-    /// Deliberately NOT a `const fn`, and deliberately not a repeat-expression
-    /// (perf study 20 arm 4). `[MaybeUninit::uninit(); MAX_MOVES]` in a
-    /// const-evaluable constructor is materialised as a 512-byte *constant*
-    /// whose uninit bytes lower to a zero store — the shipped binary still
-    /// carried eight `vmovups %zmm0` at the head of `init_quiets` after the
-    /// field type changed. `MaybeUninit::<[MaybeUninit<_>; N]>::uninit()
-    /// .assume_init()` is the documented always-sound spelling (the outer
-    /// `MaybeUninit` is discharged by an array whose elements are themselves
-    /// allowed to be uninitialised) and lowers to a bare `alloca`.
+    /// NOTE: deliberately NOT a `const fn`, and not a repeat-expression — a
+    /// const-evaluable uninit array is materialised as a constant whose
+    /// uninit bytes lower to a zero store; this spelling is a bare `alloca`.
     #[inline]
     #[allow(unsafe_code)]
     pub fn new() -> Self {
         MoveList {
-            // SAFETY: the value produced is `[MaybeUninit<Move>; MAX_MOVES]`,
-            // every element of which is *permitted* to be uninitialised — this
-            // is the standard-library-documented use of `assume_init`, and no
-            // element is read before `push` writes it (see the type docs).
+            // SAFETY: every element is permitted to be uninitialised — the
+            // documented use of `assume_init` — and none is read before
+            // `push` writes it (see the type docs).
             moves: unsafe { MaybeUninit::<[MaybeUninit<Move>; MAX_MOVES]>::uninit().assume_init() },
             len: 0,
             #[cfg(debug_assertions)]
@@ -204,8 +171,7 @@ impl MoveList {
         self.len = 0;
     }
 
-    /// The initialised prefix. The one place the uninitialised backing array is
-    /// reinterpreted as `[Move]`.
+    /// The initialised prefix — the one place the backing array is reinterpreted.
     #[inline]
     #[allow(unsafe_code)]
     fn initialised(&self) -> &[Move] {
@@ -217,10 +183,9 @@ impl MoveList {
             self.high_water
         );
         let prefix = &self.moves[..self.len];
-        // SAFETY: `push` is the only writer and initialises index `len` before
-        // raising `len`, so every element of `moves[..len]` has been written.
-        // `MaybeUninit<Move>` is `#[repr(transparent)]` over `Move`, so the
-        // slice cast is a no-op reinterpretation of the same layout.
+        // SAFETY: `push` initialises index `len` before raising `len`, so
+        // `moves[..len]` is fully written; `MaybeUninit<Move>` is
+        // `#[repr(transparent)]` over `Move`, so the cast is a no-op.
         unsafe { &*(prefix as *const [MaybeUninit<Move>] as *const [Move]) }
     }
 
@@ -239,12 +204,8 @@ impl MoveList {
     }
 
     /// O(1) unordered removal: overwrite index `i` with the last move and
-    /// shrink by one. Returns the removed move. Panics if `i >= len` (index
-    /// invariant, matching `Vec::swap_remove`).
-    ///
-    /// Order is deliberately not preserved — the consumer is
-    /// `movegen::generate_legal`'s lazy legality filter (design/05 §3.9),
-    /// whose callers either sort (MovePicker) or count (perft).
+    /// shrink by one. Returns the removed move; panics if `i >= len`.
+    /// Order is deliberately not preserved — the consumers sort or count.
     pub fn swap_remove(&mut self, i: usize) -> Move {
         assert!(
             i < self.len,
@@ -356,16 +317,13 @@ mod tests {
 
     #[test]
     fn distinct_kinds_are_distinct_moves() {
-        // Same from/to, different kind must not compare equal.
         let normal = Move::normal(Square::E5, Square::D6);
         let ep = Move::en_passant(Square::E5, Square::D6);
         assert_ne!(normal, ep);
     }
 
-    // Doc 02 §5 item 11: raw16 round-trip, totality, kind-distinctness.
     #[test]
     fn raw16_roundtrip_totality_and_distinctness() {
-        // Round-trip one move of each kind, including all four promotions.
         let moves = [
             Move::normal(Square::E2, Square::E4),
             Move::en_passant(Square::E5, Square::D6),
@@ -379,14 +337,12 @@ mod tests {
             assert_eq!(Move::from_raw16(m.raw16()), m);
         }
 
-        // Totality: every u16 decodes without panic to a structurally valid
-        // move (semantic validity is the TT consumer's job).
+        // Totality: every u16 decodes without panic.
         let m = Move::from_raw16(0xFFFF);
         assert_eq!(m.kind(), MoveKind::Castling);
         assert_eq!(m.from(), Square::H8);
         assert_eq!(m.to(), Square::H8);
 
-        // Distinct kinds on the same from/to yield distinct raw16 values.
         let (from, to) = (Square::E5, Square::D6);
         let raws = [
             Move::normal(from, to).raw16(),
@@ -400,21 +356,17 @@ mod tests {
             }
         }
 
-        // Sentinel bookkeeping (doc 02 §3.7, D2): NULL is raw 0.
+        // NULL is raw 0.
         assert_eq!(Move::NULL.raw16(), 0);
     }
 
-    // design/09 §3.4 / step 1: is_ok() distinguishes real moves from the
-    // none/null sentinel by the from != to invariant.
     #[test]
     fn is_ok_distinguishes_null_from_real_moves() {
-        // The none-sentinel and any same-square pattern are not ok.
         assert!(!Move::NULL.is_ok());
         assert!(!Move::normal(Square::E4, Square::E4).is_ok());
         assert!(!Move::normal(Square::A1, Square::A1).is_ok());
         assert!(!Move::normal(Square::H8, Square::H8).is_ok());
 
-        // Every real move of every kind changes the square, so is ok.
         assert!(Move::normal(Square::E2, Square::E4).is_ok());
         assert!(Move::en_passant(Square::E5, Square::D6).is_ok());
         assert!(Move::castling(Square::E1, Square::G1).is_ok());
@@ -427,7 +379,6 @@ mod tests {
             assert!(Move::promotion(Square::E7, Square::E8, pt).is_ok());
         }
 
-        // Exhaustive: from != to iff is_ok, across all from/to pairs.
         for from in Square::all() {
             for to in Square::all() {
                 assert_eq!(Move::normal(from, to).is_ok(), from != to);
@@ -479,8 +430,6 @@ mod tests {
         }
     }
 
-    // design/05 §4 step 1: middle / last / single element, panic on bad index.
-
     #[test]
     fn swap_remove_middle_element() {
         let (a, b, c) = (
@@ -495,7 +444,6 @@ mod tests {
 
         assert_eq!(list.swap_remove(1), b);
         assert_eq!(list.len(), 2);
-        // The last element was swapped into the hole; order is not preserved.
         assert_eq!(list[0], a);
         assert_eq!(list[1], c);
     }

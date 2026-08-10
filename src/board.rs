@@ -33,17 +33,14 @@ impl CastlingRights {
         self.0 == 0
     }
 
-    /// The raw 4-bit mask (bit 0 = White kingside, 1 = White queenside,
-    /// 2 = Black kingside, 3 = Black queenside): the index into the 16-entry
-    /// `zobrist` castling table, which keys rights by the WHOLE mask so any
-    /// rights change costs two XORs, old mask out, new mask in
-    /// (design/04-position-state.md §3.1/§3.4, D9).
+    /// The raw 4-bit mask (bit 0 = WK, 1 = WQ, 2 = BK, 3 = BQ): the index
+    /// into the 16-entry `zobrist` castling table, which keys rights by the
+    /// WHOLE mask so any rights change costs two XORs.
     pub const fn bits(self) -> u8 {
         self.0
     }
 
-    /// The single right of `color` on the given wing — setup and make/unmake
-    /// key the castling geometry arrays off this (design/04 §3.7).
+    /// The single right of `color` on the given wing.
     pub(crate) const fn single(color: Color, kingside: bool) -> CastlingRights {
         match (color, kingside) {
             (Color::White, true) => CastlingRights::WHITE_KINGSIDE,
@@ -53,20 +50,18 @@ impl CastlingRights {
         }
     }
 
-    /// `color`'s kingside right — movegen's castling generator keys off this
-    /// (design/05-movegen.md §3.7).
+    /// `color`'s kingside right.
     pub const fn kingside(color: Color) -> CastlingRights {
         CastlingRights::single(color, true)
     }
 
-    /// `color`'s queenside right (design/05-movegen.md §3.7).
+    /// `color`'s queenside right.
     pub const fn queenside(color: Color) -> CastlingRights {
         CastlingRights::single(color, false)
     }
 
     /// Bit position 0..4 of a SINGLE right (WK = 0, WQ = 1, BK = 2, BQ = 3):
-    /// the index into `Board`'s castling geometry arrays
-    /// (design/04-position-state.md §3.7).
+    /// the index into `Board`'s castling geometry arrays.
     pub const fn index(self) -> usize {
         debug_assert!(
             self.0.count_ones() == 1,
@@ -141,8 +136,7 @@ impl FromStr for CastlingRights {
 }
 
 /// Fields carried over from the previous state and then incrementally
-/// edited by `make_move` (design/04-position-state.md §3.2, D8). Plain
-/// `Copy` — the `copied: prev.copied` assignment in `make_move` is our safe
+/// edited by `make_move` (design/04 §3.2, D8). Plain `Copy` — our safe
 /// spelling of Stockfish's "memcpy the struct prefix".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CopiedState {
@@ -167,8 +161,8 @@ pub struct CopiedState {
     pub ep_square: Option<Square>,
 }
 
-/// One ply of undo/search state (design/04-position-state.md §3.2, D8).
-/// `Copy` so `make_null_move` can clone the whole record cheaply.
+/// One ply of undo/search state (design/04 §3.2, D8). `Copy` so
+/// `make_null_move` can clone the whole record cheaply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StateInfo {
     /// The carried-over block; everything below is recomputed per move.
@@ -186,15 +180,9 @@ pub struct StateInfo {
     /// Piece captured by the move that produced this state.
     pub captured: Option<Piece>,
     /// The piece that MOVED to produce this state (the pre-promotion mover),
-    /// so `unmake_move` does not have to re-read it from the mailbox.
-    ///
-    /// Perf study 14 §4.4: it is the last placement edit on the make/unmake
-    /// path that still paid a mailbox load, an `Option` test and a panic edge
-    /// (§4.3 removed the others by threading a value the caller already held;
-    /// unmake had nothing to thread). Carrying it costs nothing in memory —
-    /// `StateInfo` had 2 bytes of tail padding and `size_of` is still 168, so
-    /// the per-make/per-unmake copies do not grow. Meaningless at the root
-    /// state, where `EMPTY` seeds it with a white pawn and nothing reads it.
+    /// so `unmake_move` does not have to re-read it from the mailbox. Lives
+    /// in what was tail padding, so `StateInfo` did not grow. Meaningless at
+    /// the root state, where `EMPTY` seeds it and nothing reads it.
     pub moved: Piece,
     /// Repetition encoding: 0 / +distance / -distance (doc 04 §3.9).
     pub repetition: i32,
@@ -227,9 +215,9 @@ impl StateInfo {
 }
 
 /// The check bookkeeping (doc 04 §3.5) computed from a placement, before it
-/// is stored into a [`StateInfo`]. Exists so the computation can be a `&self`
-/// query and the store a separate `&mut` write — see
-/// [`Board::refresh_check_info`].
+/// is stored into a [`StateInfo`]. Exists so the computation can be a
+/// `&self` query and the store a separate `&mut` write
+/// ([`Board::refresh_check_info`]).
 struct CheckInfo {
     blockers_for_king: [Bitboard; 2],
     pinners: [Bitboard; 2],
@@ -252,14 +240,10 @@ impl CheckInfo {
         let occ = board.all_occupancy;
         let bishop = tables.bishop_attacks(ksq, occ);
         let rook = tables.rook_attacks(ksq, occ);
-        // Pawn attack symmetry again: an enemy pawn ON `ksq` attacks exactly
-        // the squares from which one of our pawns would check `ksq`. The
-        // array literal is in `PieceType` discriminant order — the same order
-        // the per-index writes used. NOTE (D33 reviewer C, M-5): what pins
-        // that order is NOT `check_squares_all`'s test — that compares two
-        // reads of the same array and is a tautology w.r.t. ordering — it is
-        // `perft::perft_checked`'s independent `gives_check` oracle, which
-        // runs in the fast tier and fires on any swapped slot.
+        // Pawn attack symmetry: an enemy pawn ON `ksq` attacks exactly the
+        // squares from which our pawns would check `ksq`. The array literal
+        // is in `PieceType` discriminant order — pinned by
+        // `perft_checked`'s independent `gives_check` oracle.
         let check_squares = [
             attacks::pawn_attacks(them, ksq),
             attacks::knight_attacks(ksq),
@@ -276,8 +260,8 @@ impl CheckInfo {
     }
 
     /// Destructured on purpose: adding a field to [`CheckInfo`] without
-    /// storing it becomes a compile error under `-D warnings` instead of a
-    /// field that silently stops being maintained (D33 reviewer C, M-4).
+    /// storing it becomes a compile error instead of a silently
+    /// unmaintained field.
     fn store(self, st: &mut StateInfo) {
         let CheckInfo {
             blockers_for_king,
@@ -290,9 +274,8 @@ impl CheckInfo {
     }
 }
 
-/// From-scratch key/material computation result — `init_state` applies it,
-/// and the test/debug oracle compares it against the (eventually
-/// incrementally maintained) stored state (doc 04 §3.12).
+/// From-scratch key/material computation result — `init_state` applies it;
+/// the test/debug oracle compares it against the stored state.
 struct ComputedKeys {
     key: Key,
     pawn_key: Key,
@@ -314,14 +297,11 @@ struct ComputedKeys {
 /// - castling: 2 subs + 2 adds (king and rook);
 /// - null move: empty (0 adds, 0 subs).
 ///
-/// **Layering note (design/11 §3.4.4, adapted).** The design sketch places
-/// `DirtyPiece` under `src/eval/nnue/`, but its data is a pure
+/// Lives HERE rather than under `src/eval/nnue/` because its data is a pure
 /// board-mutation fact and [`DirtyPiece::from_move`] must read `Board`'s
-/// private castling geometry, so it lives HERE (the low module) and
-/// `eval::nnue` re-exports it. That keeps the dependency arrow pointing
-/// `eval → board` only — the foundational `board` module never reaches up
-/// into `eval`. The fields are private; iterate via [`DirtyPiece::adds`] /
-/// [`DirtyPiece::subs`] (behavior, not representation — CLAUDE.md).
+/// private castling geometry; `eval::nnue` re-exports it, keeping the
+/// dependency arrow `eval → board` only. Fields are private; iterate via
+/// [`DirtyPiece::adds`] / [`DirtyPiece::subs`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DirtyPiece {
     adds: [(Piece, Square); 2],
@@ -349,25 +329,10 @@ impl DirtyPiece {
 
     /// The (piece, square) pairs a piece appears on after this move.
     ///
-    /// Perf study 58: the `.min(len)` is **not a bounds guard** — the
-    /// constructors below cannot push a third entry, and the `debug_assert` is
-    /// the written statement of that. It is a RANGE FACT for the optimizer.
-    ///
-    /// Slicing by a bare `u8` leaves `n_add` unbounded as far as LLVM is
-    /// concerned, so every caller carried a `cmp $0x2 / ja panic_bounds_check`
-    /// edge and no loop over the result could have a compile-time trip bound.
-    /// This record is read on the hottest paths in the engine — both fold
-    /// paths in `sota_accumulator::compute`, the last-king-move scan, and the
-    /// threat channel's four `dp.adds()`/`dp.subs()` walks plus its two
-    /// slice-pattern fast paths in `sota_threats.rs` — and the total was
-    /// **−9.30 instructions/node and −9.79 branches/node, i.e. −1.655% of
-    /// EVERY branch the engine retires**, node-identical, on the 5,001,562-node
-    /// frame. Two characters, and the largest branch win of that study.
-    ///
-    /// Same family as study 56's `& M` masks on `MovePicker::slot`, with the
-    /// difference study 56 §0.4 paid for: a mask is unconditional cost, so
-    /// spell the bound as the fact you actually have. Here the fact is "at most
-    /// as long as the array", which `min` says exactly and for free.
+    /// NOTE: the `.min(len)` is NOT a bounds guard — the constructors cannot
+    /// push a third entry (the `debug_assert` states that) — it is a range
+    /// fact for the optimizer that removes a bounds-check edge from every
+    /// hot NNUE reader. Keep it.
     #[inline]
     pub fn adds(&self) -> &[(Piece, Square)] {
         debug_assert!(self.n_add as usize <= self.adds.len(), "n_add overflow");
@@ -381,12 +346,9 @@ impl DirtyPiece {
         &self.subs[..(self.n_sub as usize).min(self.subs.len())]
     }
 
-    /// Perf study 58 measured a `& 1` mask on this write cursor (`dpwr58`) at
-    /// **+690 instructions in 2.93 × 10¹⁰ — an exact null**, and dropped it:
-    /// `n_add` is only ever incremented from zero inside one `from_move` call,
-    /// so LLVM already proves the bound and there is no check to delete. The
-    /// `debug_assert` stays as the written statement of the invariant that
-    /// [`DirtyPiece::adds`]'s `.min` relies on.
+    /// `n_add` is only ever incremented from zero inside one constructor
+    /// call, so LLVM already proves the bound; the `debug_assert` states
+    /// the invariant [`DirtyPiece::adds`]'s `.min` relies on.
     #[inline]
     fn add(&mut self, piece: Piece, sq: Square) {
         debug_assert!((self.n_add as usize) < self.adds.len(), "add cursor");
@@ -419,11 +381,8 @@ impl DirtyPiece {
             .expect("DirtyPiece::from_move: no piece on the from-square");
 
         match m.kind() {
-            // Out of line: this is the only arm that needs the rook-square
-            // table and a second constructed `Piece`, and castling is under 1%
-            // of made moves. `from_move` runs once per node, so its prologue
-            // is paid on every node while this arm almost never is — the same
-            // trade `Board::make_castling`/`unmake_castling` make.
+            // Out of line: castling is under 1% of made moves and the only
+            // arm needing the rook-square table.
             MoveKind::Castling => return Self::castling_record(board, us, mover, from, to),
             MoveKind::EnPassant | MoveKind::Promotion => {
                 return Self::special_record(board, m, us, mover, from, to);
@@ -439,46 +398,28 @@ impl DirtyPiece {
         dp
     }
 
-    /// The same record as [`DirtyPiece::from_move`], derived from the position
-    /// the move PRODUCED instead of the one it was made in — i.e. from `board`
-    /// *after* [`Board::make_move_with`] has run (perf study 35).
-    ///
-    /// `from_move` re-derives three facts that `make_move_with` has just
-    /// finished deriving for its own Zobrist work: the side to move, the mover
-    /// (`piece_on(from)`, with a panic edge on the `Option`), and the victim
-    /// (`piece_on(to)`). Step 11 of the make stores the last two into the child
-    /// [`StateInfo`] — `moved` and `captured` — precisely so `unmake_move` does
-    /// not have to re-read them (perf study 14 §4.4). This reads them from the
-    /// same place, forward instead of backward, and takes the side to move off
-    /// the mover's own `color` field rather than the board.
-    ///
-    /// Everything else a record needs is either in `m` (from/to/kind/promotion
-    /// piece) or in a table the make does not touch (`castling_rook_square`),
-    /// so the post-move board carries the whole derivation. Emission order is
-    /// `from_move`'s, exactly, and `from_move` is kept in the tree as this
-    /// function's independent oracle:
-    /// `after_move_reproduces_from_move_for_every_move_kind` asserts the two
-    /// agree field for field, both sides of the make, over a depth-3 walk that
-    /// reaches all four move kinds.
+    /// The same record as [`DirtyPiece::from_move`], derived from the
+    /// position the move PRODUCED — i.e. from `board` *after*
+    /// [`Board::make_move_with`] has run. Reads the mover and victim from
+    /// `state.moved`/`state.captured` (written by the make) instead of
+    /// re-deriving them from the mailbox. Emission order is `from_move`'s,
+    /// exactly; `from_move` is kept in the tree as this function's
+    /// independent oracle (`after_move_reproduces_from_move_...`).
     ///
     /// # Panics (debug only)
     ///
-    /// Never called for a null move: those bypass `make_move_with` entirely
-    /// (`make_null_move` + `EvalContext::push_null`), so unlike `from_move`
-    /// there is no `is_ok` sentinel arm — a `debug_assert` stands in its place.
+    /// Never called for a null move: those bypass `make_move_with` entirely,
+    /// so a `debug_assert` stands in for `from_move`'s `is_ok` sentinel arm.
     pub fn after_move(board: &Board, m: Move) -> DirtyPiece {
         debug_assert!(m.is_ok(), "after_move: null moves never reach make_move");
-        // Step 11 of the make wrote both of these from the values it had in
-        // registers; nothing between there and here disturbs them.
         let mover = board.state.moved;
         let us = mover.color;
         let (from, to) = (m.from(), m.to());
         let mut dp = DirtyPiece::EMPTY;
 
         match m.kind() {
-            // Both cold arms are shared with `from_move`: `castling_record`
-            // reads only `castling_rook_square`, which no move mutates, so it
-            // is valid on either side of the make.
+            // `castling_record` reads only `castling_rook_square`, which no
+            // move mutates, so it is valid on either side of the make.
             MoveKind::Castling => return Self::castling_record(board, us, mover, from, to),
             MoveKind::EnPassant | MoveKind::Promotion => {
                 return Self::special_record_after(board, m, us, mover, from, to);
@@ -494,22 +435,12 @@ impl DirtyPiece {
         dp
     }
 
-    /// Perf study 54 arm `hookc54` — study 35 §4's fusion, rebuilt on the
-    /// `after_move` tree that landed instead of it.
-    ///
     /// The record built from the actors [`Board::make_move_with`] step 3
-    /// already holds in registers: the mover `pc`, the `(captured, capsq)`
-    /// pair, and `us`. Nothing is read back out of the board or the
-    /// `StateInfo`, which is the whole point — `after_move` costs two
-    /// `StateInfo` loads (`moved`, `captured`) that this shape never issues.
-    ///
-    /// **Two hot arms, not three.** Step 3 already resolves en passant into
-    /// `(Some(their pawn), ep square)`, precisely so steps 5 and 10 need no
-    /// special case, so `MoveKind::EnPassant` and `MoveKind::Normal` collapse
-    /// into one straight-line arm here — and the `#[cold]` en-passant helper
-    /// that both `from_move` and `after_move` need disappears entirely.
-    /// Emission order is `from_move`'s in every arm, which is what the
-    /// `after_move_reproduces_from_move_for_every_move_kind` oracle checks.
+    /// already holds in registers (`pc`, `(captured, capsq)`, `us`) —
+    /// nothing is read back out of the board or the `StateInfo`. Step 3
+    /// resolves en passant into `(Some(their pawn), ep square)`, so
+    /// `EnPassant` and `Normal` collapse into one straight-line arm.
+    /// Emission order is `from_move`'s in every arm (oracle-checked).
     #[inline]
     fn from_actors(
         board: &Board,
@@ -522,10 +453,6 @@ impl DirtyPiece {
         let (from, to) = (m.from(), m.to());
         let mut dp = DirtyPiece::EMPTY;
         match m.kind() {
-            // Out of line for the same reason as everywhere else: castling is
-            // under 1% of made moves and this is the only arm needing the
-            // rook-square table. Step 4 has already mutated the board, but
-            // `castling_rook_square` is a start-of-game table no move touches.
             MoveKind::Castling => return Self::castling_record(board, us, pc, from, to),
             MoveKind::Promotion => return Self::promotion_record(m, us, pc, captured, from, to),
             // En passant folded in: `capsq` is the ep pawn's square and
@@ -541,10 +468,8 @@ impl DirtyPiece {
         dp
     }
 
-    /// The promotion arm of [`DirtyPiece::from_actors`], out of line for the
-    /// same reason as [`DirtyPiece::castling_record`] — this body is inlined
-    /// into `make_move_with`, whose prologue study 13 §5.1 measured spilling,
-    /// so only the arm taken on ~99% of moves stays in line. Promotions carry
+    /// The promotion arm of [`DirtyPiece::from_actors`], out of line so only
+    /// the arm taken on ~99% of moves stays inline. Promotions carry
     /// `capsq == to`, so the victim square is not a parameter.
     #[cold]
     #[inline(never)]
@@ -569,24 +494,12 @@ impl DirtyPiece {
         dp
     }
 
-    /// [`DirtyPiece::special_record`] for the post-move board. It exists as a
-    /// separate function because the two differ in both arms: the promotion arm
-    /// must read the victim from `state.captured` — the `to` square now holds
-    /// the promoted piece, so `piece_on(to)` would report *that* as what was
-    /// captured, which is the single easiest way to get this wrong (the arm is
-    /// mutation-tested for exactly that) — and the en-passant arm reads its
-    /// captured pawn out of `state.captured` too, where step 3 of the make put
-    /// it, instead of constructing one.
-    ///
-    /// Both `expect`s are unreachable by construction and are the same class of
-    /// invariant assertion `special_record` already carries: `make_move_with`
-    /// step 3 sets `captured` unconditionally for `EnPassant`, and
-    /// `MoveKind::Promotion` always carries a piece. Spelling the en-passant
-    /// pawn as `Piece::new(them, Pawn)` instead — no `expect`, and identical
-    /// output — measured **+2.0 i/n**, which cannot be this `#[cold]` arm's own
-    /// instructions (en passant is well under 1% of made moves) and is
-    /// therefore perf study 13 §5.5's finding again: in this crate the cost of
-    /// a change is only weakly related to the work the change does.
+    /// [`DirtyPiece::special_record`] for the post-move board. Separate
+    /// because both arms must read the victim from `state.captured`: the
+    /// `to` square now holds the promoted piece, so `piece_on(to)` would
+    /// mis-report the capture (mutation-tested), and step 3 of the make
+    /// already stored the en-passant pawn there. Both `expect`s are
+    /// unreachable by construction.
     #[cold]
     #[inline(never)]
     fn special_record_after(
@@ -600,8 +513,7 @@ impl DirtyPiece {
         let captured = board.state.captured;
         let mut dp = DirtyPiece::EMPTY;
         if m.kind() == MoveKind::EnPassant {
-            // The captured pawn sits one rank from `to`, toward our home; the
-            // piece itself is `state.captured`, which the make just wrote.
+            // The captured pawn sits one rank from `to`, toward our home.
             let capsq = to.offset(us.flip().pawn_push());
             dp.sub(mover, from);
             dp.sub(captured.expect("en passant always captures"), capsq);
@@ -632,7 +544,7 @@ impl DirtyPiece {
         from: Square,
         to: Square,
     ) -> DirtyPiece {
-        // `them` re-derived, not passed — six-register limit (D33 reviewer C).
+        // `them` re-derived, not passed — stays within six argument registers.
         let them = us.flip();
         let mut dp = DirtyPiece::EMPTY;
         if m.kind() == MoveKind::EnPassant {
@@ -679,23 +591,16 @@ impl DirtyPiece {
     }
 }
 
-/// Hook points inside [`Board::make_move_with`] (doc 04 §3.10). D10 pins the
-/// public `make_move(m, gives_check)` signature, so prefetch targets can't be
-/// parameters — the TT (and later the history tables and NNUE dirty-piece
-/// recording, D21) attach through this trait instead. It is monomorphized per
-/// hook type and the default bodies are empty `#[inline]` no-ops, so the
-/// [`NoHooks`] path compiles away entirely: the seam is bench-neutral by
-/// construction.
+/// Hook points inside [`Board::make_move_with`] (doc 04 §3.10). The public
+/// `make_move(m, gives_check)` signature is pinned (D10), so the TT,
+/// history tables and NNUE attach through this trait instead. Monomorphized
+/// per hook type with empty `#[inline]` no-op defaults, so the [`NoHooks`]
+/// path compiles away entirely.
 pub trait MakeMoveHooks {
-    /// Perf study 54: does this hook type want Hook C at all? An associated
-    /// `const`, not a field, so `make_move_with` monomorphizes the whole
-    /// record construction away for [`NoHooks`] (perft, `Board::make_move`,
-    /// the classical path) and for the ProbCut verification probe, which
-    /// makes and unmakes without ever pushing an accumulator entry.
-    ///
-    /// This is what study 13 §5.1 lacked and study 35 §4 added when it
-    /// rebuilt the arm: without it the seam is no longer bench-neutral by
-    /// construction.
+    /// Does this hook type want Hook C at all? An associated `const`, not a
+    /// field, so `make_move_with` monomorphizes the whole record
+    /// construction away for hook types that decline (NoHooks, ProbCut's
+    /// verification probe) — the seam stays bench-neutral by construction.
     const WANTS_DIRTY: bool = false;
 
     /// Hook A: the child's full key is final (rule50-folded — the TT probe
@@ -710,13 +615,8 @@ pub trait MakeMoveHooks {
     fn on_state(&mut self, _copied: &CopiedState) {}
 
     /// Hook C (design/11 §3.4.4): the move's placement deltas, for the NNUE
-    /// accumulator to fold into its feature columns. Default no-op, so
-    /// [`NoHooks`] (hence `make_move`, perft, and the classical search path)
-    /// stays bit-identical — the accumulator layer (P13 step 4) is the only
-    /// caller that will supply a real body. NOT invoked from
-    /// `make_move_with` yet: computing the payload has a panic-carrying
-    /// `expect`, so a speculative unconditional call could perturb NoHooks
-    /// codegen; the call site lands with the search wiring in step 4.
+    /// accumulator to fold into its feature columns. Only fires when
+    /// `WANTS_DIRTY` is true.
     #[inline]
     fn on_dirty(&mut self, _dp: &DirtyPiece) {}
 }
@@ -727,23 +627,15 @@ pub struct NoHooks;
 
 impl MakeMoveHooks for NoHooks {}
 
-/// The Wave-G threat map (D30) — every square attacked by the side-NOT-to-move,
-/// unioned (`all`) and split by attacker `PieceType` (`by_type[pt]`) — held as a
-/// LAZY, position-keyed cache rather than a `StateInfo` field.
+/// The Wave-G threat map (D30) — every square attacked by the
+/// side-NOT-to-move, unioned (`all`) and split by attacker `PieceType` —
+/// held as a LAZY, position-keyed cache rather than a `StateInfo` field:
+/// only move ordering and the reverse-futility test read it, and no qsearch
+/// node does, so filling on first read makes each node pay at most once.
 ///
-/// It used to be refilled inside `set_check_info` on **every** `make_move`, a
-/// whole-army setwise fill costing ~2.1% of all engine instructions (perf study
-/// 8 §4.4, measured by stubbing it out). But only two sites read it — the
-/// quiet scorer's escape/entry and offense terms (`MovePicker::init_quiets`)
-/// and the N10 reverse-futility "is any of my own pieces hanging" test — and
-/// **no qsearch node touches either**, so a large share of the nodes that paid
-/// for it never looked at it. Filling on first read instead makes each node pay
-/// at most once, and only if it asks.
-///
-/// Keyed by the RAW position hash, so `make` / `unmake` need no invalidation
-/// hook at all and a return to a previously-seen position reuses the fill. A
-/// hash collision (2^-64) can hand a stale ordering hint to a heuristic; it can
-/// never affect legality, and the TT already rests on the same bound.
+/// Keyed by the RAW position hash, so make/unmake need no invalidation hook
+/// and a revisited position reuses the fill. A hash collision (2^-64) can
+/// hand a stale ordering hint to a heuristic; it can never affect legality.
 ///
 /// `Clone` deliberately returns a COLD cache and `PartialEq` ignores the
 /// contents: two boards are the same position whether or not either has
@@ -773,28 +665,16 @@ impl Eq for ThreatCache {}
 /// The stack of states BELOW the live ply (D8): a preallocated slab plus a
 /// cursor, **not** a `Vec` whose length is the cursor.
 ///
-/// Why the shape matters (perf study 27 arm 4; mechanism from study 24 §4.4).
-/// `Vec::push` takes its argument **by value**, and `RawVec::grow` — the
-/// capacity miss — is a real call that RETURNS. So `history.push(self.state)`
-/// compiled to a stack round-trip of the whole 168-byte record: three
-/// `vmovups` out of `self.state` into `%rsp`, the capacity test, then three
-/// reloads off `%rsp` and three stores into the buffer. Twelve 64-byte memory
-/// operations where six would do, on the one function that runs exactly once
-/// per node. The reloads are not removable while the call is in the way: LLVM
-/// must assume `grow` clobbers memory, so a value that is live across it has
-/// to come back from somewhere.
-///
-/// A slab plus a cursor has no call on the hot path at all. `slots[depth] =
-/// self.state` is a memory-to-memory copy between two disjoint fields of
-/// `*self` — no temporary is created, so there is nothing to spill — and the
-/// only edge left is the index bounds check, which ends in a `panic` that
-/// never returns and therefore forces nothing to stay live.
+/// NOTE: the shape matters — `Vec::push` takes its argument by value with a
+/// real call (`grow`) in the way, forcing a stack round-trip of the whole
+/// 168-byte record once per node; `slots[depth] = self.state` is a direct
+/// memory-to-memory copy with nothing live across a call.
 ///
 /// The idiom: `slots` is kept at its **full length** (every slot a valid
-/// `StateInfo`), and `depth` says how much of it is live. [`Deref`] hands out
-/// `&slots[..depth]`, so every reader — `len()`, indexing, `iter()` — sees
-/// exactly the old `Vec`, and `Clone`/`PartialEq` are written against that
-/// slice so the dead tail below the cursor can never leak into equality.
+/// `StateInfo`), and `depth` says how much of it is live. [`Deref`] hands
+/// out `&slots[..depth]`, so every reader sees exactly the old `Vec`, and
+/// `Clone`/`PartialEq` are written against that slice so the dead tail
+/// below the cursor can never leak into equality.
 #[derive(Debug)]
 struct StateStack {
     /// Backing storage, always fully initialised: `slots.len()` is capacity.
@@ -805,33 +685,24 @@ struct StateStack {
 
 impl StateStack {
     /// Live depth. An INHERENT method, so it wins name resolution over the
-    /// `Deref` slice's `len()`: the cursor already is the answer, and going
-    /// through `Deref` would make every `history.len()` build the slice first
-    /// (a second load and a `cmov`) to ask it something it already knows.
+    /// `Deref` slice's `len()` and skips building the slice.
     #[inline]
     fn len(&self) -> usize {
         self.depth
     }
 
     fn new() -> Self {
-        // Reserved past MAX_PLY so mid-search pushes never grow the slab
-        // (doc 04 §3.3; growth would be correct, just a latency spike).
+        // Reserved past MAX_PLY so mid-search pushes never grow the slab.
         StateStack {
             slots: vec![StateInfo::EMPTY; MAX_PLY + 64],
             depth: 0,
         }
     }
 
-    /// The capacity miss: grow the slab, THEN store. A game longer than the
-    /// reserve plus a full-depth search can reach it, so it must exist.
-    ///
-    /// It does the store itself rather than falling back into the hot path so
-    /// that the hot path has exactly one successor and one predecessor. When
-    /// `grow` returned to a shared store block, that block had two
-    /// predecessors — one of which had just called something that may have
-    /// moved `slots` — so LLVM could not carry `depth < slots.len()` into it
-    /// and re-tested with a second identical `cmp`/`jae`. Measured: +1
-    /// branch/node and ~+2 instructions/node for a check already made.
+    /// The capacity miss: grow the slab, THEN store. Reachable by a game
+    /// longer than the reserve plus a full-depth search, so it must exist.
+    /// It does the store itself so the hot path keeps a single
+    /// successor/predecessor and its bounds test is not re-issued.
     #[cold]
     #[inline(never)]
     fn grow_and_store(&mut self, st: StateInfo) {
@@ -845,11 +716,9 @@ impl std::ops::Deref for StateStack {
 
     #[inline]
     fn deref(&self) -> &[StateInfo] {
-        // `depth <= slots.len()` is the type's invariant, but a plain
-        // `..self.depth` makes LLVM re-test it — a `cmp`/`jae` and a panic
-        // block on EVERY read, and the repetition scan reads once per node.
-        // `.min` states the invariant in the one form the optimiser can use:
-        // a single `cmov`, no edge.
+        // `depth <= slots.len()` is the type's invariant; `.min` states it
+        // in the one form the optimiser can use (a `cmov`, no panic edge on
+        // the repetition scan's once-per-node read).
         &self.slots[..self.depth.min(self.slots.len())]
     }
 }
@@ -893,13 +762,8 @@ pub struct Board {
     castling_path: [Bitboard; 4],
 
     // The CURRENT ply's state (D8), held INLINE rather than as the top of a
-    // stack. Perf study 14 §4.1: `st()` ran 29.07x per node as
-    // `Vec::last().expect(...)` — a pointer load, a length load, an emptiness
-    // test, a panic edge and an `imul $0xa8` before any useful field read.
-    // As a field it is a constant offset the consuming load folds in, and the
-    // "never empty" invariant stops being an assertion the optimiser has to
-    // disbelieve: it is structural. This is Stockfish's `Position::st`
-    // pointer minus the pointer.
+    // stack: a constant field offset, and the "never empty" invariant is
+    // structural. Stockfish's `Position::st` pointer minus the pointer.
     state: StateInfo,
     // Everything BELOW `state`, oldest first: `make_move` pushes the parent,
     // `unmake_move` pops it back. Empty at the root.
@@ -909,25 +773,10 @@ pub struct Board {
     /// position: cloned cold, ignored by equality.
     threats: ThreatCache,
 
-    /// **Perf study 69's PGO NULL (`--features pgonull69`, default OFF, never
-    /// ships).** Eight bytes of nothing, in the exact place study 69's arm 1
-    /// put its `&'static AttackTables`.
-    ///
-    /// Study 68's `pad68` is a null for `.text` LAYOUT — one cold, never-called
-    /// function. It cannot be a null for the PGO PIPELINE, because a function
-    /// that never runs emits no profile counters, so the merged profile and
-    /// every inlining decision are unchanged. This one is: it changes the
-    /// offset of every `Board` field after it, hence instruction *encodings*
-    /// (disp8 → disp32), hence function sizes, hence LLVM's inline cost model —
-    /// with **zero** semantic content. Same nodes, same eval hash, no
-    /// instruction the search executes is different by intent.
-    ///
-    /// It exists because study 69 §2.5 measured one source diff at −0.077 %
-    /// instructions non-PGO and **+0.321 % PGO**, with the difference landing
-    /// in NNUE kernels the diff never touched. That number decides whether the
-    /// arm was correctly rejected or whether the shipped-pipeline error bar on
-    /// studies 61–68 is ~0.3 %, and no instrument in the series could answer
-    /// it.
+    /// PGO-pipeline null (`--features pgonull69`, default OFF, never ships):
+    /// eight inert bytes that shift every later `Board` field offset — hence
+    /// instruction encodings, function sizes and PGO inline decisions — with
+    /// zero semantic content. Used to null PGO measurement panels.
     #[cfg(feature = "pgonull69")]
     _pgonull69_pad: u64,
 }
@@ -951,8 +800,7 @@ impl Board {
             #[cfg(feature = "pgonull69")]
             _pgonull69_pad: 0,
         };
-        // Even the empty board's root state is self-consistent (its key is
-        // ZOBRIST.castling[0], its pawn key ZOBRIST.no_pawns, ...).
+        // Even the empty board's root state is self-consistent.
         board.init_state();
         board
     }
@@ -1001,15 +849,14 @@ impl Board {
         self.st().copied.rule50 as u32
     }
 
-    /// Canonical rule50 accessor for search/TT/pruning callers (design/01
-    /// §3.3.4 seam). [`Board::halfmove_clock`] is the D1-preserved
-    /// FEN-facing alias; both read the same state field.
+    /// Canonical rule50 accessor for search/TT/pruning callers;
+    /// [`Board::halfmove_clock`] is the FEN-facing alias of the same field.
     pub fn rule50_count(&self) -> u32 {
         self.st().copied.rule50 as u32
     }
 
-    /// Plies since the last null move (design/10 §3.6 `is_shuffling`): reset to
-    /// 0 by [`Board::make_null_move`], incremented by every real move.
+    /// Plies since the last null move: reset to 0 by
+    /// [`Board::make_null_move`], incremented by every real move.
     pub fn plies_from_null(&self) -> i32 {
         self.st().copied.plies_from_null
     }
@@ -1024,8 +871,7 @@ impl Board {
     }
 
     /// The TT-facing position hash: the raw key, rule50-folded near the
-    /// 50-move rule (doc 04 §3.4, D9). Repetition detection compares
-    /// [`Board::raw_key`] instead.
+    /// 50-move rule. Repetition detection compares [`Board::raw_key`].
     pub fn key(&self) -> Key {
         self.adjust_key50(self.st().key)
     }
@@ -1062,8 +908,8 @@ impl Board {
     }
 
     /// Pieces (of BOTH colors) that are the sole piece between an enemy
-    /// sniper and `color`'s king (doc 04 §3.5). Friendly ones are pinned;
-    /// enemy ones are discovered-check candidates.
+    /// sniper and `color`'s king. Friendly ones are pinned; enemy ones are
+    /// discovered-check candidates.
     pub fn blockers_for_king(&self, color: Color) -> Bitboard {
         self.st().blockers_for_king[color as usize]
     }
@@ -1077,10 +923,9 @@ impl Board {
         self.threats.all.get()
     }
 
-    /// Fill [`Board::threats`] for the current position unless it already holds
-    /// it. Takes `&self` because every consumer is a `&self` accessor; the
-    /// interior mutability is a `Cell`, so this stays inside safe Rust and
-    /// costs one compare-and-branch on the hot (already-filled) path.
+    /// Fill [`Board::threats`] for the current position unless it already
+    /// holds it. `&self` via `Cell` interior mutability; one
+    /// compare-and-branch on the already-filled path.
     fn ensure_threats(&self) {
         let key = self.st().key;
         if self.threats.key.get() == Some(key) {
@@ -1102,46 +947,26 @@ impl Board {
     }
 
     /// The WHOLE Wave-G threat map behind ONE fill check: `(all, by_type)`.
-    ///
-    /// Perf study 13 §4.2. [`MovePicker::init_quiets`] used to build its
-    /// escape/entry tiers with four [`piece_threats`](Self::piece_threats)
-    /// calls plus one [`all_threats`](Self::all_threats), i.e. **five**
-    /// `ensure_threats` calls per `init_quiets` — and `ensure_threats` is not inlined,
-    /// so each one re-materialised `self.st()` (a `Vec::last` with its own
-    /// emptiness test and panic edge; 29.07 `st()` calls per node,
-    /// `counters-r2.txt`), re-read the `Cell` key and re-compared it. Four of
-    /// the five could only ever observe a filled cache, because the first call
-    /// filled it. Both `Cell`s are read here in one go.
-    ///
-    /// [`MovePicker::init_quiets`]: crate::movepick::MovePicker
+    /// Serves move ordering's five reads with a single `ensure_threats`.
     pub fn threat_map(&self) -> (Bitboard, [Bitboard; 6]) {
         self.ensure_threats();
         (self.threats.all.get(), self.threats.by_type.get())
     }
 
     /// `color`'s sliders pinning a piece of the OTHER color against its own
-    /// king (doc 04 §3.5): the snipers whose sole blocker is an enemy piece.
+    /// king: the snipers whose sole blocker is an enemy piece.
     pub fn pinners(&self, color: Color) -> Bitboard {
         self.st().pinners[color as usize]
     }
 
     /// From-squares from which a `pt` of the side to move would check the
-    /// enemy king (doc 04 §3.5). EMPTY for `King` — a king never gives check.
+    /// enemy king. EMPTY for `King` — a king never gives check.
     pub fn check_squares(&self, pt: PieceType) -> Bitboard {
         self.st().check_squares[pt as usize]
     }
 
-    /// All six check-square sets in one [`Board::st`] materialisation.
-    ///
-    /// Perf study 13 §4.4: the quiet scorer asks `check_squares(pt)` once per
-    /// scored quiet — ~30 per `init_quiets` call — with `pt` varying, so it cannot be
-    /// hoisted by hand at the call site and LLVM only hoists `st()` out of the
-    /// loop when nothing in the body could have invalidated it. `st()` is
-    /// `Vec::last().expect(...)`: a length load, an emptiness test and a panic
-    /// edge, 29.07 times per node across the whole engine (`counters-r2.txt`) —
-    /// of which this loop is a large share on any node that stages quiets.
-    /// Reading the whole 48-byte block once makes the hoist a property of the
-    /// source instead of a hope about the optimiser.
+    /// All six check-square sets in one read — the quiet scorer asks per
+    /// scored quiet with `pt` varying, so the hoist is done in the source.
     pub fn check_squares_all(&self) -> &[Bitboard; 6] {
         &self.st().check_squares
     }
@@ -1154,31 +979,14 @@ impl Board {
     /// `color`'s king square. **Total in release**: a king-less board yields
     /// `a1`; debug trips the `debug_assert` below.
     ///
-    /// King-less boards are a supported class, not a bug — `Board::empty()`
-    /// plus `put_piece` is the crate's test convention, `from_fen` does NOT
-    /// reject one, and `init_state` / `assert_consistent` / `Board::is_check`
-    /// each guard for them explicitly. Callers that can see an incomplete board
-    /// must gate on that themselves; a search root is gated by
-    /// `uci::is_legal_root`, applied at the `position` boundary.
+    /// King-less boards are a supported class (`Board::empty()` +
+    /// `put_piece` tests; `from_fen` does not reject them). Callers that can
+    /// see an incomplete board must gate on that themselves; a search root
+    /// is gated by `uci::is_legal_root` at the `position` boundary.
     pub fn king_square(&self, color: Color) -> Square {
-        // Perf study 13 §4.3. `lsb().expect(...)` states the "a king exists"
-        // invariant twice for the optimizer to disbelieve twice: `lsb` tests the
-        // board for zero and returns an `Option`, and `expect` re-tests it. Two
-        // panic edges on a query that runs several times per node
-        // (`set_check_info` alone takes three). `trailing_zeros` of a non-zero
-        // u64 is already in `0..64`; the mask says so to LLVM, so `Square::new`'s
-        // own `assert!` folds away too.
-        //
-        // **The release contract changed and it is not the one the first draft
-        // of this comment claimed** (D33 reviewer A). `from_fen` does NOT
-        // validate that kings exist — king-less analysis boards are a supported
-        // input class, see `Board::is_check` — and a king CAN be captured from
-        // an illegal root, so the old `expect` was a live release tripwire, not
-        // dead code. Debug still panics here; release now yields A1. The
-        // tripwire moved to `uci::is_legal_root`, enforced at the `position`
-        // boundary, which is where an engine that must "never panic on input"
-        // (design/12 §3.3) should have been rejecting these all along. Callers
-        // that may hold an incomplete board must gate on it first.
+        // `trailing_zeros` of a non-zero u64 is already in 0..64; the `& 63`
+        // tells LLVM, so `Square::new`'s assert folds and there is no panic
+        // edge on a several-times-per-node query.
         let bb = self.pieces(color, PieceType::King).to_u64();
         debug_assert!(bb != 0, "king must exist");
         Square::new((bb.trailing_zeros() as u8) & 63)
@@ -1267,43 +1075,27 @@ impl Board {
         (blockers, pinners)
     }
 
-    /// Populate the check bookkeeping of `st` from the CURRENT board
-    /// (doc 04 §3.5): blockers/pinners around both kings, plus the squares
-    /// from which each piece type of the side to move would check the enemy
-    /// king. Called at setup and — once make/unmake land — at the end of
-    /// every make/null-move, AFTER `side_to_move` has been flipped. Does
-    /// NOT touch `st.checkers`; that is the caller's job (from scratch at
-    /// setup, incrementally in `make_move`). Both kings must exist.
     /// Recompute the check bookkeeping (doc 04 §3.5) into the CURRENT state:
     /// blockers/pinners around both kings, plus the squares from which each
     /// piece type of the side to move would check the enemy king. Called at
-    /// setup and at the end of every make/null-move, AFTER `side_to_move` has
-    /// been flipped. Does NOT touch `checkers` — that is the caller's job
-    /// (from scratch at setup, incrementally in `make_move`). Both kings must
-    /// exist.
+    /// setup and at the end of every make/null-move, AFTER `side_to_move`
+    /// has been flipped. Does NOT touch `checkers` — that is the caller's
+    /// job (from scratch at setup, incrementally in `make_move`). Both kings
+    /// must exist.
     ///
-    /// It cannot be spelled as one function taking `&self` and
-    /// `&mut self.state`: that would hold a `&mut` into one field across
-    /// `&self` reads of the others. Computing the block by value first
-    /// ([`CheckInfo::of`]) and storing it second is the idiomatic Rust answer
-    /// to a partial-borrow conflict — and it is what let the state stack's
-    /// `mem::take` trick go away (perf study 14 §2).
+    /// Computing the block by value ([`CheckInfo::of`]) and storing it
+    /// second is the idiomatic answer to the partial-borrow conflict a
+    /// `&self` + `&mut self.state` spelling would hit.
     fn refresh_check_info(&mut self) {
         CheckInfo::of(self).store(&mut self.state);
     }
 
     /// Compute the Wave-G threat map (D30): squares attacked by `them` (the
-    /// side NOT to move), by piece type and unioned. Whole-army setwise fills;
-    /// the side-to-move's own king is removed from slider occupancy so a
-    /// slider's threat extends THROUGH it (the king cannot shield the square
-    /// behind it — it must move). Reads `side_to_move`, so it is only valid
-    /// AFTER a make/null-move has flipped it.
-    ///
-    /// **Called on demand, not per move** (perf study 8 §4.4): this used to run
-    /// inside [`set_check_info`] on every `make_move` for ~2.1% of all engine
-    /// instructions, while every qsearch node and every node that cut before
-    /// the reverse-futility test threw the result away. [`ThreatCache`] has the
-    /// rationale and the invalidation argument.
+    /// side NOT to move), by piece type and unioned. The side-to-move's own
+    /// king is removed from slider occupancy so a slider's threat extends
+    /// THROUGH it (the king cannot shield the square behind it). Reads
+    /// `side_to_move`, so only valid AFTER a make/null-move has flipped it.
+    /// Called on demand, not per move — see [`ThreatCache`].
     fn compute_threats(&self) -> ([Bitboard; 6], Bitboard) {
         let tables = attacks::tables();
         let us = self.side_to_move;
@@ -1343,18 +1135,12 @@ impl Board {
 
     /// Does this pseudo-legal move of the side to move give check?
     /// O(1) for the common cases via `check_squares` and
-    /// `blockers_for_king` (doc 04 §3.6) — search calls this once per move
-    /// and feeds the answer to [`Board::make_move`].
-    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
-    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
-    // every helper the search body calls has at least two machine call sites and
-    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
-    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
-    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
-    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
-    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
-    // costs +25.7 i/n in spills. Do not extend this to a big function without
-    // measuring — study 55 §0.1 has the size curve.
+    /// `blockers_for_king` — search calls this once per move and feeds the
+    /// answer to [`Board::make_move`].
+    // NOTE: `inline(always)` is deliberate — search::<NT>'s two
+    // monomorphizations deny LLVM's single-call-site inline bonus, and
+    // forcing small helpers inline measured a win. It INVERTS on large
+    // bodies (spills); do not extend without measuring.
     #[inline(always)]
     pub fn gives_check(&self, m: Move) -> bool {
         let pc = self
@@ -1363,29 +1149,12 @@ impl Board {
         self.gives_check_by(m, pc)
     }
 
-    /// [`Board::gives_check`] with the mover already in hand.
-    ///
-    /// Perf study 53. The body is `gives_check`'s verbatim; the only
-    /// difference is that `pc` arrives as an argument instead of being read
-    /// back out of the mailbox. The search's move loop resolves the mover once
-    /// per iteration (`moved_piece`, §3.5) and every path through the body
-    /// already needs it, so at that one call site the mailbox read inside
-    /// `gives_check` was pure duplication — and LLVM cannot remove it: between
-    /// the caller's read and the call sits `stack[cur].move_count = move_count`,
-    /// a store through a `Box`ed pointer that the alias analysis cannot prove
-    /// disjoint from the board's mailbox, so the load must be re-issued.
-    ///
-    /// Reading the mover from memory also costs a *third* thing that is easy to
-    /// miss: `pc.piece_type` arrives with no range information, so
-    /// `check_squares(pc.piece_type)` — an index into a six-element array —
-    /// carries a `cmp $6` / `jae panic_bounds_check`. Taking `pc` by value
-    /// gives LLVM the `#[repr(u8)]` enum's `0..=5` validity range and the check
-    /// folds. Measured on the shipped disassembly: two mailbox loads, one
-    /// `expect` panic edge and one bounds check, all per call.
-    ///
-    /// The cold call sites (perft, UCI, ProbCut, the singular probe) stay on
-    /// the wrapper above — they have no mover in hand and no reason to acquire
-    /// one.
+    /// [`Board::gives_check`] with the mover already in hand: the search's
+    /// move loop resolves the mover once per iteration, so the mailbox read
+    /// inside `gives_check` was duplication, and taking `pc` by value gives
+    /// LLVM the enum's `0..=5` range so the `check_squares` index check
+    /// folds. Cold call sites (perft, UCI, ProbCut, the singular probe) stay
+    /// on the wrapper above.
     pub fn gives_check_by(&self, m: Move, pc: Piece) -> bool {
         let us = self.side_to_move;
         let them = us.flip();
@@ -1414,11 +1183,8 @@ impl Board {
             return true;
         }
 
-        // Everything above answers a NORMAL move, which is what >95% of made
-        // moves are; the three special kinds go out of line together (perf
-        // study 17 §5 — a slider table deref, an `attacks::attacks` dispatch
-        // and a `Square::from_coords` all live only down there, and inline
-        // they set this function's prologue).
+        // Everything above answers a NORMAL move (>95% of made moves); the
+        // three special kinds go out of line together.
         if m.kind() == MoveKind::Normal {
             return false;
         }
@@ -1431,8 +1197,7 @@ impl Board {
     #[cold]
     #[inline(never)]
     fn gives_check_special(&self, m: Move, ksq: Square, from: Square, to: Square) -> bool {
-        // `us` is re-read from the board rather than passed, to stay clear of
-        // the six-register argument limit (D33 reviewer C, measured).
+        // `us` re-read rather than passed — stays within six argument regs.
         let us = self.side_to_move;
         match m.kind() {
             MoveKind::Normal => false,
@@ -1485,8 +1250,7 @@ impl Board {
     /// Register one granted castling right during setup (doc 04 §3.7):
     /// revocation-mask bits on the king and rook home squares, the rook's
     /// origin, the must-be-empty path, and the right itself in the root
-    /// state. Standard chess squares today; the kingside/queenside
-    /// comparison and the path formula are already Chess960-proof (D10).
+    /// state. The formulas are already Chess960-proof (D10).
     pub(crate) fn set_castling_right(&mut self, color: Color, rook_from: Square) {
         let king_from = Square::E1.relative_to(color);
         let kingside = rook_from.file() > king_from.file();
@@ -1522,14 +1286,11 @@ impl Board {
         self.init_state();
     }
 
-    /// From-scratch analogue of Stockfish's `set_state` (doc 04 §3.3–3.5):
-    /// recompute the six keys, non-pawn material, and the check bookkeeping
-    /// (checkers/blockers/pinners/check_squares) for the current placement
-    /// plus the staged game-state fields (side to move, castling rights, ep
-    /// square) and overwrite the top state's derived fields. `make_move`
-    /// will maintain the same quantities incrementally; this recompute is
-    /// the drift oracle the debug consistency check compares against
-    /// (doc 04 §3.12).
+    /// From-scratch recompute of the six keys, non-pawn material, and the
+    /// check bookkeeping for the current placement plus the staged
+    /// game-state fields (mirrors Stockfish's `set_state`). `make_move`
+    /// maintains the same quantities incrementally; this recompute is the
+    /// drift oracle the debug consistency check compares against.
     fn init_state(&mut self) {
         let computed = self.computed_keys();
         let mut st = *self.st();
@@ -1587,12 +1348,10 @@ impl Board {
             }
         }
 
-        // Material key: XOR of the count slots psq[pc][8 + i], i in
-        // 0..count, kings included (doc 04 §3.4 trick 3). Indexed directly
-        // rather than via `ZOBRIST.material`: that helper's debug bound
-        // models LEGAL piece counts, but from_fen must stay panic-free on
-        // well-formed yet illegal placements (e.g. nine white pawns), so
-        // absurd counts are capped at the psq row instead.
+        // Material key: XOR of the count slots psq[pc][8 + i], kings
+        // included. Indexed directly rather than via `ZOBRIST.material`:
+        // from_fen must stay panic-free on well-formed yet illegal
+        // placements (e.g. nine white pawns), so absurd counts are capped.
         for color in Color::ALL {
             for piece_type in PieceType::ALL {
                 let row = &ZOBRIST.psq[Piece::new(color, piece_type).index()];
@@ -1622,10 +1381,9 @@ impl Board {
         }
     }
 
-    /// Test/debug oracle (seed of doc 04 §3.12): recompute every key and
-    /// non-pawn material from scratch and assert they match the stored
-    /// state. Trivially true for freshly parsed boards; it becomes the
-    /// drift detector for every incremental XOR once `make_move` lands.
+    /// Test/debug oracle: recompute every key and non-pawn material from
+    /// scratch and assert they match the stored state — the drift detector
+    /// for every incremental XOR in `make_move`.
     #[cfg(any(test, debug_assertions))]
     pub fn assert_state_keys_consistent(&self) {
         let computed = self.computed_keys();
@@ -1667,15 +1425,9 @@ impl Board {
         Some(piece)
     }
 
-    /// [`Board::remove_piece`] when the caller ALREADY holds the piece.
-    ///
-    /// Perf study 14 §4.3: make/unmake know every piece they touch — the
-    /// mover from step 3, the victim from `captured`, the castling rook by
-    /// construction — and then threw that away and re-derived it from the
-    /// mailbox, paying a redundant load plus an `Option` discriminant test
-    /// per placement edit. Passing the value it already has in a register is
-    /// what the low-level primitive should have taken all along; the
-    /// `Option`-returning form stays for the callers that genuinely query.
+    /// [`Board::remove_piece`] when the caller ALREADY holds the piece —
+    /// make/unmake know every piece they touch, so they skip the mailbox
+    /// re-read; the `Option`-returning form stays for genuine queries.
     #[inline]
     pub(crate) fn remove_piece_known(&mut self, piece: Piece, sq: Square) {
         debug_assert_eq!(
@@ -1691,15 +1443,10 @@ impl Board {
     }
 
     /// Move a piece between squares in one pass: from-bit ^ to-bit on three
-    /// bitboards plus two mailbox writes (doc 04 §3.3). The internal fast path
-    /// of make/unmake — the destination must be empty (captures and promotions
-    /// go through `remove_piece`/`put_piece` instead). Placement-only like its
+    /// bitboards plus two mailbox writes. The internal fast path of
+    /// make/unmake — the destination must be empty (captures and promotions
+    /// go through `remove_piece`/`put_piece`). Placement-only like its
     /// siblings: Zobrist deltas live in `make_move`, not here (doc 04 §9.1).
-    ///
-    /// Takes the piece rather than reading it back out of the mailbox — see
-    /// [`Board::remove_piece_known`]. Perf study 14 §4.4 gave `unmake_move` the
-    /// mover via `StateInfo::moved`, which left the querying `move_piece`
-    /// with no callers at all, so it is gone.
     #[inline]
     pub(crate) fn move_piece_known(&mut self, pc: Piece, from: Square, to: Square) {
         debug_assert_eq!(
@@ -1719,26 +1466,14 @@ impl Board {
         self.mailbox[to.idx()] = Some(pc);
     }
 
-    /// Make `m` on the board (doc 04 §3.8, D10). `m` must be legal for the
-    /// side to move, and `gives_check` must equal `self.gives_check(m)` —
-    /// caller-supplied so quiet moves need no attack query here.
-    ///
-    /// Builds the child `StateInfo` and pushes it; [`Board::unmake_move`]
-    /// pops it. All Zobrist deltas — main key plus the four specialized
-    /// families — are applied here in Stockfish's `do_move` order, NOT in
-    /// the placement mutators (doc 04 §3.3, §9.1). In particular the new ep
-    /// square is set (and hashed) ONLY when an ep capture will actually be
-    /// legal (D9).
     /// Archive the live state onto the stack — [`StateStack`]'s whole reason
-    /// for existing. Written as an indexed store rather than a `push` so the
-    /// 168-byte record goes straight from one field of `*self` to another with
-    /// no stack temporary and no call in the way (see [`StateStack`]).
+    /// for existing. An indexed store rather than a `push` so the 168-byte
+    /// record goes straight from one field of `*self` to another with no
+    /// stack temporary and no call in the way.
     #[inline]
     fn push_state(&mut self) {
-        // The store lives in the `<` arm, not after the `if`: see
-        // [`StateStack::grow_and_store`] for why joining the two paths back
-        // together costs a duplicate bounds test. Here the guard IS the bounds
-        // proof, so the hot arm is a bare indexed store.
+        // The store lives in the `<` arm: the guard IS the bounds proof, so
+        // the hot arm is a bare indexed store (see grow_and_store).
         let depth = self.history.depth;
         if depth < self.history.slots.len() {
             self.history.slots[depth] = self.state;
@@ -1755,11 +1490,9 @@ impl Board {
             self.history.depth > 0,
             "unmake must have a parent state to restore"
         );
-        // ONE edge, not two. `checked_sub(1).expect(..)` would put an
-        // underflow test on top of the index bounds test; the wrapping form
-        // lets the single bounds check catch both, since a cursor of 0 wraps
-        // to `usize::MAX` and is out of bounds by a mile. What makes either
-        // unreachable is the make/unmake pairing, not the test.
+        // ONE edge, not two: the wrapping form lets the single bounds check
+        // catch underflow too (a cursor of 0 wraps far out of bounds). What
+        // makes either unreachable is the make/unmake pairing.
         let idx = self.history.depth.wrapping_sub(1);
         self.state = self.history.slots[idx];
         self.history.depth = idx;
@@ -1769,36 +1502,28 @@ impl Board {
         self.make_move_with(m, gives_check, &mut NoHooks);
     }
 
-    /// [`Board::make_move`] with prefetch/NNUE hook points (doc 04 §3.10).
-    /// Same contract; `hooks` receives the child keys mid-make so consumers
-    /// can overlap memory prefetches with the rest of the move. The
-    /// [`NoHooks`] instantiation is exactly `make_move`.
+    /// Make `m` on the board (doc 04 §3.8, D10). `m` must be legal for the
+    /// side to move, and `gives_check` must equal `self.gives_check(m)` —
+    /// caller-supplied so quiet moves need no attack query here.
+    ///
+    /// Builds the child `StateInfo` and pushes it; [`Board::unmake_move`]
+    /// pops it. All Zobrist deltas — main key plus the four specialized
+    /// families — are applied here in Stockfish's `do_move` order, NOT in
+    /// the placement mutators (doc 04 §3.3, §9.1). The new ep square is set
+    /// (and hashed) ONLY when an ep capture will actually be legal (D9).
+    /// `hooks` receives the child keys mid-make so consumers can overlap
+    /// memory prefetches; the [`NoHooks`] instantiation is exactly
+    /// `make_move`.
     pub fn make_move_with<H: MakeMoveHooks>(&mut self, m: Move, gives_check: bool, hooks: &mut H) {
-        // Step 1: archive the parent and edit the current state IN PLACE into
-        // the child. Stockfish's "memcpy up to key" (D8) is this push: the
-        // carried-over block is already where it needs to be, so there is no
-        // prefix assignment, no 168-byte `StateInfo::EMPTY` constant store,
-        // and — because nothing below holds a borrow INTO the stack — no
-        // `mem::take` of it either. Perf study #2 option E and study 9 item 3
-        // both existed to work around that borrow; study 14 removed the
-        // borrow instead.
+        // Step 1: archive the parent and edit the current state IN PLACE
+        // into the child (Stockfish's "memcpy up to key", D8). The
+        // non-`copied` fields are dead from here until rewritten below —
+        // EXCEPT `blockers_for_king`, which step 8's ep-legality test reads
+        // as the PARENT's until step 12 overwrites it.
         //
-        // `self.state`'s non-`copied` fields are dead from here until they are
-        // written below (`key` step 9, `captured`/`checkers` step 11,
-        // blockers/pinners/check_squares in step 12, `repetition` step 13),
-        // which is exactly what seeding them from `EMPTY` used to buy.
-        // `blockers_for_king` is the one exception: step 8's ep-legality test
-        // wants the PARENT's, and it still holds them until step 12.
-        //
-        // Panic-safety, since the old shape documented its own: a panic between
-        // here and step 13 now leaves `history` one entry deep and `self.state`
-        // half-built (counters bumped, ep cleared, rights revoked) — a board
-        // that passes every structural check. The old `mem::take` left
-        // `self.states` EMPTY, so the next `st()` panicked loudly instead. This
-        // is survivable only because a worker panic is caught
-        // (`threads.rs`) and every `go` re-seeds each shell with a fresh
-        // `Job::Setup { board: board.clone() }`; a make_move panic is a fatal
-        // invariant violation either way.
+        // Panic-safety: a panic mid-make leaves a structurally-valid but
+        // half-built state; survivable only because a worker panic is caught
+        // and every `go` re-seeds from a fresh board clone.
         self.push_state();
         let mut k = self.state.key ^ ZOBRIST.side;
 
@@ -1836,12 +1561,8 @@ impl Board {
         // standard squares nothing overlaps, but the shape is ready for
         // Chess960's overlapping king/rook squares (D10).
         if m.kind() == MoveKind::Castling {
-            // Out of line, and for the same reason as `unmake_castling`: this
-            // arm needs the rook-square table, two derived squares and a
-            // constructed `Piece`, and inline it widened the live range that
-            // `make_move_with`'s prologue has to spill. Castling is under 1% of
-            // made moves. The rook key delta comes back so the two XORs stay
-            // where every other key update in this function is.
+            // Out of line (see `unmake_castling`); the rook key delta comes
+            // back so the two XORs stay with the other key updates here.
             let rook_delta = self.make_castling(pc, us, from, to);
             k ^= rook_delta;
             self.state.copied.non_pawn_key[us as usize] ^= rook_delta;
@@ -1863,8 +1584,7 @@ impl Board {
             k ^= cap_psq;
             // Count-slot removal: slot index = post-removal count. The
             // popcount is still pre-mutation — ALL board edits wait until
-            // step 10 (unlike SF, which lifts the ep pawn early for
-            // piece-list reasons we don't have).
+            // step 10.
             let count = self.pieces(them, cap.piece_type).count() as usize;
             self.state.copied.material_key ^= ZOBRIST.material(cap, count - 1);
             self.state.copied.rule50 = 0;
@@ -1948,12 +1668,10 @@ impl Board {
             }
         }
 
-        // Step 9: the child key is final. Hook A gets the TT probe key:
-        // folded with the STANDARD threshold on the in-flight clock, which
-        // is already exact here (incremented in step 2, zeroed by steps
-        // 5/8). NOT `fold_rule50_after` — that models "parent clock + 1",
-        // which is wrong after any capture or pawn move and exists solely
-        // for the speculative [`Board::prefetch_key`] (doc 04 §3.8 step 9).
+        // Step 9: the child key is final. Hook A gets the TT probe key,
+        // folded on the child clock, which is already exact here. NOT
+        // `fold_rule50_after` — that models "parent clock + 1", wrong after
+        // any capture or pawn move.
         self.state.key = k;
         hooks.on_key(zobrist::fold_rule50(k, self.state.copied.rule50));
         // Hook B: the specialized keys are final too.
@@ -1983,11 +1701,8 @@ impl Board {
         self.state.captured = captured;
         self.state.moved = pc;
         self.state.checkers = checkers;
-        // Hook C (perf study 54 / study 35 §4): the placement record, built
-        // from step 3's own actors while they are still in registers. Placed
-        // AFTER step 10 so the board a castling record reads is the mutated
-        // one — `castling_rook_square` is invariant, but keeping the hook on
-        // the far side of mutation makes the two shapes directly comparable.
+        // Hook C: the placement record, built from step 3's own actors while
+        // they are still in registers; placed AFTER step 10 (mutation).
         if H::WANTS_DIRTY {
             hooks.on_dirty(&DirtyPiece::from_actors(self, m, us, pc, captured, capsq));
         }
@@ -2020,17 +1735,9 @@ impl Board {
             // The child is `self.state`; the ancestor `i` plies back is
             // `history[len - i]`, because the push in step 1 made
             // `history.len()` equal the child's ply index.
+            // NOTE: the indexed loop beats a reversed step_by(2) slice
+            // iterator here — `end` is small, iterator setup dominates.
             let hist_len = self.history.len();
-            //
-            // Perf study 9 item 3 tried to strength-reduce the `imul $0xa8`
-            // (sizeof(StateInfo), not a power of two) that this indexed form
-            // re-derives per iteration, by walking a reversed `step_by(2)`
-            // slice iterator instead. It measured **+0.042% engine
-            // instructions** (7094.6 -> 7097.6 i/n, identical tree): the
-            // iterator's setup outweighs the multiply because `end` is small
-            // in a search — `min(rule50, plies_from_null)` is bounded by the
-            // distance to the last null move, so the loop almost never runs
-            // enough iterations to amortise it. Left alone deliberately.
             let mut i = 4;
             while i <= end {
                 let earlier = &self.history[hist_len - i as usize];
@@ -2045,9 +1752,8 @@ impl Board {
         }
         self.state.repetition = repetition;
 
-        // Step 14: debug builds run the full invariant oracle at every node
-        // (doc 04 §3.12, D24); release compiles it out. There is nothing to
-        // publish any more — the child has been the live state since step 1.
+        // Step 14: debug builds run the full invariant oracle at every node;
+        // release compiles it out.
         #[cfg(debug_assertions)]
         self.assert_consistent();
     }
@@ -2056,20 +1762,10 @@ impl Board {
     /// Deliberately dumb-cheap: restore the placement, pop the state — no
     /// key or check-info work, everything derived lives in the popped
     /// record and the parent state is intact underneath.
-    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
-    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
-    // every helper the search body calls has at least two machine call sites and
-    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
-    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
-    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
-    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
-    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
-    // costs +25.7 i/n in spills. Do not extend this to a big function without
-    // measuring — study 55 §0.1 has the size curve.
+    // NOTE: `inline(always)` deliberate — same rationale as `gives_check`.
     #[inline(always)]
     pub fn unmake_move(&mut self, m: Move) {
-        // The child's `captured` is the only field that survives the restore,
-        // so read it before the parent overwrites it.
+        // Read the child's fields before the pop overwrites them.
         let captured = self.state.captured;
         let moved = self.state.moved;
         self.pop_state();
@@ -2078,8 +1774,8 @@ impl Board {
         self.game_ply -= 1;
         let (from, to) = (m.from(), m.to());
 
-        // The NORMAL arm is straight-line and the other three are calls, for
-        // the reason given on `unmake_castling` (perf study 17 §5).
+        // The NORMAL arm is straight-line; the other three are cold calls
+        // (see `unmake_castling`).
         match m.kind() {
             MoveKind::Normal => {
                 self.move_piece_known(moved, to, from);
@@ -2094,11 +1790,10 @@ impl Board {
         self.assert_consistent();
     }
 
-    /// The castling arm of `make_move_with` step 4, out of line (same
-    /// motivation as [`Board::unmake_castling`]). Moves king and rook —
-    /// remove both, then place both, so the shape is ready for Chess960's
-    /// overlapping king/rook squares (D10) — and returns the rook's Zobrist
-    /// `psq` delta for the caller to fold into the main and non-pawn keys.
+    /// The castling arm of `make_move_with` step 4, out of line (see
+    /// [`Board::unmake_castling`]). Remove both, then place both — ready
+    /// for Chess960's overlapping king/rook squares (D10) — and return the
+    /// rook's Zobrist `psq` delta for the caller's key updates.
     #[cold]
     #[inline(never)]
     fn make_castling(&mut self, pc: Piece, us: Color, from: Square, to: Square) -> Key {
@@ -2116,24 +1811,15 @@ impl Board {
         ZOBRIST.psq[rook.index()][rfrom.idx()] ^ ZOBRIST.psq[rook.index()][rto.idx()]
     }
 
-    /// The promotion and en-passant arms of [`Board::unmake_move`] — the exact
-    /// inverse of `make_move_with` step 10 for those two kinds. Castling has
-    /// its own [`Board::unmake_castling`]; `Normal` stays inline in the caller.
-    ///
-    /// `#[cold]` is honest for en passant everywhere and for promotions in the
-    /// overwhelming majority of positions, but NOT unconditionally: in a pawn
-    /// endgame promotions can reach several percent of made moves, and there
-    /// the branch weight buys a mispredict (D33 reviewer A). The measured
-    /// −1.4 i/n is over the wl50 mix; if a promotion-heavy régime ever shows
-    /// up in a régime-split measurement, split `Promotion` back out.
+    /// The promotion and en-passant arms of [`Board::unmake_move`] — the
+    /// exact inverse of `make_move_with` step 10 for those two kinds.
+    /// NOTE: `#[cold]` is honest except in promotion-heavy pawn endgames;
+    /// if such a régime shows up in measurement, split `Promotion` out.
     #[cold]
     #[inline(never)]
     fn unmake_special(&mut self, m: Move, us: Color, moved: Piece, captured: Option<Piece>) {
-        // `from`/`to` are re-derived rather than passed: with them this took
-        // SEVEN integer arguments, one past the six SysV registers, so every
-        // call site wrote a stack slot for a path it almost never takes --
-        // which is §5.2's own failure mode (D33 reviewer C). `Move::from`/`to`
-        // are a shift and a mask.
+        // `from`/`to` re-derived rather than passed: seven arguments would
+        // overflow the six SysV registers onto the stack.
         let (from, to) = (m.from(), m.to());
         if m.kind() == MoveKind::Promotion {
             let promo = Piece::new(us, m.promotion_piece().expect("promotion kind has a piece"));
@@ -2154,13 +1840,9 @@ impl Board {
 
     /// The castling arm of [`Board::unmake_move`], out of line — the exact
     /// inverse of `make_move_with` step 4: remove both, place both.
-    ///
-    /// Split out because it is the arm that sets `unmake_move`'s REGISTER
-    /// PRESSURE. It needs the rook square table, the derived rook from/to, and
-    /// two constructed `Piece`s, so inline it forces seven callee-saved pushes
-    /// and seven pops onto every unmake — and castling is under 1% of moves.
-    /// The `#[cold]` is the honest annotation and it is also what stops LLVM
-    /// hoisting any of this back into the caller's prologue.
+    /// Split out because inline it sets `unmake_move`'s register pressure
+    /// (seven callee-saved pushes on every unmake) while castling is under
+    /// 1% of moves; `#[cold]` also stops LLVM hoisting it back.
     #[cold]
     #[inline(never)]
     fn unmake_castling(&mut self, us: Color, from: Square, to: Square) {
@@ -2169,7 +1851,7 @@ impl Board {
         let rfrom = self.castling_rook_square[right.index()];
         let rto = if kingside { Square::F1 } else { Square::D1 }.relative_to(us);
         // Both pieces are known by construction — this is the inverse of a
-        // castling we ourselves made (§4.3).
+        // castling we ourselves made.
         let king = Piece::new(us, PieceType::King);
         let rook = Piece::new(us, PieceType::Rook);
         self.remove_piece_known(king, to);
@@ -2178,18 +1860,15 @@ impl Board {
         self.put_piece(rook, rfrom);
     }
 
-    /// Switch the side to move without moving anything (doc 04 §3.8, SF
+    /// Switch the side to move without moving anything (mirrors SF's
     /// `do_null_move`) — the primitive behind null-move pruning. The side
     /// to move must NOT be in check.
     ///
-    /// Copies the ENTIRE top state (both blocks — this is why `StateInfo:
-    /// Copy`), then: ep cleared (with its key XOR), side key toggled,
-    /// `plies_from_null` reset to 0 (which isolates repetition scans across
-    /// the null boundary), check bookkeeping rebuilt for the new side.
-    /// `rule50` and `game_ply` are deliberately unchanged (SF behavior).
-    // Perf study 67 §3: 284 bytes of `search::<NonPv>` for 0.0 % of its
-    // dispatched ops. NMP fires at a minority of nodes and both halves of the
-    // null are pure fetch weight in the node's hot span.
+    /// Copies the ENTIRE top state (why `StateInfo: Copy`), then: ep
+    /// cleared (with its key XOR), side key toggled, `plies_from_null`
+    /// reset to 0 (isolates repetition scans across the null boundary),
+    /// check bookkeeping rebuilt. `rule50` and `game_ply` are deliberately
+    /// unchanged (SF behavior).
     #[cfg_attr(feature = "icold67", inline(never))]
     pub fn make_null_move(&mut self) {
         debug_assert!(self.checkers().is_empty(), "make_null_move while in check");
@@ -2205,16 +1884,14 @@ impl Board {
         st.captured = None;
         st.repetition = 0;
         self.side_to_move = self.side_to_move.flip();
-        // `state.checkers` keeps the carried EMPTY set: the mover wasn't in
-        // check (precondition) and the new side's king can't be either —
-        // it wasn't attackable while the opponent was to move.
+        // `state.checkers` keeps the carried EMPTY set: neither side can be
+        // in check across a null move (precondition + attack symmetry).
         self.refresh_check_info();
         #[cfg(debug_assertions)]
         self.assert_consistent();
     }
 
     /// Undo the last [`Board::make_null_move`]: pop the state, flip back.
-    // Perf study 67 §3, same reason as `make_null_move`.
     #[cfg_attr(feature = "icold67", inline(never))]
     pub fn unmake_null_move(&mut self) {
         debug_assert!(
@@ -2227,7 +1904,7 @@ impl Board {
         self.assert_consistent();
     }
 
-    /// Approximate child key for `m` BEFORE making it (doc 04 §3.10, SF
+    /// Approximate child key for `m` BEFORE making it (mirrors SF's
     /// `prefetch_key`): `side ^ mover from/to ^ captured@to`, rule50-folded
     /// with the after-move threshold for quiet non-pawn moves. Search uses
     /// it to start the TT prefetch even earlier than hook A.
@@ -2263,8 +1940,7 @@ impl Board {
         let st = self.st();
         // 50-move rule, guarded: a mating move ON the 100th halfmove still
         // wins, so in check the claim stands only when an escape exists —
-        // checkmate outranks the clock (doc 04 §9.3, closed by
-        // design/05-movegen.md §3.9's `has_legal_moves`).
+        // checkmate outranks the clock.
         if st.copied.rule50 > 99
             && (st.checkers.is_empty() || crate::movegen::has_legal_moves(self))
         {
@@ -2308,20 +1984,14 @@ impl Board {
     /// Can the side to move reach, in ONE move, a position already on the
     /// path — i.e. is a draw by repetition available right now?
     ///
-    /// Marcel van Kervinck's cuckoo trick (SF `has_game_cycle`, doc 04 §3.9,
-    /// design/10 item 19 "N1"). Every reversible non-pawn move `s1 -> s2`
-    /// shifts the key by exactly `psq[pc][s1] ^ psq[pc][s2] ^ side`,
-    /// independent of the rest of the board. So "is the difference between
-    /// two path keys a single reversible move?" is a two-probe table lookup
-    /// ([`crate::cuckoo`]) — the whole test costs no move generation at all.
-    ///
-    /// Search calls this before its other early exits: a side that can force
-    /// a draw need never search a losing subtree, which prunes hard in
-    /// blocked and fortress-like positions.
-    // perf study 55 (arm named on the cfg_attr below): study 54 measured -20.8 i/n from a helper
-    // becoming single-call-site, which let LLVM's last-call-to-static bonus
-    // inline it.  `search::<NT>` duplicates every search-body call site, so
-    // that bonus never applies here; this forces the same inline directly.
+    /// Marcel van Kervinck's cuckoo trick (mirrors SF's `has_game_cycle`).
+    /// Every reversible non-pawn move `s1 -> s2` shifts the key by exactly
+    /// `psq[pc][s1] ^ psq[pc][s2] ^ side`, independent of the rest of the
+    /// board, so "is the difference between two path keys a single
+    /// reversible move?" is a two-probe table lookup ([`crate::cuckoo`]) —
+    /// no move generation at all. Search calls this before its other early
+    /// exits: a side that can force a draw need never search a losing
+    /// subtree.
     pub fn upcoming_repetition(&self, ply: i32) -> bool {
         let copied = &self.st().copied;
         // Same window as the repetition scan: an irreversible move or a null
@@ -2345,10 +2015,9 @@ impl Board {
                 continue;
             };
             let (s1, s2) = (mv.from(), mv.to());
-            // The key delta proves "some reversible move", but says nothing
-            // about today's occupancy, so a slider's path must still be
-            // clear. `between` includes `s2` (SF semantics, doc 03 §3.4), so
-            // XOR it back out to get the strictly-between squares.
+            // The key delta proves "some reversible move" but says nothing
+            // about today's occupancy: a slider's path must still be clear.
+            // `between` includes `s2`, so XOR it back out.
             let blockers = (attacks::between(s1, s2) ^ Bitboard::from_square(s2)) & occupancy;
             if !blockers.is_empty() {
                 continue;
@@ -2367,8 +2036,7 @@ impl Board {
             // table stores each unordered pair once (s1 < s2), so the piece
             // may sit at either end; pick whichever endpoint is occupied.
             let mover = if self.piece_on(s1).is_some() { s1 } else { s2 };
-            // Unlike SF's `color_of` on a possibly-empty square, an empty
-            // pair simply fails this test instead of reading garbage.
+            // An empty pair simply fails this test instead of reading garbage.
             if self.piece_on(mover).map(|pc| pc.color) != Some(self.side_to_move) {
                 continue;
             }
@@ -2380,21 +2048,18 @@ impl Board {
     }
 
     /// True iff the static exchange value of `m` is at least `threshold`
-    /// (doc 04 §3.11, D11): starting from `m`, both sides keep recapturing
-    /// on the destination square with their least valuable attacker for as
-    /// long as it pays, and the mover's final material balance must reach
-    /// the bar. Expressed as the null-window swap algorithm: `swap` carries
-    /// the running balance folded into the threshold, `res` flips with every
-    /// recapture, and each capturer only has to "clear the bar" `res` (0 or
-    /// 1) instead of computing an exact exchange value.
+    /// (doc 04 §3.11, D11): both sides keep recapturing on the destination
+    /// with their least valuable attacker for as long as it pays, and the
+    /// mover's final balance must reach the bar. Null-window swap algorithm:
+    /// `swap` carries the running balance folded into the threshold, `res`
+    /// flips with every recapture, and each capturer only has to "clear the
+    /// bar" `res` (0 or 1) instead of computing an exact exchange value.
     ///
     /// Pinned pieces do not count as attackers while an enemy pinner is
     /// still on the board; x-ray batteries are walked by lifting each used
-    /// capturer out of `occupied` and re-querying the slider rays through
-    /// the vacated square. Values are the D11 `PIECE_VALUES`.
+    /// capturer out of `occupied` and re-querying the slider rays.
     pub fn see_ge(&self, m: Move, threshold: Value) -> bool {
-        // Non-Normal kinds (promotion, en passant, castling) short-circuit
-        // to a static exchange value of 0 (doc 04 §3.11 step 1).
+        // Non-Normal kinds short-circuit to a static exchange value of 0.
         if m.kind() != MoveKind::Normal {
             return 0 >= threshold;
         }
@@ -2426,7 +2091,7 @@ impl Board {
         // Clear the mover's square AND toggle `to`: a capture lifts the
         // victim out, a quiet move marks the destination occupied. The `to`
         // toggle keeps the pinner-liveness test below honest when the first
-        // move captures a pinner (doc 04 §3.11 step 4).
+        // move captures a pinner.
         let mut occupied =
             self.all_occupancy ^ Bitboard::from_square(from) ^ Bitboard::from_square(to);
         let mut stm = self.side_to_move;
@@ -2452,9 +2117,8 @@ impl Board {
 
             // Pinned pieces may not join while any enemy pinner is still on
             // the board; once every pinner has been traded off (or was the
-            // initial victim — the `to` toggle above), formerly pinned
-            // pieces participate freely (doc 04 §3.11 step 6, an
-            // approximation shared with Stockfish).
+            // initial victim), formerly pinned pieces participate freely —
+            // an approximation shared with Stockfish.
             if !(self.pinners(stm.flip()) & occupied).is_empty() {
                 stm_attackers &= !self.blockers_for_king(stm);
                 if stm_attackers.is_empty() {
@@ -2489,8 +2153,8 @@ impl Board {
             swap = PIECE_VALUES[pt as usize] - swap;
             if pt == PieceType::Queen {
                 // A queen recapture after anything but a king always clears
-                // the bar, because the previous capturer was worth at most a
-                // queen — assert instead of test (doc 04 §3.11 step 7).
+                // the bar (the previous capturer was worth at most a queen)
+                // — assert instead of test.
                 debug_assert!(swap >= res as Value, "queen recapture under the bar");
             } else if swap < res as Value {
                 // Null-window bar check: `res` is the margin this capture
@@ -2524,12 +2188,10 @@ impl Board {
     /// in sync, state stack sane, every incremental key equal to a
     /// from-scratch recompute, structural chess sanity, and the check
     /// bookkeeping equal to a recompute. Make/unmake (moves and nulls) run
-    /// it at every node in debug builds, so a debug perft run exercises it
-    /// everywhere (D24); release builds compile it out entirely.
+    /// it at every node in debug builds; release compiles it out.
     ///
     /// Position-level checks assume a playable position; incomplete boards
-    /// (`Board::empty()`, mid-construction `put_piece` tests) get only the
-    /// placement-layer and stack checks.
+    /// get only the placement-layer and stack checks.
     #[cfg(any(test, debug_assertions))]
     pub(crate) fn assert_consistent(&self) {
         // --- Placement layers: bitboards vs mailbox vs occupancy ---------
@@ -2558,8 +2220,7 @@ impl Board {
         let mailbox_count = self.mailbox.iter().filter(|p| p.is_some()).count();
         assert_eq!(mailbox_count as u32, self.all_occupancy().count());
 
-        // --- State stack (doc 04 §3.3): sane counters ---------------------
-        // "Never empty" is no longer an assertion: the live state is a field.
+        // --- State stack: sane counters -----------------------------------
         let st = self.st();
         assert!(st.copied.rule50 >= 0);
         assert!(st.copied.plies_from_null >= 0);
@@ -2640,11 +2301,8 @@ impl Board {
                 & self.occupancy(stm.flip()),
             "checkers drifted"
         );
-        // Seeded from EMPTY, NOT from `*st` (D33 reviewer C, M-4): if
-        // `CheckInfo::store` ever stops writing one of these three fields, a
-        // `*st` seed would leave `expected` already equal to the stored value
-        // and this oracle would pass while `make_move` silently stopped
-        // maintaining it.
+        // Seeded from EMPTY, NOT from `*st`: a `*st` seed would let the
+        // oracle pass if `CheckInfo::store` stopped writing a field.
         let mut expected = StateInfo::EMPTY;
         CheckInfo::of(self).store(&mut expected);
         assert_eq!(
@@ -2695,9 +2353,7 @@ mod tests {
         squares.iter().copied().collect()
     }
 
-    /// Independent oracle for the Wave-G threat map: `them` (side not to move)
-    /// threatens `sq` iff one of its pieces attacks `sq`, with the side-to-
-    /// move's king x-rayed out of slider occupancy — computed via
+    /// Independent oracle for the threat map, computed per square via
     /// `attackers_to` (a different code path than the setwise fills).
     fn threat_oracle(b: &Board) -> Bitboard {
         let us = b.side_to_move();
@@ -2716,9 +2372,8 @@ mod tests {
 
     #[test]
     fn threat_map_matches_the_attackers_to_oracle() {
-        // G0 (D30): the setwise-filled `all_threats` equals the per-square
-        // oracle across a range of positions (incl. slider x-ray through the
-        // king), and the per-piece-type maps union to it.
+        // The setwise-filled `all_threats` equals the per-square oracle
+        // (incl. slider x-ray through the king); per-type maps union to it.
         let fens = [
             crate::fen::START_FEN,
             "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", // kiwipete
@@ -2736,15 +2391,9 @@ mod tests {
         }
     }
 
-    /// Perf study 13 §4.2. [`Board::threat_map`] exists to serve five reads
-    /// from ONE `ensure_threats`, so the thing that can break is the fill:
-    /// every board here is FRESH, i.e. its `ThreatCache` is cold, and
-    /// `threat_map` is the FIRST threat query made on it. Drop the
-    /// `ensure_threats()` from `threat_map` and every assertion below reads the
-    /// default-constructed all-zero cache and fails.
-    ///
-    /// It also pins the agreement with the per-type accessors it replaced, so a
-    /// swapped or truncated return value cannot pass either.
+    /// Every board here is FRESH (cold `ThreatCache`) and `threat_map` is
+    /// the FIRST threat query, so a dropped `ensure_threats()` fill fails;
+    /// also pins agreement with the per-type accessors.
     #[test]
     fn threat_map_on_a_cold_cache_agrees_with_the_per_type_accessors() {
         let fens = [
@@ -2753,13 +2402,11 @@ mod tests {
             "6k1/8/8/8/3q4/8/8/4K3 b - - 0 1",
         ];
         for fen in fens {
-            // Cold board #1: threat_map is the first threat query.
             let cold = Board::from_fen(fen).unwrap();
             let (all, by_type) = cold.threat_map();
             assert_eq!(all, threat_oracle(&cold), "threat_map().0 for {fen}");
             assert_ne!(all, Bitboard::EMPTY, "no position here is threat-free");
 
-            // Cold board #2: the per-type accessors, each filling for itself.
             let warm = Board::from_fen(fen).unwrap();
             for pt in PieceType::ALL {
                 assert_eq!(
@@ -2772,18 +2419,15 @@ mod tests {
         }
     }
 
-    /// Perf study 13 §4.4: same argument for the six check-square sets — the
-    /// quiet scorer reads them from one `st()` instead of one per scored quiet.
-    /// A stale, zeroed or mis-ordered return fails against the accessor it
-    /// replaced, on a position where five of the six sets are non-empty.
+    /// A stale, zeroed or mis-ordered `check_squares_all` fails against the
+    /// per-type accessor, on positions where five of six sets are non-empty.
     #[test]
     fn check_squares_all_agrees_with_the_per_type_accessor() {
         for fen in [
             crate::fen::START_FEN,
             "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
-            // Open king diagonal AND open king file, so no two of the six sets
-            // coincide — in the two above, d7/f7 make the Pawn and Bishop sets
-            // equal and a swapped index would pass (D33 reviewer C, N-5).
+            // Open king diagonal AND file, so no two of the six sets
+            // coincide and a swapped index cannot pass.
             "4k3/8/8/8/8/8/8/4K2R w K - 0 1",
         ] {
             let b = Board::from_fen(fen).unwrap();
@@ -2797,14 +2441,12 @@ mod tests {
                 );
                 nonempty += usize::from(!all[pt as usize].is_empty());
             }
-            // Exactly five: `set_check_info` always writes King as EMPTY, and
-            // every other type has some square from which it would check.
+            // Exactly five: King is always EMPTY.
             assert_eq!(
                 nonempty, 5,
                 "{fen} must exercise five piece types, got {nonempty}"
             );
-            // And no two of the six may coincide on the last fixture, or a
-            // swapped index would pass (D33 reviewer C, N-5).
+            // No two of the six may coincide on the last fixture.
             if fen.starts_with("4k3") {
                 for a in 0..6 {
                     for b2 in (a + 1)..5 {
@@ -2815,15 +2457,11 @@ mod tests {
         }
     }
 
-    /// Perf study 13 §4.3: [`Board::king_square`] dropped `lsb().expect(...)`
-    /// for `trailing_zeros() & 63`. The mask is the part that can be wrong —
-    /// `& 62` or `& 31` still compiles and still returns a plausible square —
-    /// so pin the exact square for kings on both colours across the index
-    /// range, including index 63 (h8), which any narrower mask corrupts.
+    /// `king_square`'s `& 63` mask is the part that can be wrong (`& 62`
+    /// still compiles and returns plausible squares), so pin the exact
+    /// square over the whole index range, both colors.
     #[test]
     fn king_square_is_exact_across_the_index_range() {
-        // The whole domain, not a sample: any mask narrower than 63 corrupts
-        // some index, and picking fixtures leaves the reader guessing which.
         for i in 0..64u8 {
             let sq = Square::new(i);
             let mut b = Board::empty();
@@ -2833,16 +2471,13 @@ mod tests {
             b.put_piece(Piece::new(Color::Black, PieceType::King), sq);
             assert_eq!(b.king_square(Color::Black), sq, "black king on {sq}");
         }
-        // And the release contract on the class `from_fen` does not reject.
-        // (Debug trips the `debug_assert`, so only assert the shape here.)
+        // The king-less class (debug would trip the assert; shape only).
         let empty = Board::empty();
         assert!(empty.pieces(Color::White, PieceType::King).is_empty());
     }
 
     #[test]
     fn threat_map_survives_make_unmake() {
-        // The threat map is maintained per state, so it is fresh after a move
-        // and restored after unmake.
         let mut b = Board::from_fen(crate::fen::START_FEN).unwrap();
         let before = b.all_threats();
         let m = Move::normal(Square::E2, Square::E4);
@@ -2909,8 +2544,6 @@ mod tests {
         assert!(CastlingRights::ALL.contains(CastlingRights::BLACK_KINGSIDE));
     }
 
-    // design/05 §4 step 1: the per-color wing helpers map to the four
-    // existing constants.
     #[test]
     fn castling_rights_wing_helpers() {
         assert_eq!(
@@ -2931,8 +2564,6 @@ mod tests {
         );
     }
 
-    // Doc 04 §4 step 1: bits() exposes the raw 4-bit mask that indexes the
-    // 16-entry zobrist castling table.
     #[test]
     fn castling_rights_bits_roundtrip() {
         assert_eq!(CastlingRights::NONE.bits(), 0b0000);
@@ -2942,8 +2573,7 @@ mod tests {
         assert_eq!(CastlingRights::BLACK_QUEENSIDE.bits(), 0b1000);
         assert_eq!(CastlingRights::ALL.bits(), 0b1111);
 
-        // Round-trip: every 4-bit mask is reachable by composing single
-        // rights, and bits() reads back exactly the mask that was composed.
+        // Every 4-bit mask is reachable by composing single rights.
         let single = [
             CastlingRights::WHITE_KINGSIDE,
             CastlingRights::WHITE_QUEENSIDE,
@@ -2961,30 +2591,20 @@ mod tests {
         }
     }
 
-    // Doc 04 §3.2: StateInfo stays Copy (make_null_move clones the whole
-    // record) and within the ~three-cache-line size budget, so field creep
-    // gets noticed.
+    // StateInfo stays Copy (make_null_move clones the whole record) and its
+    // size stays pinned, so field creep gets noticed.
     #[test]
     fn state_info_is_copy_and_bounded() {
         fn assert_copy<T: Copy>() {}
         assert_copy::<CopiedState>();
         assert_copy::<StateInfo>();
-        // Pinned EXACTLY, not bounded (D33 reviewer C). Perf study 14 §2 made
-        // every make copy this record onto `history` and every unmake copy it
-        // back, so a new field is ~1 instruction per node of real cost — a
-        // loose `<= 256` would absorb that silently. `moved` (§4.4) landed in
-        // the existing tail padding and did not move this number. The old
-        // comment claimed the Wave-G threat map's 7 bitboards were in here;
-        // they moved to `ThreatCache` and are not.
+        // Pinned EXACTLY, not bounded: every make/unmake copies this record,
+        // so a new field is real per-node cost a loose bound would absorb.
         const { assert!(size_of::<StateInfo>() == 168) }
     }
 
-    // Doc 04 §8 item 7: make_move performs no heap allocation — the state
-    // stack is pre-reserved past MAX_PLY at construction (doc 04 §3.3), so a
-    // full search-depth walk of makes and nulls never grows it. The slab's
-    // LENGTH is the observable for "no reallocation" now that `StateStack`
-    // keeps it fully initialised and tracks the live depth separately (perf
-    // study 27 arm 4) — `StateStack::grow` is the only thing that may move it.
+    // make_move performs no heap allocation: the state stack is pre-reserved
+    // past MAX_PLY, and the slab's LENGTH is the no-reallocation observable.
     #[test]
     fn state_stack_is_prereserved_and_never_reallocates() {
         let mut board = Board::startpos();
@@ -3017,10 +2637,8 @@ mod tests {
         );
     }
 
-    // The slab is deliberately longer than the live stack, so equality and
-    // cloning must both read through the cursor: a `Board` that has made and
-    // unmade a move still has that move's record sitting in `slots[depth]`,
-    // and it must not be observable (perf study 27 arm 4).
+    // Equality and cloning must read through the cursor: a made-and-unmade
+    // move's dead record in `slots[depth]` must not be observable.
     #[test]
     fn state_stack_ignores_the_dead_tail_below_the_cursor() {
         let mut board = Board::startpos();
@@ -3042,10 +2660,8 @@ mod tests {
         );
     }
 
-    // Doc 04 §4 step 3: the root state exists from construction, the
-    // accessors delegate to it, and even the empty board's keys are the
-    // documented baselines (castling[0] is a real key; pawn_key starts at
-    // no_pawns).
+    // The root state exists from construction; even the empty board's keys
+    // are the documented baselines.
     #[test]
     fn empty_board_has_consistent_root_state() {
         let board = Board::empty();
@@ -3084,7 +2700,7 @@ mod tests {
         assert_eq!(board.king_square(Color::Black), Square::E8);
     }
 
-    // D8: Board::clone clones the state history — per-thread copies are
+    // Board::clone clones the state history — per-thread copies are
     // fully independent.
     #[test]
     fn clone_is_deep_and_equal() {
@@ -3093,9 +2709,8 @@ mod tests {
         assert_eq!(clone, board);
         assert_eq!(clone.key(), board.key());
 
-        // Diverge the clone through the real mutation path (a bare
-        // remove_piece would leave stale keys — exactly what the oracle
-        // exists to catch); the original must be untouched.
+        // Diverge the clone through the real mutation path; the original
+        // must be untouched.
         clone.make_move(Move::normal(Square::E2, Square::E4), false);
         assert_ne!(clone, board);
         assert_eq!(clone.piece_on(Square::E2), None);
@@ -3107,8 +2722,7 @@ mod tests {
         clone.assert_consistent();
     }
 
-    // Doc 04 §3.7: castling geometry (rook squares, empty-path sets,
-    // revocation masks) registered at FEN setup.
+    // Castling geometry (rook squares, paths, revocation masks) at setup.
     #[test]
     fn castling_geometry_from_fen() {
         use CastlingRights as CR;
@@ -3163,8 +2777,6 @@ mod tests {
         assert_eq!(partial.castling_rights_mask(Square::H8), CR::NONE);
     }
 
-    // CastlingRights::index: bit positions for the geometry arrays
-    // (doc 04 §3.7: WK 0, WQ 1, BK 2, BQ 3).
     #[test]
     fn castling_rights_single_bit_index() {
         assert_eq!(CastlingRights::WHITE_KINGSIDE.index(), 0);
@@ -3173,13 +2785,9 @@ mod tests {
         assert_eq!(CastlingRights::BLACK_QUEENSIDE.index(), 3);
     }
 
-    // -----------------------------------------------------------------
-    // Doc 04 §4 step 4: attackers_to, slider_blockers, set_check_info
-    // -----------------------------------------------------------------
+    // --- attackers_to, slider_blockers, check info --------------------
 
-    // One busy square attacked by every piece type of both colors: the
-    // rook/queen and bishop rays stop at (and include) the first occupied
-    // square, the leapers ignore occupancy entirely.
+    // One busy square attacked by every piece type of both colors.
     #[test]
     fn attackers_to_sees_every_piece_type() {
         let board = Board::from_fen("4r3/8/2nk1p2/7Q/5P2/5N2/1B6/4K3 w - - 0 1").unwrap();
@@ -3200,9 +2808,8 @@ mod tests {
         assert_eq!(board.checkers(), bb(&[Square::E8]));
     }
 
-    // The `occupied` parameter shapes only the slider rays; lifting a
-    // blocker out exposes the x-ray piece behind it while the piece
-    // bitboards still supply both attackers (the SEE battery walk).
+    // Lifting a blocker out of `occupied` exposes the x-ray piece behind
+    // it (the SEE battery walk).
     #[test]
     fn attackers_to_exposes_xrays_under_reduced_occupancy() {
         let board = Board::from_fen("4k3/8/8/8/4R3/8/8/4R2K b - - 0 1").unwrap();
@@ -3218,14 +2825,13 @@ mod tests {
 
     #[test]
     fn checkers_detects_double_check() {
-        // Corpus classic: knight on d6 and rook on e1 both hit e8.
         let board = Board::from_fen("4k3/8/3N4/8/8/8/8/4RK2 b - - 0 1").unwrap();
         assert_eq!(board.checkers(), bb(&[Square::D6, Square::E1]));
         assert!(Board::startpos().checkers().is_empty());
     }
 
-    // Friendly blocker: the pinned piece lands in blockers_for_king(c) and
-    // the sniper in pinners(!c).
+    // Friendly blocker: pinned piece in blockers_for_king(c), sniper in
+    // pinners(!c).
     #[test]
     fn slider_blockers_vertical_pin() {
         let board = Board::from_fen("4r2k/8/8/8/8/8/4N3/4K3 w - - 0 1").unwrap();
@@ -3243,9 +2849,8 @@ mod tests {
         assert_eq!(board.pinners(Color::Black), bb(&[Square::H4]));
     }
 
-    // Enemy blocker: a discovered-check candidate — it lands in
-    // blockers_for_king (blockers hold pieces of BOTH colors) but its
-    // sniper is NOT a pinner (the blocker is not friendly to the king).
+    // Enemy blocker: a discovered-check candidate — in blockers_for_king
+    // but its sniper is NOT a pinner.
     #[test]
     fn slider_blockers_discovered_check_candidate() {
         let board = Board::from_fen("4r2k/8/8/4n3/8/8/8/4K3 w - - 0 1").unwrap();
@@ -3261,9 +2866,8 @@ mod tests {
         assert_eq!(board.pinners(Color::Black), Bitboard::EMPTY);
     }
 
-    // Stacked snipers (queen behind rook): snipers are lifted out of the
-    // occupancy together, so BOTH register as pinners of the sole blocker —
-    // the SF convention this implementation pins down.
+    // Stacked snipers (queen behind rook): BOTH register as pinners of the
+    // sole blocker (the SF convention).
     #[test]
     fn slider_blockers_xray_through_stacked_snipers() {
         let board = Board::from_fen("4q2k/4r3/8/8/8/8/4B3/4K3 w - - 0 1").unwrap();
@@ -3271,8 +2875,7 @@ mod tests {
         assert_eq!(board.pinners(Color::Black), bb(&[Square::E7, Square::E8]));
     }
 
-    // The mirror orientation: a white sniper pinning a black piece fills
-    // blockers_for_king(Black) and pinners(White).
+    // Mirror orientation: white sniper pinning a black piece.
     #[test]
     fn slider_blockers_white_pins_black() {
         let board = Board::from_fen("4k3/8/4n3/8/8/8/4Q3/6K1 b - - 0 1").unwrap();
@@ -3281,8 +2884,7 @@ mod tests {
         assert!(board.checkers().is_empty());
     }
 
-    // check_squares: from-squares that would check the ENEMY king, per
-    // piece type of the side to move, under the current occupancy.
+    // check_squares: from-squares that would check the ENEMY king.
     #[test]
     fn check_squares_on_startpos() {
         let board = Board::startpos(); // white to move, target king on e8
@@ -3310,9 +2912,7 @@ mod tests {
         assert_eq!(board.check_squares(PieceType::King), Bitboard::EMPTY);
     }
 
-    // Orientation: with Black to move the target is the WHITE king, and the
-    // pawn entry uses white-pawn attack symmetry (a black pawn on d2 or f2
-    // checks e1).
+    // With Black to move the target is the WHITE king (pawn symmetry).
     #[test]
     fn check_squares_orientation_for_black() {
         let board = Board::from_fen("4k3/8/8/8/8/8/8/4K3 b - - 0 1").unwrap();
@@ -3373,15 +2973,12 @@ mod tests {
         assert_eq!(board.to_string(), expected);
     }
 
-    // -----------------------------------------------------------------
-    // Doc 04 §4 steps 5–6: make_move / unmake_move + gives_check
-    // -----------------------------------------------------------------
+    // --- make_move / unmake_move + gives_check ------------------------
 
     const KIWIPETE: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
-    /// Make `m` with full cross-checking (doc 04 §5): the caller-supplied
-    /// `gives_check` contract, the from-scratch key oracle for all six
-    /// keys, bitboard/mailbox sync, and a recomputed checkers set.
+    /// Make `m` with full cross-checking: the gives_check contract, the
+    /// key oracle, layer sync, and a recomputed checkers set.
     fn make_checked(board: &mut Board, m: Move) {
         let gives_check = board.gives_check(m);
         board.make_move(m, gives_check);
@@ -3398,11 +2995,9 @@ mod tests {
         );
     }
 
-    /// Play `moves` in order (each fully cross-checked), then unmake them
-    /// in reverse, asserting the board comes back EQUAL at every ply —
-    /// placement, side, counters, and the whole state stack (all six keys
-    /// included) via derived `PartialEq`. Returns the final position for
-    /// post-move assertions.
+    /// Play `moves` in order (each cross-checked), then unmake in reverse,
+    /// asserting whole-board equality at every ply. Returns the final
+    /// position for post-move assertions.
     fn roundtrip(fen: &str, moves: &[Move]) -> Board {
         let mut board = Board::from_fen(fen).expect("test FEN parses");
         let mut snapshots = vec![board.clone()];
@@ -3426,9 +3021,7 @@ mod tests {
 
     #[test]
     fn make_unmake_roundtrip_from_startpos() {
-        // Berlin-flavored opening: normal moves, double pushes, four
-        // captures (N/B/P/Q), kingside castling — every ply key-oracle
-        // checked, every unmake compared for full state equality.
+        // Normal moves, double pushes, four captures, kingside castling.
         let end = roundtrip(
             crate::fen::START_FEN,
             &[
@@ -3469,9 +3062,7 @@ mod tests {
 
     #[test]
     fn make_unmake_roundtrip_on_kiwipete() {
-        // A capturable double push, the ep capture, castling, and a
-        // capturing under-promotion on a rook's home square — one sequence
-        // on the classic perft position.
+        // Double push, ep capture, castling, capturing under-promotion.
         let mut board = Board::from_fen(KIWIPETE).unwrap();
         make_checked(&mut board, Move::normal(Square::A2, Square::A4));
         assert_eq!(board.en_passant_square(), Some(Square::A3));
@@ -3497,12 +3088,10 @@ mod tests {
         );
     }
 
-    // Doc 04 §5 ep hashing: the new ep square is set — and its file keyed —
-    // ONLY when an ep capture will actually be legal (D9).
+    // The new ep square is set (and keyed) ONLY when capturable.
     #[test]
     fn double_push_sets_ep_only_when_capturable() {
-        // No adjacent enemy pawn: no ep square; the child hashes exactly
-        // like the same position parsed from FEN with "-".
+        // No adjacent enemy pawn: no ep square; hashes like the "-" FEN.
         let mut board = Board::startpos();
         make_checked(&mut board, Move::normal(Square::E2, Square::E4));
         assert_eq!(board.en_passant_square(), None);
@@ -3534,10 +3123,8 @@ mod tests {
         make_checked(&mut board, Move::normal(Square::E2, Square::E4));
         assert_eq!(board.en_passant_square(), None);
 
-        // Horizontal both-pawns-removed pin (the doc 04 §5 Kh5/Pf5/Ra5
-        // case): fxe6 would clear BOTH e5 and f5 off rank 5. Only the
-        // PREVIOUS state's blockers see this — after the push there are
-        // two pieces between rook and king.
+        // Horizontal both-pawns-removed pin: fxe6 would clear BOTH e5 and
+        // f5 off rank 5. Only the PREVIOUS state's blockers see this.
         let mut board = Board::from_fen("4k3/4p3/8/r4P1K/8/8/8/8 b - - 0 1").unwrap();
         make_checked(&mut board, Move::normal(Square::E7, Square::E5));
         assert_eq!(board.en_passant_square(), None);
@@ -3552,8 +3139,7 @@ mod tests {
 
     #[test]
     fn ep_capture_roundtrip_and_pin_line_capture_keeps_ep() {
-        // Plain ep capture round-trips — capsq != to, so unmake must put
-        // the captured pawn back on its own square, not the to-square.
+        // capsq != to: unmake must restore the pawn to its own square.
         let end = roundtrip(
             "4k3/8/8/8/5p2/8/4P3/4K3 w - - 0 1",
             &[
@@ -3681,10 +3267,8 @@ mod tests {
         assert_eq!(end.castling_rights(), CastlingRights::NONE);
     }
 
-    // Doc 04 §5: rights revocation via the mask — king move, each rook
-    // move, and a rook CAPTURING a never-moved rook on its home square
-    // (from-mask and to-mask fire together). Unmake restores the rights
-    // (checked ply-by-ply inside roundtrip).
+    // Rights revocation via the mask — king move, each rook move, and RxR
+    // on a home square (from-mask and to-mask fire together).
     #[test]
     fn castling_rights_revocation_cases() {
         const FEN: &str = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1";
@@ -3751,8 +3335,8 @@ mod tests {
         assert_eq!(board, Board::startpos());
     }
 
-    // Doc 04 §5 gives_check fixtures. Every case is ALSO cross-checked
-    // against make_move + recomputed checkers inside roundtrip.
+    // Every case is ALSO cross-checked against make_move + recomputed
+    // checkers inside roundtrip.
     #[test]
     fn gives_check_fixture_cases() {
         let check = |fen: &str, m: Move| {
@@ -3804,11 +3388,8 @@ mod tests {
             "8/8/8/k2pP2R/8/8/8/4K3 w - d6 0 2",
             Move::en_passant(Square::E5, Square::D6)
         ));
-        // The BISHOP half of the same arm. Every ep fixture in this file was a
-        // rook/rank case, so deleting `gives_check_special`'s `bishop_attacks`
-        // term was killed only by an aggregate perft count (D33 reviewer C).
-        // Here exd6 e.p. clears d5, and the a2-g8 diagonal opens onto the black
-        // king: a discovery through the CAPTURED pawn's square, diagonally.
+        // The BISHOP half of the same arm: exd6 e.p. clears d5 and the
+        // a2-g8 diagonal opens onto the black king.
         assert!(check(
             "6k1/8/8/3pP3/8/8/B7/4K3 w - d6 0 1",
             Move::en_passant(Square::E5, Square::D6)
@@ -3836,9 +3417,8 @@ mod tests {
         ));
     }
 
-    // Doc 04 §5 transposition invariance: two move orders reaching the
-    // same position produce identical keys; a knight shuffle returning
-    // home restores every key (though the clock remembers the walk).
+    // Two move orders reaching the same position produce identical keys; a
+    // knight shuffle returning home restores every key.
     #[test]
     fn transposition_invariance() {
         let play = |moves: &[Move]| {
@@ -3879,9 +3459,7 @@ mod tests {
         assert_ne!(home.rule50_count(), 0);
     }
 
-    // -----------------------------------------------------------------
-    // Doc 04 §4 step 7: null moves, repetition, draws
-    // -----------------------------------------------------------------
+    // --- null moves, repetition, draws --------------------------------
 
     /// Four plies of knight shuffling that land back on the same position.
     fn knight_shuffle() -> [Move; 4] {
@@ -3893,8 +3471,8 @@ mod tests {
         ]
     }
 
-    // Doc 04 §5 null move: key = old ^ side ^ (ep key if any); rule50 and
-    // game_ply hold; plies_from_null resets; unmake restores full equality.
+    // Null move: key = old ^ side ^ (ep key if any); rule50 and game_ply
+    // hold; plies_from_null resets; unmake restores full equality.
     #[test]
     fn null_move_key_toggle_and_roundtrip() {
         // No ep square: the raw key toggles exactly the side key.
@@ -3933,34 +3511,21 @@ mod tests {
     }
 
     // `has_repeated` must find a repetition that is NOT the current state —
-    // i.e. it must actually walk `history`. Every other test in this file
-    // either short-circuits on `self.state.repetition != 0` or returns early on
-    // `end < 4`, so without this one the ancestor walk is dead to the suite
-    // (D33 reviewer A, M1) and perf study 14's rewrite of it from an index loop
-    // to `.rev().take(end - 4)` would be unverified.
-    //
-    // Mutation-verified: `.take(0)` (the whole rewrite) and dropping the
-    // `.rev()` each make this test fail, and neither fails anything else in the
-    // suite. `.take(end - 3)` — an over-scan of exactly one ancestor — does
-    // NOT fail it, and appears to be unobservable rather than untested: the
-    // extra state sits at distance `end - 3`, and since `end <= rule50` and
-    // `rule50` only ever increments by one per reversible ply or resets to
-    // zero, a repetition marker cannot land at exactly that distance while the
-    // true answer is still `false`. That is an argument, not a measurement.
+    // i.e. actually walk `history`. Every other test short-circuits on
+    // `repetition != 0` or `end < 4`, so without this one the ancestor walk
+    // is dead to the suite (mutation-verified: `.take(0)` and dropping
+    // `.rev()` each fail only here).
     #[test]
     fn has_repeated_walks_past_the_current_state_into_history() {
         let mut board = Board::startpos();
         for m in knight_shuffle() {
             make_checked(&mut board, m);
         }
-        // The shuffle's last ply IS the repetition, so `has_repeated` here is
-        // answered by the short-circuit — that is the case every other test
-        // covers.
+        // The shuffle's last ply IS the repetition (short-circuit case).
         assert_eq!(board.state.repetition, 4);
 
-        // One more reversible move. The current state is now a fresh position
-        // (`repetition == 0`), so the ONLY way to answer `true` is to inspect
-        // the ancestor one ply back — `history.iter().rev().take(1)`.
+        // One more reversible move: the current state is fresh, so the ONLY
+        // way to answer `true` is the ancestor one ply back.
         make_checked(&mut board, Move::normal(Square::B1, Square::C3));
         assert_eq!(
             board.state.repetition, 0,
@@ -3977,8 +3542,7 @@ mod tests {
             "has_repeated must find the repetition one ply back in history"
         );
 
-        // Negative control: an irreversible move slams the window shut
-        // (`rule50 == 0`), so the same board reports false.
+        // Negative control: an irreversible move slams the window shut.
         let mut fresh = Board::startpos();
         for m in knight_shuffle() {
             make_checked(&mut fresh, m);
@@ -3990,9 +3554,8 @@ mod tests {
         );
     }
 
-    // Doc 04 §5 repetition: the shuffle produces +d, then -d; is_draw is
-    // ply-relative (in-tree twofold draws, root-side twofold does not,
-    // threefold draws anywhere); unmaking rewinds cleanly.
+    // The shuffle produces +d, then -d; is_draw is ply-relative (in-tree
+    // twofold draws, root-side twofold does not, threefold anywhere).
     #[test]
     fn repetition_encoding_and_ply_relative_draw() {
         let mut board = Board::startpos();
@@ -4004,16 +3567,14 @@ mod tests {
         assert_eq!(board.state.repetition, 4);
         assert_eq!(board.raw_key(), Board::startpos().raw_key());
         assert!(board.has_repeated());
-        // Strictly inside the search tree (repetition < ply) it is a draw;
-        // at the boundary or root a single repeat is not (yet).
+        // In-tree (repetition < ply) draws; at the boundary or root not yet.
         assert!(board.is_repetition(5));
         assert!(board.is_draw(5));
         assert!(!board.is_repetition(4));
         assert!(!board.is_draw(4));
         assert!(!board.is_draw(0));
 
-        // Second return: -distance (the earlier occurrence was itself a
-        // repeat, i.e. at least threefold) — a draw at ANY ply.
+        // Second return: -distance (at least threefold) — a draw at ANY ply.
         for m in knight_shuffle() {
             make_checked(&mut board, m);
         }
@@ -4032,12 +3593,10 @@ mod tests {
         assert!(!board.has_repeated());
     }
 
-    // Doc 04 §3.9 / design/10 item 19: the cuckoo upcoming-repetition query.
     #[test]
     fn upcoming_repetition_sees_the_move_back_into_the_cycle() {
         let mut board = Board::startpos();
-        // Nothing on the path yet: the window (min(rule50, pliesFromNull))
-        // is shorter than the 3 plies a cycle needs.
+        // Nothing on the path yet: the window is shorter than a cycle.
         assert!(!board.upcoming_repetition(64));
         for m in knight_shuffle() {
             make_checked(&mut board, m);
@@ -4048,17 +3607,14 @@ mod tests {
             board.upcoming_repetition(64),
             "Ng1f3 re-enters the cycle at distance 3"
         );
-        // Root-adjacent plies are deliberately stricter: with ply <= i the
-        // move must close a real repetition, not merely arrive here.
+        // Root-adjacent plies are stricter: the move must close a real
+        // repetition, not merely arrive here.
         assert!(!board.upcoming_repetition(0));
     }
 
-    // The key delta proves "some reversible move" but nothing about today's
-    // occupancy — a slider whose path is now blocked must NOT count.
+    // A slider whose path is now blocked must NOT count.
     #[test]
     fn upcoming_repetition_requires_a_clear_slider_path() {
-        // Rooks shuffle on the a/h files while the b1 knight stays home;
-        // then a blocker interposes on the rook's return path.
         let mut board = Board::from_fen("4k3/8/8/8/8/8/8/R3K2R w KQ - 0 1").unwrap();
         for m in [
             Move::normal(Square::A1, Square::A4),
@@ -4071,8 +3627,8 @@ mod tests {
         // Ra1a4 re-enters the cycle and the file is empty.
         assert!(board.upcoming_repetition(64));
 
-        // Same shuffle, but a black rook sits on a3 blocking the a-file, so
-        // the a1-a4 delta is present in the table yet unreachable.
+        // A black rook on a3 blocks the a-file: the a1-a4 delta is in the
+        // table yet unreachable.
         let mut blocked = Board::from_fen("4k3/8/8/8/8/r7/8/R3K2R w KQ - 0 1").unwrap();
         for m in [
             Move::normal(Square::H1, Square::H4),
@@ -4082,28 +3638,21 @@ mod tests {
         ] {
             make_checked(&mut blocked, m);
         }
-        // Rh1h4 is still clear, so this position DOES have a cycle — the
-        // point of the pair is that the query tracks occupancy, which the
-        // randomized oracle below pins down properly.
+        // Rh1h4 is still clear, so this position DOES have a cycle; the
+        // randomized oracle below pins the occupancy tracking properly.
         assert!(blocked.upcoming_repetition(64));
     }
 
-    /// The real gate: an INDEPENDENT oracle. For every legal move, make it
-    /// and ask whether the resulting key already sits on the path inside the
-    /// scan window. That uses `make_move`'s key arithmetic and never touches
-    /// the cuckoo table, so agreement is meaningful.
-    ///
-    /// Direction matters. If the oracle finds a LEGAL cycling move, the query
-    /// must find it too — a miss is a lost draw. The converse may legitimately
-    /// differ: like SF, the query checks path-clearness and ownership but not
-    /// full legality, so it can also fire for a pinned piece's move. We count
-    /// those rather than assert on them.
+    /// INDEPENDENT oracle: make every legal move and ask whether the key
+    /// already sits on the path — never touches the cuckoo table. If the
+    /// oracle finds a legal cycling move the query MUST find it (a miss is
+    /// a lost draw); the converse may differ, since the query skips full
+    /// legality (pins), so those are counted, not asserted.
     #[test]
     fn upcoming_repetition_matches_a_brute_force_legal_move_oracle() {
         use crate::moves::MoveList;
 
-        // Same tiny SplitMix64 the other modules' tests use (D15: no
-        // dev-dependency just for deterministic randomness).
+        // Same tiny SplitMix64 the other modules' tests use.
         struct SplitMix64(u64);
         impl SplitMix64 {
             fn next_u64(&mut self) -> u64 {
@@ -4146,9 +3695,7 @@ mod tests {
         let mut oracle_hits = 0usize;
         let mut query_only = 0usize;
 
-        // Short random games from a handful of reversible-heavy starts, so
-        // cycles actually occur (from a full startpos, pawn moves and
-        // captures reset the window constantly).
+        // Short random games from reversible-heavy starts, so cycles occur.
         for start in [
             "4k3/8/8/8/8/8/8/R3K2R w KQ - 0 1",
             "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
@@ -4179,8 +3726,7 @@ mod tests {
                 }
             }
         }
-        // Captured unless `-- --nocapture`: a statistical test should be able
-        // to show its own power rather than just pass.
+        // A statistical test should be able to show its own power.
         eprintln!(
             "upcoming_repetition census: {boards_seen} positions, \
              {oracle_hits} legal cycles (all found), {query_only} legality-only"
@@ -4199,8 +3745,8 @@ mod tests {
         );
     }
 
-    // Doc 04 §5: the scan window is min(rule50, plies_from_null) — a null
-    // move cuts it even when the clock alone would allow the match.
+    // The scan window is min(rule50, plies_from_null) — a null move cuts
+    // it even when the clock alone would allow the match.
     #[test]
     fn repetition_window_cut_by_null_move() {
         // Mature clock at the root so rule50 does NOT clip the window.
@@ -4211,17 +3757,16 @@ mod tests {
         make_checked(&mut board, Move::normal(Square::B8, Square::C6));
         board.make_null_move();
         make_checked(&mut board, Move::normal(Square::C6, Square::B8));
-        // The position genuinely equals the root (the two null side-toggles
-        // cancel) — but positions on the far side of a null are unreachable
-        // by real play, so the reset plies_from_null clips the scan.
+        // The position genuinely equals the root, but positions on the far
+        // side of a null are unreachable by real play: the scan is clipped.
         assert_eq!(board.raw_key(), root_key);
         assert_eq!(board.state.repetition, 0);
         assert!(!board.has_repeated());
         assert!(!board.is_draw(4));
     }
 
-    // Doc 04 §5: a capture zeroes rule50, cutting the window — earlier
-    // repeats stop counting, later ones are detected as usual.
+    // A capture zeroes rule50, cutting the window — earlier repeats stop
+    // counting, later ones are detected as usual.
     #[test]
     fn repetition_window_cut_by_capture() {
         let fen = "4k3/8/7p/8/8/8/8/4K2R w - - 0 1";
@@ -4256,8 +3801,7 @@ mod tests {
         assert!(!board.is_draw(0));
     }
 
-    // Doc 04 §5: rule50 folding never hides a repetition — the scan
-    // compares RAW keys, so a repeat across fold buckets still counts.
+    // Rule50 folding never hides a repetition — the scan compares RAW keys.
     #[test]
     fn repetition_detected_across_rule50_fold_buckets() {
         // Root at clock 12 (raw bucket); the repeat lands at 16 (folded).
@@ -4273,9 +3817,8 @@ mod tests {
         assert!(board.is_draw(5));
     }
 
-    // Doc 04 §3.9: rule50 > 99 draws at any ply — unless the side to move
-    // is checkmated (a mating move on the 100th halfmove wins; the movegen
-    // `has_legal_moves` guard landed with design/05 §3.9).
+    // rule50 > 99 draws at any ply — unless the side to move is checkmated
+    // (a mating move on the 100th halfmove wins).
     #[test]
     fn fifty_move_rule_draw_with_check_guard() {
         let mut board = Board::from_fen("4k3/8/8/8/8/8/8/4K2R w - - 99 80").unwrap();
@@ -4298,9 +3841,7 @@ mod tests {
         assert!(!board.is_draw(0), "checkmate on a full clock is not a draw");
     }
 
-    // -----------------------------------------------------------------
-    // Doc 04 §4 step 8: the oracle validates the validator
-    // -----------------------------------------------------------------
+    // --- the oracle validates the validator ---------------------------
 
     #[test]
     #[should_panic(expected = "main key drifted")]
@@ -4334,9 +3875,7 @@ mod tests {
         board.assert_consistent();
     }
 
-    // -----------------------------------------------------------------
-    // Doc 04 §4 step 10: hook seam + prefetch_key
-    // -----------------------------------------------------------------
+    // --- hook seam + prefetch_key -------------------------------------
 
     /// Test hooks that record what the seam reports.
     #[derive(Default)]
@@ -4354,9 +3893,9 @@ mod tests {
         }
     }
 
-    // Doc 04 §5: make_move ≡ make_move_with(NoHooks); hook A sees exactly
-    // the child's TT probe key (folded on the child's EXACT clock), hook B
-    // the final CopiedState.
+    // make_move ≡ make_move_with(NoHooks); hook A sees exactly the child's
+    // TT probe key (folded on the child's EXACT clock), hook B the final
+    // CopiedState.
     #[test]
     fn hooks_seam_is_a_no_op_and_reports_final_keys() {
         let moves = [
@@ -4410,10 +3949,9 @@ mod tests {
         assert_eq!(hooks.keys[0], board.key());
     }
 
-    // Doc 04 §4 step 10: prefetch_key equals the real child key() on normal
-    // moves whose parent has no ep square and whose from/to touch no
-    // castling rights — including the rule50 fold interplay on both sides
-    // of the capture/pawn-move clock reset.
+    // prefetch_key equals the real child key() on normal moves whose parent
+    // has no ep square and whose from/to touch no castling rights —
+    // including the fold interplay across the clock reset.
     #[test]
     fn prefetch_key_matches_child_key_on_normal_moves() {
         let cases = [
@@ -4442,16 +3980,13 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------
-    // Doc 04 §4 step 9 / §5: see_ge — the SEE fixture suite (D11)
-    // -----------------------------------------------------------------
+    // --- see_ge: the SEE fixture suite (D11) --------------------------
 
     use crate::types::{KNIGHT_VALUE, PAWN_VALUE, QUEEN_VALUE, ROOK_VALUE};
 
     /// Assert that `m`'s static exchange value in `fen` is exactly `see`:
-    /// `see_ge` holds at the value, fails one above, and — the doc 04 §5
-    /// threshold-semantics requirement — is monotone non-increasing in the
-    /// threshold, with its single true→false step exactly at `see`.
+    /// `see_ge` holds at the value, fails one above, and is monotone in the
+    /// threshold with its single true→false step exactly at `see`.
     fn assert_see_value(fen: &str, m: Move, see: Value) {
         let board = Board::from_fen(fen).unwrap();
         assert!(
@@ -4471,7 +4006,7 @@ mod tests {
         }
     }
 
-    // Doc 04 §5 fixture: RxP with no defender — SEE is exactly the pawn.
+    // RxP with no defender — SEE is exactly the pawn.
     #[test]
     fn see_simple_winning_capture() {
         assert_see_value(
@@ -4481,8 +4016,7 @@ mod tests {
         );
     }
 
-    // Doc 04 §5 fixture: NxP on a well-defended square — the knight is lost
-    // for the pawn (the deeper R/Q/B/Q exchanges never pay for either side).
+    // NxP on a well-defended square — the knight is lost for the pawn.
     #[test]
     fn see_losing_capture_defended_pawn() {
         assert_see_value(
@@ -4492,10 +4026,8 @@ mod tests {
         );
     }
 
-    // Doc 04 §5: a defender pinned to its king does not count while its
-    // pinner is on the board. Re1 pins Ne7 against the e8 king, so RxP on
-    // d5 wins the pawn outright; lift the pinning rook off the board and
-    // the knight recaptures, sinking the exchange to P - R.
+    // A defender pinned to its king does not count while its pinner is on
+    // the board; without the pinner the knight recaptures (P - R).
     #[test]
     fn see_pinned_defender_does_not_count() {
         assert_see_value(
@@ -4511,10 +4043,9 @@ mod tests {
         );
     }
 
-    // The pinner-liveness flip side (the `to` toggle of doc 04 §3.11 step
-    // 4): Qe7 pins Re4 against the white king, and NxQ captures the pinner
-    // itself — the freed rook then guards e7, so Black's Ra7 recapture
-    // (RxN, RxR) never pays and the SEE is the whole queen.
+    // The pinner-liveness flip side (the `to` toggle): NxQ captures the
+    // pinner itself, freeing the pinned rook to guard the recapture square,
+    // so the SEE is the whole queen.
     #[test]
     fn see_capturing_the_pinner_frees_the_pinned_piece() {
         assert_see_value(
@@ -4524,10 +4055,8 @@ mod tests {
         );
     }
 
-    // Doc 04 §5 x-ray case: doubled rooks on both sides of the e-file. The
-    // white back rook is revealed through the vacated from-square, the
-    // black back rook by lifting the used front rook out of the occupancy;
-    // with even batteries the exchange still costs R for P.
+    // Doubled rooks on both sides of the e-file: back rooks are revealed by
+    // the x-ray walk; with even batteries the exchange still costs R for P.
     #[test]
     fn see_xray_rook_battery() {
         assert_see_value(
@@ -4537,10 +4066,8 @@ mod tests {
         );
     }
 
-    // Diagonal x-rays on both sides: Bg2 sits behind the capturing queen,
-    // and Black's Bf7 is revealed when the e6 pawn recaptures. The bishop
-    // behind the queen would re-win the pawn, but Bf7 punishes that, so
-    // Black recaptures and the SEE is P - Q.
+    // Diagonal x-rays on both sides: Bg2 behind the capturing queen, Bf7
+    // revealed by the pawn recapture — SEE is P - Q.
     #[test]
     fn see_xray_bishop_behind_queen() {
         assert_see_value(
@@ -4550,9 +4077,8 @@ mod tests {
         );
     }
 
-    // Doc 04 §3.11 step 7, king branch: the defending king may only
-    // recapture when the attacker has no backup. With Bc3 covering e5 the
-    // king recapture is illegal (SEE = P); without it the rook is lost.
+    // King branch: the defending king may only recapture when the attacker
+    // has no backup.
     #[test]
     fn see_king_recapture_only_when_unguarded() {
         assert_see_value(
@@ -4567,9 +4093,8 @@ mod tests {
         );
     }
 
-    // Doc 04 §5: quiet-move SEE — an empty destination counts 0, so moving
-    // to a pawn-covered square hangs the whole knight, and moving to a safe
-    // square is exactly 0.
+    // Quiet-move SEE: an empty destination counts 0, so a pawn-covered
+    // square hangs the knight and a safe square is exactly 0.
     #[test]
     fn see_quiet_move_to_defended_square() {
         let fen = "4k3/8/2p5/8/3N4/8/8/4K3 w - - 0 1";
@@ -4577,8 +4102,7 @@ mod tests {
         assert_see_value(fen, Move::normal(Square::D4, Square::F5), 0);
     }
 
-    // Doc 04 §3.11 step 1: promotion/en-passant/castling short-circuit to
-    // a static exchange value of 0 — even a queening capture reports 0.
+    // Promotion/en-passant/castling short-circuit to SEE 0.
     #[test]
     fn see_non_normal_kinds_short_circuit() {
         let board = Board::from_fen("4k3/8/8/8/4Pp2/8/8/4K3 b - e3 0 1").unwrap();
@@ -4598,22 +4122,15 @@ mod tests {
         assert!(!board.see_ge(castle, 1));
     }
 
-    /// Perf study 35: [`DirtyPiece::after_move`] must produce the record
-    /// [`DirtyPiece::from_move`] would have, for every move of every kind.
-    ///
-    /// The two derive the SAME fact from opposite sides of the make — `from_move`
-    /// from the mailbox of the parent, `after_move` from the `moved`/`captured`
-    /// fields the make wrote into the child — so `from_move` is the independent
-    /// oracle here, and it stays in the tree for exactly that reason even though
-    /// the search no longer calls it. A whole-record `assert_eq!` (derived
-    /// `PartialEq`) also pins the EMISSION ORDER, not just the multiset: the
-    /// accumulator folds these in sequence and the Finny backward walk indexes
-    /// `subs()[0]` positionally.
+    /// [`DirtyPiece::after_move`] must reproduce [`DirtyPiece::from_move`]
+    /// for every move of every kind — the two derive the same fact from
+    /// opposite sides of the make, so `from_move` is the independent oracle
+    /// and stays in the tree for that reason. The whole-record `assert_eq!`
+    /// also pins EMISSION ORDER: the accumulator folds these in sequence
+    /// and the Finny backward walk indexes `subs()[0]` positionally.
     #[test]
     fn after_move_reproduces_from_move_for_every_move_kind() {
-        // Roots chosen so the walk actually reaches all four kinds: kiwipete
-        // (castling + captures both ways), the ep-rich position 3, a promotion
-        // race, a capture-promotion, and a double-ep-candidate position.
+        // Roots chosen so the walk actually reaches all four move kinds.
         let roots = [
             crate::fen::START_FEN,
             "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
@@ -4623,8 +4140,8 @@ mod tests {
             "4k3/8/8/8/4Pp2/8/8/4K3 b - e3 0 1",
         ];
 
-        // Per-kind coverage, so a future refactor that stops reaching (say)
-        // en passant fails the test instead of silently testing less.
+        // Per-kind coverage, so a refactor that stops reaching (say) en
+        // passant fails instead of silently testing less.
         let mut seen = [0usize; 4];
 
         fn walk(board: &mut Board, depth: usize, seen: &mut [usize; 4]) {
@@ -4669,23 +4186,14 @@ mod tests {
         }
     }
 
-    /// Perf study 54: the twin of the test above for [`DirtyPiece::from_actors`],
-    /// the THIRD derivation of the same record.
-    ///
-    /// `from_move` reads the parent's mailbox, `after_move` reads the child's
-    /// `StateInfo`, and `from_actors` reads neither — it is handed step 3's own
-    /// registers. Three independent derivations means the oracle has to be run
-    /// against the new one too, and it is exercised through `make_move_with`
-    /// itself rather than called directly, so what the test checks is the record
-    /// the SEARCH would actually receive through Hook C.
-    ///
-    /// Same roots, same depth-3 walk, same per-kind coverage assertion, and the
-    /// same whole-record `assert_eq!` — which pins emission ORDER, not just the
-    /// multiset, because the accumulator folds these in sequence.
+    /// The twin of the test above for [`DirtyPiece::from_actors`], the
+    /// THIRD derivation of the same record — exercised through
+    /// `make_move_with` itself, so what is checked is the record the SEARCH
+    /// receives through Hook C. Same roots, walk, coverage assertion, and
+    /// whole-record (order-pinning) `assert_eq!`.
     #[test]
     fn from_actors_reproduces_from_move_for_every_move_kind() {
-        /// Hook C, recording. `WANTS_DIRTY` is what makes `make_move_with`
-        /// build the record at all.
+        /// Hook C, recording; `WANTS_DIRTY` makes the record get built.
         struct Recorder(Option<DirtyPiece>);
         impl MakeMoveHooks for Recorder {
             const WANTS_DIRTY: bool = true;

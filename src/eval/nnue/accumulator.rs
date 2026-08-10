@@ -1,21 +1,15 @@
 //! Incremental perspective accumulators with lazy, dirty-piece-driven updates
-//! (design/11 §3.4.4).
-//!
-//! Each search node owns an [`AccumulatorEntry`] holding both perspectives'
-//! `L1`-wide feature-transformer outputs, the placement deltas of the move
-//! that led to it ([`DirtyPiece`]), and a per-perspective `computed` flag.
-//! Accumulators update *lazily* — most made moves are pruned before ever
-//! being evaluated, so the columns are folded forward only when
-//! [`NnueContext::evaluate`] actually needs them (SF's approach).
+//! (design/11 §3.4.4). Each search node owns an [`AccumulatorEntry`]; updates
+//! are *lazy* — most made moves are pruned before ever being evaluated
+//! (SF's approach).
 //!
 //! **The invalidation rule is the correctness linchpin.** `stack[0]` is
 //! refreshed from scratch and always trusted; every move made from ply `k`
-//! records its deltas into `stack[k+1]` and marks it *uncomputed*, so a sibling
-//! subtree can never reuse a stale accumulator. At evaluate time we walk back
-//! to the nearest computed ancestor and fold each dirty record forward. The
-//! [`NnueContext::assert_matches_refresh`] oracle (the NNUE analogue of
-//! `Board::assert_consistent`) checks that the incrementally-maintained
-//! columns equal a from-scratch refresh at every computed node.
+//! records its deltas into `stack[k+1]` and marks it *uncomputed*, so a
+//! sibling subtree can never reuse a stale accumulator. At evaluate time we
+//! walk back to the nearest computed ancestor and fold forward. The
+//! [`NnueContext::assert_matches_refresh`] oracle pins incremental ==
+//! from-scratch at every computed node.
 
 use super::L1;
 use super::network::{Network, feature_index};
@@ -31,8 +25,8 @@ pub const NNUE_STACK_LEN: usize = MAX_PLY + 8;
 /// One node's accumulators (design/11 §3.4.4).
 #[derive(Debug, Clone)]
 pub struct AccumulatorEntry {
-    /// Feature-transformer output per perspective, indexed by [`Color`].
-    /// 64-byte aligned for the step-2 AVX2 loads.
+    /// Feature-transformer output per perspective, indexed by [`Color`];
+    /// 64-byte aligned for the SIMD loads.
     pub acc: Aligned64<[[i16; L1]; 2]>,
     /// The placement deltas of the move that LED TO this entry.
     pub dirty: DirtyPiece,
@@ -51,11 +45,8 @@ impl Default for AccumulatorEntry {
 }
 
 /// A per-thread accumulator stack over a borrowed network (design/11 §3.4.4).
-///
-/// The design's end state stores `net: &'static Network` (the loaded
-/// `EvalFile`); step 1 borrows for a lifetime `'a` so tests can drive a
-/// locally-built net without leaking a `'static`. It is NOT yet placed in the
-/// search `Worker`'s `EvalContext` — that wiring is step 4.
+/// Borrows for `'a` (not `&'static`) so tests can drive a locally-built net
+/// without leaking.
 #[derive(Debug)]
 pub struct NnueContext<'a> {
     stack: Box<[AccumulatorEntry]>,
@@ -63,8 +54,7 @@ pub struct NnueContext<'a> {
 }
 
 impl<'a> NnueContext<'a> {
-    /// A fresh context over `net`, sized for `MAX_PLY` search. Heap-allocates
-    /// the stack once (this is the setup path, not the hot path).
+    /// A fresh context over `net`; heap-allocates the stack once (setup path).
     pub fn new(net: &'a Network) -> Self {
         NnueContext {
             stack: vec![AccumulatorEntry::default(); NNUE_STACK_LEN].into_boxed_slice(),
@@ -77,10 +67,9 @@ impl<'a> NnueContext<'a> {
         self.net
     }
 
-    /// Refresh the root entry (`stack[0]`) from scratch for `board`, both
-    /// perspectives, and mark it computed. Called at the start of every `go`
-    /// so the root is valid regardless of how much game history UCI replayed
-    /// (design/11 §3.4.4).
+    /// Refresh the root entry (`stack[0]`) from scratch, both perspectives,
+    /// and mark it computed. Called at the start of every `go` so the root is
+    /// valid regardless of how much game history UCI replayed.
     pub fn refresh_root(&mut self, board: &Board) {
         for persp in Color::ALL {
             let dst = &mut self.stack[0].acc.0[persp as usize];
@@ -90,11 +79,10 @@ impl<'a> NnueContext<'a> {
         self.stack[0].computed = [true, true];
     }
 
-    /// Record a move made from search ply `ply`: its deltas land in the child
-    /// entry `stack[ply + 1]`, which is marked uncomputed so no sibling
-    /// subtree reuses a stale accumulator (the §3.4.4 invalidation rule). Call
-    /// this AFTER deriving `dp` from the pre-move board and BEFORE the child
-    /// node evaluates.
+    /// Record a move made from search ply `ply`: its deltas land in
+    /// `stack[ply + 1]`, marked uncomputed (the invalidation rule). Call
+    /// AFTER deriving `dp` from the pre-move board and BEFORE the child
+    /// evaluates.
     pub fn push(&mut self, ply: usize, dp: DirtyPiece) {
         let child = &mut self.stack[ply + 1];
         child.dirty = dp;
@@ -105,10 +93,9 @@ impl<'a> NnueContext<'a> {
     /// folding the accumulators forward lazily as needed. `board` must be the
     /// position at `ply` (its side to move selects the stm half).
     pub fn evaluate(&mut self, board: &Board, ply: usize) -> Value {
-        // Precondition: the root was refreshed. `compute`'s walk-back is
-        // release-safe regardless (it saturates at ply 0), but a missing
-        // `refresh_root` yields a silently-wrong zero accumulator — catch it
-        // loudly in debug (design/11 §3.4.4).
+        // Precondition: the root was refreshed. `compute` is release-safe
+        // regardless (it saturates at ply 0), but a missing `refresh_root`
+        // yields a silently-wrong zero accumulator — catch it loudly in debug.
         debug_assert!(
             self.stack[0].computed[0] && self.stack[0].computed[1],
             "evaluate at ply {ply} before refresh_root — stack[0] uncomputed (design/11 §3.4.4)"
@@ -118,9 +105,6 @@ impl<'a> NnueContext<'a> {
         self.compute(ply, stm.flip());
         let us = &self.stack[ply].acc.0[stm as usize];
         let them = &self.stack[ply].acc.0[stm.flip() as usize];
-        // step 4: hoist `let k = &*KERNELS;` out of the per-node search loop
-        // (see the `attacks::tables()` hot-loop idiom) so this LazyLock deref
-        // isn't repeated at every evaluated node.
         (KERNELS.forward)(
             us,
             them,
@@ -130,9 +114,8 @@ impl<'a> NnueContext<'a> {
         )
     }
 
-    /// Return the already-incremental accumulator pair in side-to-move order
-    /// for a frozen classic policy head. Computing a missing child folds only
-    /// its recorded dirty moves; it never refreshes the transformer.
+    /// The already-incremental accumulator pair in side-to-move order, for a
+    /// frozen classic policy head; never refreshes the transformer.
     #[cfg(feature = "search-control")]
     pub fn policy_accumulators(
         &mut self,
@@ -150,20 +133,18 @@ impl<'a> NnueContext<'a> {
         )
     }
 
-    /// Ensure `stack[ply].acc[perspective]` is valid: if already computed,
-    /// done; otherwise walk back to the nearest computed ancestor and fold
-    /// each intervening dirty record forward (design/11 §3.4.4). `stack[0]` is
-    /// always computed, so the walk terminates.
+    /// Ensure `stack[ply].acc[perspective]` is valid: walk back to the
+    /// nearest computed ancestor and fold each intervening dirty record
+    /// forward. `stack[0]` is always computed, so the walk terminates.
     fn compute(&mut self, ply: usize, perspective: Color) {
         let p = perspective as usize;
         if self.stack[ply].computed[p] {
             return;
         }
         let mut k = ply;
-        // Walk back to the nearest computed ancestor. The `k > 0` bound keeps
-        // this memory-safe in RELEASE even if `refresh_root` was never called:
-        // `k` saturates at 0 rather than underflowing `usize` to a wild index
-        // (the debug_assert below is compiled out in release). design/11 §3.4.4.
+        // The `k > 0` bound keeps this memory-safe in RELEASE even if
+        // `refresh_root` was never called: `k` saturates at 0 rather than
+        // underflowing `usize` to a wild index.
         while k > 0 && !self.stack[k].computed[p] {
             k -= 1;
         }
@@ -173,10 +154,9 @@ impl<'a> NnueContext<'a> {
         );
         let net = self.net;
         for i in (k + 1)..=ply {
-            // Disjoint mutable borrow: src = stack[i-1], dst = stack[i]. The
-            // kernel writes straight into `dst`, so there is no per-ply ~1 KB
-            // accumulator memcpy (this is the hot path once search wires in at
-            // step 4). `split_at_mut(i)` proves lo[i-1] and hi[0] don't alias.
+            // Disjoint mutable borrow: src = stack[i-1], dst = stack[i]; the
+            // kernel writes straight into `dst` (no per-ply accumulator
+            // memcpy). `split_at_mut(i)` proves lo[i-1] and hi[0] don't alias.
             let (lo, hi) = self.stack.split_at_mut(i);
             let dp = hi[0].dirty;
             let src = &lo[i - 1].acc.0[p];
@@ -186,10 +166,9 @@ impl<'a> NnueContext<'a> {
         }
     }
 
-    /// The NNUE analogue of `Board::assert_consistent` (design/11 §3.4.4): the
-    /// incrementally-maintained accumulator at `ply` must equal a from-scratch
-    /// refresh of `board` for both perspectives. Drives the incremental ==
-    /// refresh fuzz gate. Compiled only in test/debug builds.
+    /// The NNUE analogue of `Board::assert_consistent`: the incremental
+    /// accumulator at `ply` must equal a from-scratch refresh of `board`,
+    /// both perspectives. Compiled only in test/debug builds.
     #[cfg(any(test, debug_assertions))]
     pub fn assert_matches_refresh(&mut self, board: &Board, ply: usize) {
         for persp in Color::ALL {
@@ -204,10 +183,8 @@ impl<'a> NnueContext<'a> {
     }
 }
 
-/// From-scratch accumulator for one perspective: `bias + Σ_active W0[feature]`
-/// (design/11 §3.4.4). Resolves each occupied square's feature row and hands
-/// the batch to the refresh kernel. No heap: at most 64 pieces, so a
-/// fixed-size row buffer suffices.
+/// From-scratch accumulator for one perspective: `bias + Σ_active W0[feature]`.
+/// No heap: at most 64 pieces, so a fixed-size row buffer suffices.
 fn refresh_into(net: &Network, board: &Board, perspective: Color, dst: &mut [i16; L1]) {
     let placeholder = net.ft_row(0);
     let mut rows: [&[i16; L1]; 64] = [placeholder; 64];
@@ -222,12 +199,9 @@ fn refresh_into(net: &Network, board: &Board, perspective: Color, dst: &mut [i16
     (KERNELS.refresh)(dst, net.ft_bias_arr(), &rows[..n]);
 }
 
-/// Fold one move's deltas into `dst` from base `src` for `perspective`
-/// (design/11 §3.4.4): `dst = src + Σ W0[add] − Σ W0[sub]`.
-///
-/// Routes by delta shape so the step-2 AVX2 backend covers **every** update
-/// kind through the [`KERNELS`] seam, not just the quiet case. Move kind →
-/// kernel:
+/// Fold one move's deltas into `dst` from base `src` for `perspective`:
+/// `dst = src + Σ W0[add] − Σ W0[sub]`. Routes by delta shape so the SIMD
+/// backend covers every update kind through the [`KERNELS`] seam:
 ///   - quiet / quiet-promotion → `(1 add, 1 sub)` → `add_sub`;
 ///   - capture / en passant / capture-promotion → `(1 add, 2 sub)` → `add_sub_sub`;
 ///   - castling → `(2 add, 2 sub)` → `add2_sub2`;
@@ -253,8 +227,7 @@ fn apply_dirty(
             row(subs[0]),
             row(subs[1]),
         ),
-        // General fallback (null = (0, 0); any unforeseen shape): copy `src`,
-        // then apply each add/sub column-wise.
+        // General fallback (null = (0, 0); any unforeseen shape).
         _ => {
             *dst = *src;
             for &(piece, sq) in adds {
@@ -273,12 +246,10 @@ fn apply_dirty(
     }
 }
 
-/// From-scratch NNUE forward-pass evaluation of `board` (design/11 §3.4.3):
-/// refresh both perspectives and run the output layer, stm half first. This is
-/// the forward-pass oracle the `nnue-eval` dev subcommand and the symmetry
-/// test call — no incremental state, no in-check precondition (unlike the
-/// eval seam, this is the raw net value). Returns the raw integer centipawn
-/// value.
+/// From-scratch NNUE forward-pass evaluation of `board`: refresh both
+/// perspectives and run the output layer, stm half first. The forward-pass
+/// oracle for tools and tests — no incremental state, no in-check
+/// precondition; returns the raw integer centipawn value.
 pub fn evaluate_forward(net: &Network, board: &Board) -> Value {
     let mut acc = [[0i16; L1]; 2];
     for persp in Color::ALL {
@@ -306,8 +277,7 @@ mod tests {
         Board::from_fen(fen).unwrap()
     }
 
-    // A one-move incremental update must match a from-scratch refresh of the
-    // resulting position — the smallest slice of the §3.4.4 invariant.
+    // A one-move incremental update must match a from-scratch refresh.
     #[test]
     fn one_move_incremental_equals_refresh() {
         let net = Network::deterministic_test_net(42, Activation::SCReLU);
@@ -325,8 +295,7 @@ mod tests {
         assert_eq!(ctx.evaluate(&b, 1), evaluate_forward(&net, &b));
     }
 
-    // DirtyPiece::from_move for every move kind, checked against the pieces
-    // that actually move (design/11 §3.4.4).
+    // DirtyPiece::from_move for every move kind.
     #[test]
     fn dirty_piece_covers_every_move_kind() {
         // Quiet: 1 sub + 1 add (the knight).
@@ -384,9 +353,8 @@ mod tests {
         assert!(dp.adds().is_empty() && dp.subs().is_empty());
     }
 
-    // The §3.4.2 symmetry guarantee at the forward-pass level: a color-flipped
-    // position evaluates EQUAL (both are stm-relative). Guards the feature
-    // indexer + perspective construction.
+    // A color-flipped position evaluates EQUAL (both stm-relative) — guards
+    // the feature indexer + perspective construction (§3.4.2).
     #[test]
     fn forward_is_color_flip_symmetric() {
         let net = Network::deterministic_test_net(7, Activation::SCReLU);

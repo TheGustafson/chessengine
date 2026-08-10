@@ -1,29 +1,9 @@
-//! Move-ordering statistics: the history tables and their single write
-//! primitive (design/09 — move ordering: MovePicker and history tables).
-//!
-//! This module owns every history-table *type* (butterfly, low-ply, capture,
-//! continuation, pawn, correction), the per-thread [`Histories`] container,
-//! the borrow-safe `ContHistId` continuation-history key, and the update
-//! functions. It lands incrementally over design/09 §4:
-//!
-//! - **step 2:** the generic gravity cell [`StatEntry`] — the *only* way any
-//!   table is ever written after init.
-//! - **steps 3–4:** the table catalogue + [`Histories`] container
-//!   (§3.4) with its heap-construction / [`clear`](Histories::clear) /
-//!   [`new_search`](Histories::new_search) plumbing, and the borrow-safe
-//!   [`ContHistId`] continuation-history key (§3.2).
-//! - **step 9 (here):** the history-update burst (§3.9) —
-//!   [`update_continuation_histories`](Histories::update_continuation_histories),
-//!   [`update_quiet_histories`](Histories::update_quiet_histories), and the
-//!   [`update_all_stats`](Histories::update_all_stats) orchestration.
-//! - **step 10 (here):** correction history (§3.10) —
-//!   [`correction_value`](Histories::correction_value),
-//!   [`to_corrected_static_eval`], the gated [`correction_bonus`], and
-//!   [`update_correction_history`](Histories::update_correction_history).
-//!
-//! The *call sites* and per-site bonus formulas belong to design/10; the
-//! functions here own only the internals (weights, offsets, combiners). They
-//! are wired into the search in the P8 integration wave (design/09 §4 step 11).
+//! Move-ordering statistics (design/09): every history-table *type*
+//! (butterfly, low-ply, capture, continuation, pawn, correction), the
+//! per-thread [`Histories`] container, the borrow-safe [`ContHistId`] key,
+//! and the update functions. The *call sites* and per-site bonus formulas
+//! belong to design/10; this module owns only the internals (weights,
+//! offsets, combiners).
 //!
 //! Everything is per-thread, plain (non-atomic) `i16` (D23); nothing here
 //! allocates on a search hot path.
@@ -38,60 +18,38 @@ use crate::types::{
 };
 
 /// A single history cell bounded to `[-D, D]` by the "gravity" update rule
-/// (design/09 §3.3).
-///
-/// The one write primitive for every table: no cell is ever assigned except
-/// by `fill` at init time and by [`StatEntry::update`] thereafter. The bound
-/// is structural — `D` is a const generic, so each table fixes its own
-/// saturation limit at the type level (`StatEntry<7183>`, `StatEntry<30000>`,
-/// …) and the compiler monomorphizes the arithmetic per limit.
-///
-/// Storage is `i16`: every `D` in the catalogue (§3.4) is `<= 30000`, so a
-/// bounded value always fits — checked at compile time per instantiation via
-/// [`StatEntry::D_FITS`].
-///
-/// Idiom note: a `const` *generic parameter* (`const D: i32`) lets a single
-/// type carry a compile-time-varying bound without a runtime field or a
-/// macro-generated family of structs. It is the Rust analogue of a C++
-/// non-type template parameter, and the way Stockfish's `StatsEntry<T, D>`
-/// is expressed idiomatically here (D27 — reimplementation, not a copy).
+/// (design/09 §3.3) — the one write primitive for every table: no cell is
+/// ever assigned except by `fill` at init and [`StatEntry::update`] after.
+/// The const-generic `D` fixes each table's saturation limit at the type
+/// level (the Rust analogue of Stockfish's `StatsEntry<T, D>` non-type
+/// template parameter, reimplemented per D27); storage is `i16`, checked per
+/// instantiation via [`StatEntry::D_FITS`].
 #[derive(Clone, Copy)]
 pub struct StatEntry<const D: i32>(i16);
 
 impl<const D: i32> StatEntry<D> {
-    /// Compile-time guard: every table's bound must be positive and fit the
-    /// `i16` backing store. Referenced from [`StatEntry::new`] so the check
-    /// is forced for each concrete `D` the crate instantiates (a bare
-    /// associated const is only evaluated when used).
+    /// Compile-time guard: `D` must be positive and fit `i16`. Referenced
+    /// from [`StatEntry::new`] so the check fires for each concrete `D`.
     const D_FITS: () = assert!(D > 0 && D <= i16::MAX as i32);
 
-    /// A cell seeded to `v` (the per-table `fill` init value of §3.4). The
-    /// caller is responsible for `v` lying in `[-D, D]`; `update` keeps it
-    /// there forever after.
+    /// A cell seeded to `v`. The caller is responsible for `v` lying in
+    /// `[-D, D]`; `update` keeps it there forever after.
     pub const fn new(v: i16) -> Self {
         // Touching D_FITS forces its assert to evaluate at monomorphization.
         let () = Self::D_FITS;
         Self(v)
     }
 
-    /// The current value, widened to `i32` for the scoring arithmetic that
-    /// reads it (sums of several history terms overflow `i16`).
+    /// The current value, widened to `i32` (sums of terms overflow `i16`).
     pub const fn get(self) -> i32 {
         self.0 as i32
     }
 
     /// The gravity update (design/09 §3.3): clamp the bonus to `[-D, D]`,
     /// then move the cell toward it while decaying the old value in
-    /// proportion to `|bonus| / D`.
-    ///
-    /// Two provable consequences (both exercised in the tests below):
-    /// - the cell never escapes `[-D, D]` — integer truncation of
-    ///   `v * |b| / D` only ever shrinks the correction, so the closed-form
-    ///   bound survives;
-    /// - repeated same-sign bonuses have diminishing effect and asymptote to
-    ///   `±D` (a max-magnitude bonus `|b| == D` lands there in one step,
-    ///   since `v + D - v*D/D == D`), while stale signal decays geometrically
-    ///   toward zero once the bonus flips or stops.
+    /// proportion to `|bonus| / D`. Provable (and tested below): the cell
+    /// never escapes `[-D, D]`; repeated same-sign bonuses have diminishing
+    /// effect and asymptote to `±D`; stale signal decays geometrically.
     pub fn update(&mut self, bonus: i32) {
         let b = bonus.clamp(-D, D);
         let v = self.0 as i32;
@@ -106,10 +64,8 @@ impl<const D: i32> StatEntry<D> {
 // init / per-`go` fill & decay values.
 // ---------------------------------------------------------------------------
 
-// Structural saturation bounds `D` per table family. These are NOT SPSA
-// tunables (params.rs owns those); they are the type-level gravity limits, so
-// they live here as the const-generic arguments of the `StatEntry`
-// instantiations below (design/09 §3.4; params.rs header).
+// Structural saturation bounds `D` per table family — type-level gravity
+// limits, NOT SPSA tunables (params.rs owns those).
 pub const MAIN_D: i32 = 7183; // butterfly + low-ply
 pub const CAPT_D: i32 = 10692;
 pub const CONT_D: i32 = 30000;
@@ -118,45 +74,31 @@ pub const CORR_D: i32 = 1024; // unified + continuation correction
 pub const TT_MOVE_D: i32 = 8192; // the lone tt-move reliability scalar
 
 // Fixed dimensions (design/09 §3.4). `BUTTERFLY_SIZE` is the whole
-// `Move::raw16` space: the raw16 bijection makes indexing by it statistically
-// identical to Stockfish's from×to butterfly (design/09 §3.4, D2).
+// `Move::raw16` space — statistically identical to SF's from×to butterfly.
 const BUTTERFLY_SIZE: usize = 1 << 16; // 65536
-/// Low-ply history plane count (plies 0..=4). Public so the quiet scorer can
-/// bound its low-ply term (design/09 §3.7) against the table's plane count.
+/// Low-ply history plane count (plies 0..=4); public for the quiet scorer.
 pub const LOW_PLY_SIZE: usize = 5;
 const VICTIM_NB: usize = 7; // 6 piece types + a "no victim" slot (ep, quiet promos)
 const CONT_NB: usize = 3328; // in_check(2) × capture(2) × piece13 × to(64)
-/// Allocated slab count for `cont`. (Perf study 53's `cont53` arm padded this
-/// to 4096 to fold the bounds check away, at +1.125 MiB per worker — over the
-/// design/09 §8 budget; the arm was declined and deleted 2026-08-01.)
+/// Allocated slab count for `cont`. NOTE: padding it to 4096 to fold the
+/// bounds check away costs +1.125 MiB per worker — over the design/09 §8
+/// budget; measured and declined.
 const CONT_ALLOC: usize = CONT_NB;
 const CONT_CORR_NB: usize = 832; // piece13 × to(64)
-/// Allocated slab count for `cont_corr` (perf study 56, arm `contcorr56`).
-///
-/// Same shape as [`CONT_ALLOC`] and the same reason: [`CONT_CORR_NB`] is not a
-/// power of two and the index arrives from [`ContHistId::piece_to`], which the
-/// optimizer only knows is `< 16384` (it is `u16 / 4`). So `cont_corr[o2]` and
-/// `cont_corr[o4]` each carry a bounds check, twice per evaluated node in
-/// [`Histories::correction_value`] and twice more per updated node in
-/// [`Histories::update_correction_history`].
-///
-/// **The reason this is a candidate where `cont53` was not is the price.**
-/// Padding 832 → 1024 costs +192 slabs × 1536 B = **+288 KiB per `Histories`**,
-/// i.e. per worker thread, taking the catalogue from 19.979 MiB to 20.260 MiB —
-/// inside design/09 §8's ≤21 MiB budget. `cont53` pads 3328 → 4096, costs
-/// +1.125 MiB and breaches it.
+/// Allocated slab count for `cont_corr`: padded to the next power of two so
+/// [`CONT_CORR_MASK`] folds the bounds checks away. Unlike `cont`, this
+/// padding costs only +288 KiB per worker — inside the §8 budget.
 const CONT_CORR_ALLOC: usize = CONT_CORR_NB.next_power_of_two(); // 1024
 /// Index mask for [`CONT_CORR_ALLOC`] — see that constant.
 const CONT_CORR_MASK: usize = CONT_CORR_ALLOC - 1;
-/// The `(in_check, capture)` axis pair — the LOW axis of [`ContHistId`], which
-/// is what makes [`ContHistId::piece_to`] a shift (see that type's doc).
+/// The `(in_check, capture)` axis pair — the LOW axis of [`ContHistId`],
+/// which is what makes [`ContHistId::piece_to`] a shift.
 const QUADRANT_NB: usize = 4;
 const PAWN_HIST_SIZE: usize = 8192; // power of two, masked by the pawn key
 const CORR_SIZE: usize = 65536; // power of two, masked by each correction key
 
-// Init (new-game) and per-`go` fill / decay values (design/09 §3.4, D20).
-// Like the bounds above, these are the tables' defined reset state rather than
-// scoring multipliers, so they stay here with their catalogue.
+// Init (new-game) and per-`go` fill / decay values (design/09 §3.4, D20) —
+// the tables' defined reset state, not scoring multipliers.
 const MAIN_INIT: i16 = -5;
 const CAPTURE_INIT: i16 = -699;
 const CONT_INIT: i16 = -552;
@@ -175,34 +117,18 @@ pub type PieceToHist = [[StatEntry<CONT_D>; 64]; 12];
 /// with the tighter `CORR_D` bound (design/09 §3.10).
 pub type PieceToCorr = [[StatEntry<CORR_D>; 64]; 12];
 
-/// The `[piece × to]` cell address as ONE index — `pci * 64 + to`.
-///
-/// Perf study 36. Every `[piece × to]` plane is `[[StatEntry; 64]; 12]`, which
-/// Rust lays out row-major and contiguously, so `p[pci][to]` and
-/// `p.as_flattened()[piece_to(pci, to)]` name the same cell. The difference is
-/// codegen, and it only shows up where **one `(pci, to)` pair is read against
-/// SEVERAL planes**, which is exactly `MovePicker::init_quiets`' scoring loop:
-///
-/// * two-dimensional, LLVM shares `pci * 128` in one register and `to * 2` in
-///   another, and then has to ADD each plane's base to one of them —
-///   `lea (%base,%pci128,1),%tmp` then `movswl (%to2,%tmp,1)`. Three variable
-///   terms do not fit one x86 addressing mode, so every plane pays a `lea`.
-/// * flat, the shared term is the whole offset, so each plane is a single
-///   `movswl (%base,%q,2)`.
-///
-/// The bounds check folds away without a mask or an `unsafe`: `pci < 12`
-/// because the caller has already indexed a 6-element array by the piece type,
-/// and `to < 64` because `Move::to` is six bits, so LLVM's range analysis
-/// carries `q < 768` into the flat access.
+/// The `[piece × to]` cell address as ONE index — `pci * 64 + to`. The flat
+/// form matters where one `(pci, to)` pair is read against SEVERAL planes
+/// (the quiet scorer): the shared term is the whole offset, one indexed load
+/// per plane. The bounds check folds away without a mask or `unsafe`:
+/// `pci < 12` and `to < 64` are already visible to LLVM's range analysis.
 #[inline]
 pub const fn piece_to(pci: usize, to: usize) -> usize {
     pci * 64 + to
 }
 
-/// Read one `[piece × to]` plane at a [`piece_to`] index.
-///
-/// Generic over the `StatEntry` bound so the continuation planes (`CONT_D`)
-/// and the pawn plane (`PAWN_D`) share one spelling.
+/// Read one `[piece × to]` plane at a [`piece_to`] index. Generic over the
+/// bound so the continuation and pawn planes share one spelling.
 #[inline]
 pub fn at_piece_to<const D: i32>(plane: &[[StatEntry<D>; 64]; 12], q: usize) -> i32 {
     plane.as_flattened()[q].get()
@@ -216,11 +142,6 @@ pub fn at_piece_to_mut<const D: i32>(
 ) -> &mut StatEntry<D> {
     &mut plane.as_flattened_mut()[q]
 }
-
-// The `histpf44` software-pipelined history prefetch API (`prefetch_line`,
-// `prefetch_piece_to`) lived here until 2026-08-01 — measured, declined, and
-// deleted with the other inert perf arms (simplification tier 0, item 0.15).
-// Study 44 §6 has the measurements.
 
 /// The four correction-history fields that share one `corr[slot][stm]` cell.
 ///
@@ -247,76 +168,44 @@ impl CorrBundle {
     }
 }
 
-/// A borrow-safe handle to one inner [`PieceToHist`] slab of the continuation
-/// history (design/09 §3.2).
-///
-/// Stockfish stores a raw `PieceToHistory*` on its search stack; we cannot —
-/// a raw pointer would need `unsafe` (D14) and a `&` borrow would freeze the
-/// whole tensor while the search still needs to `make_move` and update other
-/// histories between picker calls. Instead the stack carries this compact
-/// `Copy` flat index, and [`Histories::cont_ref`] / [`Histories::cont_mut`]
-/// resolve it in a single indexed load.
+/// A borrow-safe handle to one inner [`PieceToHist`] slab of the
+/// continuation history (design/09 §3.2): where Stockfish stores a raw
+/// `PieceToHistory*` on its search stack, we store this compact `Copy` flat
+/// index — a raw pointer would need `unsafe` (D14), and a `&` borrow would
+/// freeze the whole tensor between picker calls.
 ///
 /// The index flattens `(in_check, capture, prior piece, prior to-square)` —
-/// with a 13th "no piece" slot (index 12) for null moves and the pre-root
-/// padding — as `(piece13 * 64 + to) * 4 + (in_check*2 + capture)`, landing in
-/// `0..3328`.
-///
-/// **The axis order is chosen for [`piece_to`](Self::piece_to), not for
-/// readability** (perf study 16 §5). The `(piece13, to)` sub-index — which the
-/// continuation *correction* history indexes by, four times per node — is the
-/// HIGH part of the flat index, so recovering it is a `>> 2`. The natural
-/// order, `((in_check*2 + capture) * 13 + piece13) * 64 + to`, puts it in the
-/// low `13*64 = 832` positions of each quadrant, making the same accessor a
-/// `% 832` — a non-power-of-two modulus, which LLVM lowers to a
-/// multiply-shift-multiply-subtract chain. The tensor is a flat slab either
-/// way, both orders are bijections onto `0..3328`, and nothing outside this
-/// impl observes the ordering.
-///
-/// Idiom note: this replaces Stockfish's stack-stored pointer with an index,
-/// the standard Rust move to keep an aliasing-heavy data structure both
-/// `unsafe`-free and borrow-checker-friendly (the search reads *and* writes
-/// the tables while these keys sit inertly on the stack).
+/// with a 13th "no piece" slot for null moves and the pre-root padding — as
+/// `(piece13 * 64 + to) * 4 + (in_check*2 + capture)`, in `0..3328`. The
+/// `(piece13, to)` sub-index deliberately sits in the HIGH bits so
+/// [`piece_to`](Self::piece_to) is a shift, not a `% 832`; nothing outside
+/// this impl observes the ordering.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ContHistId(u16);
 
 impl ContHistId {
     /// The inert `[false][false][no-piece][A1]` slab (flat index 3072):
-    /// installed at the pre-root padding slots and after null moves. It is
-    /// filled like every other slab and *read* by scoring, but never
-    /// *written* (updates gate on `current_move.is_ok()`), so it behaves as a
-    /// constant baseline — mirroring Stockfish's sentinel continuation table.
-    // (no-piece, A1) in quadrant 0 == 3072.
+    /// installed at the pre-root padding slots and after null moves. Read by
+    /// scoring but never *written* (updates gate on `current_move.is_ok()`),
+    /// so it is a constant baseline — SF's sentinel continuation table.
     pub const SENTINEL: ContHistId = ContHistId((12 * 64 * QUADRANT_NB) as u16);
 
-    /// Flatten `(in_check, capture, piece, to)` to the slab index. `piece` is
-    /// `None` for the null-move / padding sentinel (the 13th "no piece" slot,
-    /// index 12), matching Stockfish's `NO_PIECE` continuation slab.
+    /// Flatten `(in_check, capture, piece, to)` to the slab index; `piece`
+    /// is `None` for the null-move / padding sentinel (SF's `NO_PIECE`).
     #[inline]
     pub fn new(in_check: bool, capture: bool, piece: Option<Piece>, to: Square) -> Self {
         let pc = piece.map_or(12, |p| p.index()); // 12 = "no piece"
         let flat = (pc * 64 + to.idx()) * QUADRANT_NB + (in_check as usize * 2 + capture as usize);
-        // The old `% 832` mapped ANY `u16` back into range, so a corrupt id
-        // could not walk `cont_corr` out of bounds; `/ QUADRANT_NB` only stays
-        // in range because ids are `< CONT_NB`. That fail-soft property is
-        // gone, so the invariant is stated where it is established (D33
-        // reviewer A). It holds: `pc <= 12`, and `Square::new` asserts `< 64`
-        // in release too, so the maximum is `(12*64 + 63)*4 + 3 = 3327` and
-        // the `as u16` cannot truncate.
+        // INVARIANT (the `cont` indexing relies on it): `pc <= 12` and
+        // `to < 64` (asserted in release too), so `flat <= 3327 < CONT_NB`
+        // and the `as u16` cannot truncate.
         debug_assert!(flat < CONT_NB, "ContHistId {flat} out of range");
         ContHistId(flat as u16)
     }
 
     /// The `(piece13 * 64 + to)` sub-index (`0..832`), shared verbatim with
     /// the continuation-correction history's outer index (design/09 §3.10).
-    ///
-    /// A shift, because the type doc's axis order puts `(piece13, to)` in the
-    /// high bits. Run twice per evaluated node in
-    /// [`Histories::correction_value`], plus twice more on each node whose
-    /// correction history is actually updated — the pair in
-    /// [`Histories::update_correction_history`] is gated on `prev.is_ok()` AND
-    /// on [`correction_bonus`] having returned `Some`, so "four per node"
-    /// would overstate it (D33 reviewer C, D3).
+    /// A shift, because the axis order puts `(piece13, to)` in the high bits.
     #[inline]
     pub fn piece_to(self) -> usize {
         self.0 as usize / QUADRANT_NB
@@ -324,38 +213,12 @@ impl ContHistId {
 }
 
 /// A cache-line-aligned wrapper around one history table's outer element.
-///
-/// # Why this type exists (perf study 21 §B)
-/// Every history row in this module is already a whole number of cache lines
-/// wide — `PieceToHist` is 1536 B, a butterfly plane 131072 B, a capture plane
-/// 896 B. So the alignment of *every row in the engine* is decided by exactly
-/// one thing: the table's base pointer. And [`boxed_array`] gets that from
-/// `vec![row; N]`, which requests `align_of::<Row>()` — **2**, because the
-/// leaf is an `i16`. Rust's `Global` hands any request with align ≤ 16
-/// straight to `malloc`, glibc serves these sizes with `mmap`, and an mmap'd
-/// chunk returns `page + 16`.
-///
-/// Measured on this box, 2026-07-29, by printing `ptr % 64` for a real
-/// `Histories::new()`:
-///
-/// ```text
-/// main=16  low_ply=16  capture=48  cont=16  pawn=16  corr=16  cont_corr=16
-/// ```
-///
-/// Every table was 16 (or 48) mod 64, so every 128-byte `[piece][to]` row
-/// straddled **three** cache lines instead of two, and the scoring loop in
-/// `MovePicker::init_quiets` paid the extra line on every quiet it scored.
-/// This is the same defect perf study 20 found in the NNUE weight tables and
-/// measured at −4.99% cycles there (with a `+16` falsification control);
-/// nobody had looked at the 20 MiB of history tables.
-///
-/// Raising the outer element's alignment to 64 routes the identical `vec!`
-/// through `aligned_alloc` instead of `malloc`. It costs **zero** bytes —
-/// every wrapped row is already a multiple of 64 — and `Deref`/`DerefMut`
-/// keep all ~84 indexing sites compiling unchanged.
-///
-/// `corr` is deliberately NOT wrapped: its element is a 16-byte `[CorrBundle;
-/// 2]`, so aligning it to 64 would quadruple a 1 MiB table.
+/// Row alignment is decided solely by the table's base pointer, and plain
+/// `vec![row; N]` allocations landed 16 mod 64 — every 128-byte
+/// `[piece][to]` row straddled THREE cache lines instead of two (measured).
+/// `align(64)` routes the identical `vec!` through `aligned_alloc` at zero
+/// size cost (asserted in the tests below). `corr` is deliberately NOT
+/// wrapped: its 16-byte element would quadruple a 1 MiB table.
 #[repr(C, align(64))]
 #[derive(Clone, Copy)]
 pub struct Line64<T>(pub T);
@@ -375,13 +238,10 @@ impl<T> std::ops::DerefMut for Line64<T> {
     }
 }
 
-/// The per-thread catalogue of move-ordering statistics (design/09 §3.4).
-///
-/// All tables are plain (non-atomic) `i16` behind `Box`es: ~20 MiB that lives
-/// once per `Worker` (D23), never synchronized. The multi-MB tables are boxed
-/// so the arrays are built straight on the heap — see [`Histories::new`].
-/// Every multi-row table's outer element is wrapped in [`Line64`] so the
-/// allocation starts on a cache line; see that type for the measurement.
+/// The per-thread catalogue of move-ordering statistics (design/09 §3.4):
+/// ~20 MiB of plain (non-atomic) `i16` behind `Box`es, once per `Worker`
+/// (D23), never synchronized. Multi-row tables' outer elements are wrapped
+/// in [`Line64`] so each allocation starts on a cache line.
 pub struct Histories {
     /// Butterfly history, `[stm][move.raw16()]`.
     pub main: Box<[Line64<[StatEntry<MAIN_D>; BUTTERFLY_SIZE]>; 2]>,
@@ -403,16 +263,12 @@ pub struct Histories {
     pub tt_move: StatEntry<TT_MOVE_D>,
 }
 
-/// Heap-allocate a `Box<[T; N]>` with every element cloned from `row`, without
-/// the whole array ever transiting the stack.
-///
-/// Idiom (design/09 §3.4): `vec![row; N]` allocates the `N` copies *directly
-/// on the heap*; `into_boxed_slice` drops the length word (the `Vec`'s
-/// capacity already equals `N`, so no realloc); and the stable
-/// `TryFrom<Box<[T]>> for Box<[T; N]>` is a pointer-metadata cast, not a move.
-/// This is the safe, stable replacement for `Box::new([row; N])` (which would
-/// build the multi-MB array on the stack first) and for `Box::new_zeroed`
-/// (whose `assume_init` is `unsafe`, and zero is no table's init state).
+/// Heap-allocate a `Box<[T; N]>` with every element cloned from `row`,
+/// without the whole array ever transiting the stack. Idiom: `vec![row; N]`
+/// allocates directly on the heap; `into_boxed_slice` + the stable
+/// `TryFrom<Box<[T]>> for Box<[T; N]>` are pointer-metadata casts, not
+/// moves — the safe replacement for `Box::new([row; N])`, which would build
+/// the multi-MB array on the stack first.
 fn boxed_array<T: Copy, const N: usize>(row: T) -> Box<[T; N]> {
     vec![row; N]
         .into_boxed_slice()
@@ -425,9 +281,7 @@ fn boxed_array<T: Copy, const N: usize>(row: T) -> Box<[T; N]> {
 impl Histories {
     /// Allocate every table already filled with its new-game init value
     /// (design/09 §3.4) — the allocation *is* the [`clear`](Self::clear)
-    /// state. Large tables go through `boxed_array` so nothing multi-MB
-    /// touches the stack; the returned struct is seven pointers plus a scalar,
-    /// so a plain `Box::new` finishes the job.
+    /// state. Large tables go through `boxed_array`.
     pub fn new() -> Box<Self> {
         Box::new(Histories {
             main: boxed_array(Line64([StatEntry::new(MAIN_INIT); BUTTERFLY_SIZE])),
@@ -443,10 +297,8 @@ impl Histories {
         })
     }
 
-    /// Reset every table with a new-game init to that value (design/09 §3.4,
-    /// the "Init" column) — the `ucinewgame` reset, in place, no realloc.
-    /// Low-ply is deliberately left untouched (no new-game init; `new_search`
-    /// refills it each `go`).
+    /// The `ucinewgame` reset, in place, no realloc (design/09 §3.4).
+    /// Low-ply is deliberately untouched (`new_search` refills it each `go`).
     pub fn clear(&mut self) {
         for row in self.main.iter_mut() {
             row.fill(StatEntry::new(MAIN_INIT));
@@ -477,9 +329,8 @@ impl Histories {
         self.tt_move = StatEntry::new(0);
     }
 
-    /// The per-`go` refresh (design/09 §3.4, the "Per-go" column): decay the
-    /// butterfly history toward zero (`e = e * 789 / 1024`, so recent searches
-    /// dominate) and refill the low-ply history to `LOW_PLY_REFILL`.
+    /// The per-`go` refresh (design/09 §3.4): decay the butterfly history
+    /// toward zero and refill the low-ply history to `LOW_PLY_REFILL`.
     pub fn new_search(&mut self) {
         for row in self.main.iter_mut() {
             for e in row.iter_mut() {
@@ -522,10 +373,9 @@ impl Histories {
         &self.pawn[(key & (PAWN_HIST_SIZE as u64 - 1)) as usize]
     }
 
-    /// The pawn-history slot for a position (write side), masked by its pawn
-    /// key. Used by the search's out-of-band pawn nudges (design/10 §3.4 N8 /
-    /// §3.10 fail-low bonus), where the moved piece is keyed off a
-    /// non-side-to-move move and so cannot route through
+    /// The pawn-history slot for a position (write side). Used by the
+    /// search's out-of-band pawn nudges (design/10 §3.4 N8 / §3.10), which
+    /// key off a non-side-to-move move and so cannot route through
     /// [`Self::update_quiet_histories`].
     #[inline]
     pub fn pawn_slot_mut(&mut self, key: Key) -> &mut [[StatEntry<PAWN_D>; 64]; 12] {
@@ -536,16 +386,12 @@ impl Histories {
 // ---------------------------------------------------------------------------
 // History updates (design/09 §3.9) and correction history (§3.10).
 //
-// Every bonus flows through the gravity operator (§3.3); this section owns the
-// *internals* (per-table weights, chain offsets, the correction combiner). The
-// call sites and per-site bonus formulas belong to design/10.
-//
-// Signatures take the full padded stack slice plus the padded index
-// `cur = ply + SS_OFFSET` (never the raw ply, design/09 §3.9 / D18): the
-// refutation malus walks offsets 1..=6 from `cur - 1`, so its deepest read is
-// `stack[cur - 7]`, in-bounds by the SS_OFFSET padding. `ContHistId` is `Copy`,
-// so a key is read out of a stack slot *before* `hist` is mutated — the search
-// can score (read) and update (write) the same tensor with no aliasing.
+// Every bonus flows through the gravity operator (§3.3). Signatures take the
+// full padded stack slice plus the padded index `cur = ply + SS_OFFSET`
+// (never the raw ply, D18): the refutation malus walks offsets 1..=6 from
+// `cur - 1`, so its deepest read is `stack[cur - 7]`, in-bounds by the
+// SS_OFFSET padding. `ContHistId` is `Copy`, so a key is read out of a stack
+// slot *before* `hist` is mutated — no aliasing.
 // ---------------------------------------------------------------------------
 
 /// The "no victim" capture-history slot (en passant, quiet queen promotions):
@@ -571,17 +417,13 @@ impl Histories {
     ) {
         debug_assert!(cur >= SS_OFFSET);
         let in_check = stack[cur].in_check;
-        // Perf study 36: every iteration below hits the SAME `[pci][toi]` cell
-        // in a different plane, so the offset is loop-invariant while the base
-        // is not — the shape `piece_to` exists for (see its doc).
+        // Every iteration hits the SAME `[pci][toi]` cell in a different
+        // plane — the shape `piece_to` exists for.
         let q = piece_to(pc.index(), to.idx());
         let mut positive_count = 0usize;
 
-        // The body is a `macro_rules!` (the shape study 54 §2 used for the
-        // same reason): a `let` binding holding a borrow of `*self` cannot
-        // live across `self.cont_mut(id)`. (Study 55's `bccont55` subslice
-        // rewrite of this loop measured +55.6 i/n on the shipped tree and was
-        // deleted 2026-08-01.)
+        // A `macro_rules!` body: a `let` binding holding a borrow of `*self`
+        // cannot live across `self.cont_mut(id)`.
         macro_rules! cont_body {
             ($idx:expr, $weight:expr, $frame:expr) => {{
                 let idx: usize = $idx;
@@ -669,11 +511,9 @@ impl Histories {
     /// punished (quiets via a geometrically decaying malus, captures flat), and
     /// — when the parent played a refuted first-try quiet — its continuation
     /// entries take an extra malus.
-    // Perf study 67 §3: PGO folds this whole burst into `search::<NonPv>` —
-    // **2,894 bytes for 4.0 % of that symbol's dispatched ops**, 1.6× its
-    // average bytes per op. It runs once per node that raises alpha with a
-    // non-TT best move, i.e. as a rare burst, so out of line it costs one call
-    // and stops fragmenting the node's hot fetch span.
+    // icold67: outlined — this burst runs only on nodes that raise alpha
+    // with a non-TT best move; inlined it fragments the search's hot fetch
+    // span.
     #[cfg_attr(feature = "icold67", inline(never))]
     #[allow(clippy::too_many_arguments)]
     pub fn update_all_stats(
@@ -963,8 +803,7 @@ pub fn correction_bonus(
     Some(raw * params::CORR_BONUS_SCALE_NUM() / params::CORR_BONUS_SCALE_DEN())
 }
 
-// Compile-time guards on the catalogue (design/09 §8 criterion 2). Every
-// `StatEntry` is 2 bytes, so these double as shape checks against §3.4.
+// Compile-time guards on the catalogue (design/09 §8 criterion 2).
 const _: () = assert!(size_of::<StatEntry<MAIN_D>>() == 2);
 const _: () = assert!(size_of::<CorrBundle>() == 8);
 const _: () = assert!(size_of::<PieceToHist>() == 12 * 64 * 2); // 1.5 KiB
@@ -988,11 +827,8 @@ const HISTORIES_BYTES: usize = size_of::<[[StatEntry<MAIN_D>; BUTTERFLY_SIZE]; 2
     + size_of::<[PieceToHist; CONT_ALLOC]>()
     + size_of::<[[[StatEntry<PAWN_D>; 64]; 12]; PAWN_HIST_SIZE]>()
     + size_of::<[[CorrBundle; 2]; CORR_SIZE]>()
-    // Perf study 56: `CONT_CORR_ALLOC`, not `CONT_CORR_NB` — the budget must
-    // count what is ALLOCATED, and this table is now padded to a power of two.
-    // Accounting the logical size here would have hidden 288 KiB per worker
-    // from design/09 §8's guard, which is the one place that would have caught
-    // the padding growing.
+    // `CONT_CORR_ALLOC`, not `CONT_CORR_NB` — the budget must count what is
+    // ALLOCATED (that table is padded to a power of two).
     + size_of::<[PieceToCorr; CONT_CORR_ALLOC]>()
     + size_of::<StatEntry<TT_MOVE_D>>();
 // The catalogue is ~20 MiB: comfortably under the 21 MiB budget (§8), and
@@ -1015,10 +851,8 @@ mod tests {
         *state
     }
 
-    // Bound invariant: over a long adversarial stream of bonuses (many well
-    // outside [-D, D], so the clamp path is hammered) and occasional random
-    // re-seeds of the cell across the whole [-D, D] band, the value never
-    // escapes the bound. debug_assert inside `update` double-guards this.
+    // Bound invariant: over an adversarial stream of bonuses and random
+    // re-seeds, the value never escapes [-D, D].
     fn assert_bounded<const D: i32>() {
         let mut s = 0x853c49e6748fea9bu64 ^ (D as u64);
         let mut e = StatEntry::<D>::new(0);
@@ -1045,9 +879,8 @@ mod tests {
         assert_bounded::<30000>(); // CONT_D
     }
 
-    // Decay direction: a fixed sub-clamp bonus drives the cell monotonically
-    // toward the matching bound and, given enough repetitions, lands exactly
-    // on it (the gravity fixed point is ±D).
+    // A fixed sub-clamp bonus drives the cell monotonically toward the
+    // matching bound and eventually lands on it (the fixed point is ±D).
     fn assert_saturates<const D: i32>() {
         let step = (D / 10).max(1);
 
@@ -1168,20 +1001,10 @@ mod tests {
     }
 
     // `ContHistId::new` is a BIJECTION onto `0..CONT_NB`, and `piece_to()`
-    // recovers the (piece, to) sub-index of every id.
-    //
-    // Deliberately written without naming the axis order (perf study 16 §5
-    // permuted it, and the previous spelling — `assert_eq!(id.0, expected)`
-    // against a nested sweep counter — asserted the ORDER, which is a free
-    // implementation choice, instead of the two properties the search actually
-    // depends on). A collision or an out-of-range id is what corrupts the
-    // tensor; `seen` catches both.
-    //
-    // Deliberately NOT covered, so nobody "restores" it: swapping the
-    // `in_check` and `capture` axes is now caught by nothing (D33 reviewer C,
-    // M5). That is correct — it is a bijective relabelling of the tensor,
-    // identical on read and on write, and both `piece_to()` and `SENTINEL` are
-    // invariant under it.
+    // recovers the (piece, to) sub-index of every id. Deliberately written
+    // without asserting the axis ORDER — that is a free implementation
+    // choice; a collision or an out-of-range id is what corrupts the tensor,
+    // and `seen` catches both.
     #[test]
     fn cont_hist_id_is_the_flat_index_bijection() {
         let mut seen = [false; CONT_NB];
@@ -1226,14 +1049,9 @@ mod tests {
         }
     }
 
-    /// Every multi-row history table must START on a cache line.
-    ///
-    /// A GATE, not a comment. Before [`Line64`] these bases were measured at
-    /// `main=16 low_ply=16 capture=48 cont=16 pawn=16 cont_corr=16`, so every
-    /// 128-byte `[piece][to]` row spanned three lines instead of two. The
-    /// property is invisible in any behavioural test and is re-broken by
-    /// simply dropping the wrapper from one field, which is exactly why it
-    /// needs an assertion rather than a paragraph.
+    /// Every multi-row history table must START on a cache line. A GATE, not
+    /// a comment: the property is invisible in any behavioural test and is
+    /// re-broken by simply dropping the [`Line64`] wrapper from one field.
     #[test]
     fn every_history_table_starts_on_a_cache_line() {
         let h = Histories::new();
@@ -1249,10 +1067,8 @@ mod tests {
         }
     }
 
-    /// The wrapper must cost nothing. Every wrapped row is already a whole
-    /// number of cache lines, so `Line64` may not add a single padding byte —
-    /// if it ever does, the alignment was bought with memory and the trade
-    /// needs re-deciding rather than silently paying for it.
+    /// The wrapper must cost nothing: every wrapped row is already a whole
+    /// number of cache lines, so `Line64` may not add a single padding byte.
     #[test]
     fn line64_adds_no_padding() {
         assert_eq!(
@@ -1381,12 +1197,11 @@ mod tests {
         assert_eq!(size_of::<StatEntry<MAIN_D>>(), 2);
     }
 
-    // ---- design/09 §5 steps 9-10: update functions + correction history ----
+    // ---- update functions + correction history: golden tests ----
     //
-    // Golden tests: hand-computed post-update i16 cells for known bonus/malus
-    // sequences. Every literal below is verified against the §3.9/§3.10
-    // formulas. Poking start cells to 0 makes gravity-from-0 the identity, so
-    // a cell ends at exactly the (weighted, truncated) bonus argument.
+    // Hand-computed post-update cells for known bonus/malus sequences.
+    // Poking start cells to 0 makes gravity-from-0 the identity, so a cell
+    // ends at exactly the (weighted, truncated) bonus argument.
 
     use crate::board::Board;
     use crate::moves::Move;

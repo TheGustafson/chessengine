@@ -78,37 +78,27 @@ impl Bitboard {
         Some(sq)
     }
 
-    /// Iterate over the set squares in ascending order.
-    ///
-    /// `Bitboard` also implements `IntoIterator`, so `for sq in bb` works;
-    /// this method is for iterator chains where naming the source reads better.
+    /// Iterate over the set squares in ascending order (`IntoIterator` also
+    /// works; this method reads better in iterator chains).
     pub fn squares(self) -> BitboardIter {
         BitboardIter(self)
     }
 
-    /// True iff at least two bits are set. One AND + compare — cheaper and
-    /// more explicit than `count() >= 2`. Primary uses: double-check
-    /// detection (evasion generation), "lone attacker" tests in SEE
-    /// (design/02-core-types.md §3.5).
+    /// True iff at least two bits are set (one AND + compare).
     ///
-    /// `wrapping_sub` keeps this panic-free on `EMPTY` in debug builds
-    /// (`0u64 - 1` would be an overflow panic); `u64::MAX & 0 == 0` still
-    /// gives the right answer.
+    /// `wrapping_sub` keeps this panic-free on `EMPTY` in debug builds;
+    /// `u64::MAX & 0 == 0` still gives the right answer.
     pub const fn more_than_one(self) -> bool {
         (self.0 & self.0.wrapping_sub(1)) != 0
     }
 
     /// Shift every set square one step in `d`. Squares that would leave the
-    /// board vanish; east/west components mask the wrapping file first
-    /// (design/02-core-types.md §3.5).
+    /// board vanish; east/west components mask the wrapping file first.
     ///
-    /// Hot call sites must pass a literal (or provably constant) direction —
-    /// the match then constant-folds to one AND + one shift, while a
-    /// runtime-variant direction in a hot loop becomes a jump table
-    /// (design/02 §6).
+    /// Hot call sites must pass a literal (or provably constant) direction
+    /// so the match constant-folds to one AND + one shift.
     pub const fn shift(self, d: Direction) -> Bitboard {
-        // Operator traits (`BitAnd` etc.) are not `const fn`, so const
-        // helpers use the raw u64 (fine inside bitboard.rs).
+        // Operator traits are not `const fn`; const helpers use the raw u64.
         const NOT_FILE_A: u64 = !Bitboard::FILE_A.to_u64(); // 0xFEFE_FEFE_FEFE_FEFE
         const NOT_FILE_H: u64 = !Bitboard::FILE_H.to_u64(); // 0x7F7F_7F7F_7F7F_7F7F
         Bitboard::from_u64(match d {
@@ -127,7 +117,7 @@ impl Bitboard {
     ///
     /// Deliberately does NOT mask occupancy: movegen ANDs with `!occupied`
     /// itself, because double pushes need the intermediate emptiness test
-    /// anyway (design/02-core-types.md §3.5).
+    /// anyway.
     pub const fn pawn_pushes(self, color: Color) -> Bitboard {
         self.shift(color.pawn_push())
     }
@@ -366,13 +356,11 @@ mod tests {
 
     #[test]
     fn shifts() {
-        // Shifting rank 1 up by one rank gives rank 2.
         assert_eq!(Bitboard::RANK_1 << 8, Bitboard::RANKS[1]);
         assert_eq!(Bitboard::RANK_8 >> 8, Bitboard::RANKS[6]);
     }
 
-    /// Tiny SplitMix64 PRNG: deterministic random bitboards for in-module
-    /// equivalence tests without a dev-dependency (doc 02 §5 item 9, D15).
+    /// Tiny SplitMix64 PRNG: deterministic random bitboards, no dev-dependency.
     struct SplitMix64(u64);
 
     impl SplitMix64 {
@@ -385,8 +373,7 @@ mod tests {
         }
     }
 
-    // Doc 02 §5 item 9: fixed shift edges — wrapping files vanish, off-board
-    // ranks vanish.
+    // Fixed shift edges: wrapping files vanish, off-board ranks vanish.
     #[test]
     fn shift_by_direction_edges() {
         assert_eq!(Bitboard::RANK_1.shift(Direction::North), Bitboard::RANKS[1]);
@@ -401,8 +388,7 @@ mod tests {
         );
     }
 
-    // Doc 02 §5 item 9, randomized half: the bulk shift equals the union of
-    // per-square checked stepping, for 1000 random boards × all 8 directions.
+    // The bulk shift equals the union of per-square checked stepping.
     #[test]
     fn shift_matches_per_square_shifted_on_random_boards() {
         let mut rng = SplitMix64(0x0BAD_5EED_0BAD_5EED);
@@ -415,7 +401,7 @@ mod tests {
         }
     }
 
-    // Doc 02 §5 item 10: pawn helpers against per-square models, both colors.
+    // Pawn helpers against per-square models, both colors.
     #[test]
     fn pawn_helpers_match_per_square_models() {
         let mut rng = SplitMix64(0xDEAD_BEEF_CAFE_F00D);
@@ -440,8 +426,7 @@ mod tests {
                 assert_eq!(bb.pawn_attacks(color), attacks, "attacks for {color:?}");
             }
         }
-        // Edge case pinned by the doc: an a-file white pawn attacks only NE
-        // (and, mirrored, an h-file black pawn only SW).
+        // Edge case: an a-file white pawn attacks only NE; mirrored for black.
         assert_eq!(
             Bitboard::from_square(Square::A4).pawn_attacks(Color::White),
             Bitboard::from_square(Square::B5)
@@ -452,7 +437,6 @@ mod tests {
         );
     }
 
-    // Doc 02 §5 item 10: more_than_one over the boundary cases.
     #[test]
     fn more_than_one_cases() {
         assert!(!Bitboard::EMPTY.more_than_one());
@@ -464,8 +448,7 @@ mod tests {
         assert!(Bitboard::FULL.more_than_one());
     }
 
-    // Doc 02 §8 criterion 6 (this step's part): downstream docs can build
-    // const tables on Bitboard::shift.
+    // Downstream code builds const tables on Bitboard::shift.
     #[test]
     fn shift_is_const_evaluable() {
         const RANK_2: Bitboard = Bitboard::RANK_1.shift(Direction::North);

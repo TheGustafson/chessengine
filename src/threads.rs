@@ -1,21 +1,16 @@
 //! Threading — lazy SMP in safe Rust (`design/13-threading-smp.md`).
 //!
 //! A pool of long-lived, parked worker threads (D23). Each thread owns a
-//! [`Worker`] (its board copy, search stack, histories, and — for thread 0
-//! only — the main-worker [`SearchManager`], `design/07`), constructed on the
-//! thread itself for first-touch locality (§3.4). Threads park in
-//! [`thread_main`]'s idle loop and are woken with [`Job`]s through a per-thread
-//! [`ThreadShell`] (`Mutex<ThreadState>` + `Condvar`, exactly SF's
-//! `searching`-flag protocol re-expressed in safe Rust).
+//! [`Worker`] (thread 0 also owns the main-worker `SearchManager`),
+//! constructed on the thread itself for first-touch locality. Threads park in
+//! [`thread_main`]'s idle loop and are woken with [`Job`]s through a
+//! per-thread [`ThreadShell`] (mirrors SF's `searching`-flag protocol).
 //!
-//! The shared surface is deliberately tiny (§3.1): the transposition table
-//! (`Arc<TT>`, all-atomic, D19), three [`AtomicBool`] flags in [`PoolShared`]
-//! (`stop`/`increase_depth`/`ponder`), and per-thread atomic [`Counters`].
-//! Everything mutable a search touches — board, root moves, histories,
-//! reduction table — is single-owner inside the `Worker` and is never
-//! observable from another thread (D23). **No `unsafe`, no `Rc`/`RefCell`, and
-//! no lock on the per-node search path** (§3.11–§3.13): the mutexes here are
-//! touched only at job boundaries (a handful of times per `go`).
+//! The shared surface is deliberately tiny: the TT (`Arc<TT>`, all-atomic),
+//! three [`AtomicBool`] flags in [`PoolShared`], and per-thread atomic
+//! [`Counters`]. Everything else a search mutates is single-owner inside the
+//! `Worker`. **No `unsafe` and no lock on the per-node search path**: the
+//! mutexes here are touched only at job boundaries.
 
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -28,9 +23,8 @@ use crate::timeman::Limits;
 use crate::tt::TranspositionTable;
 use crate::uci::Options;
 
-/// Per-thread stack size (§3.4). Search recursion reaches `MAX_PLY` with fat
-/// frames; SF forces 8 MiB likewise. The main *process* thread only parses
-/// UCI, so its default stack is untouched.
+/// Per-thread stack size: search recursion reaches `MAX_PLY` with fat
+/// frames (SF forces 8 MiB likewise).
 pub const WORKER_STACK_SIZE: usize = 8 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
@@ -38,12 +32,10 @@ pub const WORKER_STACK_SIZE: usize = 8 * 1024 * 1024;
 // ---------------------------------------------------------------------------
 
 /// Per-thread atomic counters, cache-line isolated so helpers never
-/// false-share (§3.10, §6). `nodes`/`tb_hits` are written by their owning
-/// worker only, so the cheap single-writer load+store bump is correct and
-/// preferred (no `lock xadd`); they are read by any thread. `best_move_changes`
-/// is the one counter the main worker also *writes* (an atomic `swap(0)`
-/// harvest), so its owner bump uses `fetch_add` — a genuine atomic RMW — and
-/// the harvest then loses no increment even when the two race (§3.10).
+/// false-share. `nodes`/`tb_hits` are written by their owning worker only,
+/// so the cheap single-writer load+store bump is correct; `best_move_changes`
+/// is also written by the main worker (a `swap(0)` harvest), so its owner
+/// bump must be a real atomic RMW (`fetch_add`).
 #[repr(align(64))]
 pub struct Counters {
     pub nodes: AtomicU64,
@@ -60,24 +52,17 @@ impl Counters {
         }
     }
 
-    /// Zero every counter (each `Setup`, §3.6 step 4). Owner-only, so plain
-    /// relaxed stores suffice.
+    /// Zero every counter (each `Setup`). Owner-only; relaxed stores suffice.
     pub fn reset(&self) {
         self.nodes.store(0, Ordering::Relaxed);
         self.tb_hits.store(0, Ordering::Relaxed);
         self.best_move_changes.store(0, Ordering::Relaxed);
     }
 
-    /// Bump `best_move_changes` (§3.10): a non-first root move became best this
-    /// iteration. Unlike `nodes`/`tb_hits`, the main worker *also* writes this
-    /// counter — it harvests every thread's count with an atomic `swap(0)` — so
-    /// the owner bump must be a real atomic RMW (`fetch_add`). A plain
-    /// load+store could interleave with the harvest and lose or double-count
-    /// (owner loads `v`; main `swap(0)`s away `v`; owner stores `v+1`,
-    /// re-seeding the already-harvested `v`); `fetch_add` vs `swap` are both
-    /// RMWs on one location, so every increment is accounted exactly once. The
-    /// extra locked op is negligible: this fires at most once per root move per
-    /// iteration, never on the per-node path.
+    /// Bump `best_move_changes`: a non-first root move became best this
+    /// iteration. NOTE: must stay `fetch_add` — the main worker harvests with
+    /// `swap(0)`, and a plain load+store bump can lose or re-seed an already
+    /// harvested count. Fires at most once per root move per iteration.
     pub fn bump_best_move_changes(&self) {
         self.best_move_changes.fetch_add(1, Ordering::Relaxed);
     }
@@ -93,36 +78,32 @@ impl Default for Counters {
 // Jobs (§3.4)
 // ---------------------------------------------------------------------------
 
-/// Per-`go` state installed on the worker's own thread by a [`Job::Setup`]
-/// (§3.6 step 4). Board is cloned WITH its game history (D8) so each worker's
-/// repetition detection is self-contained.
+/// Per-`go` state installed on the worker's own thread by a [`Job::Setup`].
+/// Board is cloned WITH its game history so each worker's repetition
+/// detection is self-contained.
 pub struct SetupJob {
     pub board: Board,
     pub limits: Limits,
-    /// The full options snapshot (main uses it for `TimeManager::init`;
-    /// helpers ignore it). Small and `Send`, cloned once per worker per `go`.
+    /// Options snapshot (main uses it for `TimeManager::init`; helpers ignore).
     pub options: Options,
-    /// Type-erased output sink (main worker only writes through it, §3.7 G).
+    /// Type-erased output sink (only the main worker writes through it).
     pub output: Arc<dyn UciSink>,
 }
 
-/// A unit of work handed to a parked thread (§3.4). `Custom` is the
-/// zero-`unsafe` generalized dispatch (§10, Reckless idea): the closure takes
-/// the worker as a *call-time* `&mut` parameter rather than capturing a borrow,
+/// A unit of work handed to a parked thread. `Custom`'s closure takes the
+/// worker as a *call-time* `&mut` parameter rather than capturing a borrow,
 /// so it needs no lifetime gymnastics and stays `Send`.
 pub enum Job {
     /// Install per-`go` state (runs on the worker's thread).
     Setup(Box<SetupJob>),
-    /// Run [`Worker::start_searching`] with the shared table handle. Carried
-    /// per job (not stored) so `setoption Hash` can `Arc::get_mut` the table
-    /// while all threads are idle (§3.4).
+    /// Run [`Worker::start_searching`]. The TT handle is carried per job (not
+    /// stored) so `setoption Hash` can `Arc::get_mut` while all are idle.
     Search { tt: Arc<TranspositionTable> },
     /// `ucinewgame`: [`Worker::clear`].
     Clear,
     /// Leave the loop; the thread terminates.
     Exit,
-    /// Run an arbitrary one-shot on this worker (parallel TT clear / NUMA / a
-    /// test hook). Boxed `FnOnce(&mut Worker) + Send` (§10).
+    /// Run an arbitrary one-shot on this worker.
     Custom(Box<dyn FnOnce(&mut Worker) + Send>),
 }
 
@@ -135,9 +116,8 @@ struct ThreadState {
     busy: bool,
 }
 
-/// One thread's rendezvous point: the job slot (`Mutex<ThreadState>` +
-/// `Condvar`, both directions on one condvar), its atomic counters, and the
-/// slot the worker publishes its [`SearchReport`] into for voting (§3.8).
+/// One thread's rendezvous point: the job slot (mutex + condvar), its atomic
+/// counters, and the slot the worker publishes its [`SearchReport`] into.
 pub struct ThreadShell {
     state: Mutex<ThreadState>,
     cv: Condvar,
@@ -158,9 +138,9 @@ impl ThreadShell {
         }
     }
 
-    /// Hand a job to this thread; blocks until it is idle first, so the
-    /// `Option<Job>` slot never holds two jobs (§3.4 invariant). The mutex
-    /// hand-off publishes everything the submitter set up.
+    /// Hand a job to this thread; blocks until it is idle first, so the slot
+    /// never holds two jobs. The mutex hand-off publishes the submitter's
+    /// writes.
     pub fn submit(&self, job: Job) {
         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
         while st.busy || st.job.is_some() {
@@ -171,10 +151,8 @@ impl ThreadShell {
         self.cv.notify_all();
     }
 
-    /// Block until this thread has finished its current job (if any). The
-    /// mutex hand-off is the happens-before edge that publishes the job's
-    /// writes (reports, root-move scores, final counters) to the waiter
-    /// (§3.4, §3.11).
+    /// Block until this thread has finished its current job (if any); the
+    /// mutex hand-off publishes the job's writes to the waiter.
     pub fn wait_idle(&self) {
         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
         while st.busy || st.job.is_some() {
@@ -187,10 +165,9 @@ impl ThreadShell {
 // PoolShared — the whole shared surface reachable from a Worker (§3.5)
 // ---------------------------------------------------------------------------
 
-/// The shared state every worker can reach through its `Arc<PoolShared>`
-/// clone: the per-thread shells (index == `thread_idx`, 0 == main) and the
-/// three control flags. All `Relaxed` — they carry no data, only requests;
-/// every real handoff goes through a shell mutex (§3.11).
+/// The shared state every worker can reach: the per-thread shells (index ==
+/// `thread_idx`, 0 == main) and the three control flags. All `Relaxed` —
+/// they carry no data, only requests; real handoffs go through shell mutexes.
 pub struct PoolShared {
     pub shells: Vec<Arc<ThreadShell>>,
     pub stop: AtomicBool,
@@ -211,9 +188,7 @@ impl PoolShared {
         })
     }
 
-    /// A 1-thread shared block for a detached [`Worker`] (bench, unit tests):
-    /// the worker's own shell shares `counters`, so `nodes_searched` still
-    /// aggregates correctly for it.
+    /// A 1-thread shared block for a detached [`Worker`] (bench, unit tests).
     pub fn detached(counters: Arc<Counters>) -> Arc<PoolShared> {
         Arc::new(PoolShared {
             shells: vec![Arc::new(ThreadShell::new(counters))],
@@ -223,8 +198,8 @@ impl PoolShared {
         })
     }
 
-    /// Σ over threads of the live node counters (§3.10). Approximate while
-    /// threads run (relaxed), exact after `wait_idle`.
+    /// Σ over threads of the live node counters: approximate while threads
+    /// run (relaxed), exact after `wait_idle`.
     pub fn nodes_searched(&self) -> u64 {
         self.shells
             .iter()
@@ -232,7 +207,7 @@ impl PoolShared {
             .sum()
     }
 
-    /// Σ over threads of the tablebase-hit counters (§3.10).
+    /// Σ over threads of the tablebase-hit counters.
     pub fn tb_hits(&self) -> u64 {
         self.shells
             .iter()
@@ -246,28 +221,19 @@ impl PoolShared {
 // ---------------------------------------------------------------------------
 
 /// Runs on each spawned thread. The `Worker` is constructed HERE so its heavy
-/// tables get first-touch-local pages (§3.4). The loop parks until a job
-/// arrives, runs it, then marks itself idle and re-parks; `Exit` breaks out
-/// and the thread ends.
+/// tables get first-touch-local pages. The loop parks until a job arrives,
+/// runs it, marks itself idle, and re-parks; `Exit` ends the thread.
 ///
-/// `busy` is set true by the submitter (with the job) and cleared here ONLY
-/// after the job has fully run — never before taking one. An earlier design
-/// (doc §3.4) cleared `busy` at the top of the loop; that races a `submit`
-/// that lands before the worker's first park (the submitter set `busy = true`,
-/// then the worker's first iteration clobbered it back to `false` and ran the
-/// job with `busy == false`, so `wait_idle` returned before completion). The
-/// fix keeps `busy == true` for the whole submit→complete window.
+/// NOTE: `busy` is set true by the submitter (with the job) and cleared here
+/// ONLY after the job has fully run — clearing it at the top of the loop
+/// races a `submit` landing before the first park, and `wait_idle` would
+/// return before completion.
 ///
-/// A panicking job must never wedge the pool: the whole `busy` clear + notify
-/// must run on unwind too, or a dead thread would leave `busy == true` forever
-/// and every future `wait_idle` (and thus `shutdown`/`Drop`, and every next
-/// `go`) would block for good — the pre-P11 code recovered from this explicitly
-/// (§3.3). The job body therefore runs inside `catch_unwind`: the default panic
-/// hook still prints the message + backtrace, but the unwind stops here, the
-/// thread releases `busy`, wakes waiters, and re-parks. A job that panicked may
-/// leave its `Worker` in an arbitrary (but always *safe* — this is all safe
-/// Rust) state; the next `Setup`/`Clear` reinstalls the fields a search reads,
-/// so the thread stays serviceable.
+/// NOTE: the job body runs inside `catch_unwind` — a panicking job must
+/// still clear `busy` and notify, or every future `wait_idle` (and thus
+/// `shutdown`/`Drop`/next `go`) blocks forever. A panicked `Worker` may be
+/// in an arbitrary safe state; the next `Setup`/`Clear` reinstalls what a
+/// search reads.
 fn thread_main(idx: usize, pool: Arc<PoolShared>) {
     let counters = Arc::clone(&pool.shells[idx].counters);
     let mut worker = Worker::new_in_pool(idx, counters, Arc::clone(&pool));
@@ -293,25 +259,16 @@ fn thread_main(idx: usize, pool: Arc<PoolShared>) {
             Job::Custom(f) => f(&mut worker),
             Job::Exit => unreachable!("Exit handled before dispatch"),
         }));
-        // A panicked job must not leave the REST of the pool running. The main
-        // worker's `start_searching` runs its stop-and-join epilogue (search
-        // `main_search` step E: `pool.stop.store(true)` + wait every helper)
-        // INSIDE the job, so a panic before that point would swallow the stop
-        // and leave the helpers searching — still holding their per-`go`
-        // `Arc<TranspositionTable>` clones — while `wait_for_search_finished`
-        // already observes the parked (panicked) main. A following
-        // `setoption Hash`/`ucinewgame`/`Clear Hash` would then reach
-        // `Arc::get_mut(&mut tt)` (uci `tt_mut`) against those live clones and
-        // panic a SECOND time on the UCI read loop (breaking "never panic on
-        // input"). Requesting `stop` here makes every helper wind down and drop
-        // its clone promptly; the all-shells wait in `wait_for_search_finished`
-        // then closes the get_mut race for good. Harmless for a non-`Search`
-        // job or a between-`go` panic (the next `start_thinking` clears `stop`).
+        // NOTE: a panicked main job must not strand the helpers. Main's
+        // stop-and-join epilogue runs INSIDE its job, so a panic before it
+        // would leave helpers searching (holding per-`go` `Arc<TT>` clones)
+        // and a later `Arc::get_mut` on the TT would panic the UCI loop.
+        // Requesting `stop` here makes every helper wind down; harmless for
+        // non-`Search` jobs (the next `start_thinking` clears `stop`).
         if outcome.is_err() {
             pool.stop.store(true, Ordering::Relaxed);
         }
-        // Job complete (or panicked): announce idle and wake any
-        // `wait_idle`/`submit` waiter.
+        // Job complete (or panicked): announce idle and wake waiters.
         let mut st = shell.state.lock().unwrap_or_else(|e| e.into_inner());
         st.busy = false;
         shell.cv.notify_all();
@@ -322,32 +279,27 @@ fn thread_main(idx: usize, pool: Arc<PoolShared>) {
 // ThreadPool (§3.5)
 // ---------------------------------------------------------------------------
 
-/// The pool of parked search threads, owned by the UCI thread. `start_thinking`
-/// is non-blocking (§3.6); all cross-`go` state lives in the workers (inside
-/// their threads) and in `PoolShared`.
+/// The pool of parked search threads, owned by the UCI thread.
+/// `start_thinking` is non-blocking; all cross-`go` state lives in the
+/// workers and in `PoolShared`.
 pub struct ThreadPool {
     shared: Arc<PoolShared>,
     handles: Vec<JoinHandle<()>>,
 }
 
 impl ThreadPool {
-    /// Create a pool with `n >= 1` threads, all parked and ready. A spawn
-    /// failure here is at *startup* (not in response to UCI input), so it is
-    /// fatal — the engine cannot run without its search threads.
+    /// Create a pool with `n >= 1` threads, all parked. A spawn failure here
+    /// is at *startup*, so it is fatal.
     pub fn new(n: usize) -> ThreadPool {
         let (shared, handles) =
             Self::build(n.max(1)).expect("spawn search worker threads at startup");
         ThreadPool { shared, handles }
     }
 
-    /// Spawn `n >= 1` parked worker threads and their shared block WITHOUT
-    /// installing them on `self`. On any OS spawn failure (a restrictive
-    /// thread `ulimit` / cgroup `pids.max`), the threads already created are
-    /// cleanly `Exit`ed and joined and the `io::Error` is returned, so no
-    /// half-built pool ever escapes and the caller can keep whatever pool it
-    /// already had. Reserving the fatal case for `new` (startup) lets `set`
-    /// (`setoption Threads`) degrade gracefully — the engine must **never
-    /// panic on input** (§3.3).
+    /// Spawn `n >= 1` parked worker threads WITHOUT installing them on
+    /// `self`. On any OS spawn failure the threads already created are
+    /// cleanly `Exit`ed and joined and the `io::Error` is returned — no
+    /// half-built pool ever escapes, and `set` can degrade gracefully.
     fn build(n: usize) -> std::io::Result<(Arc<PoolShared>, Vec<JoinHandle<()>>)> {
         let shared = PoolShared::new(n);
         let mut handles = Vec::with_capacity(n);
@@ -360,8 +312,7 @@ impl ThreadPool {
             {
                 Ok(handle) => handles.push(handle),
                 Err(e) => {
-                    // Roll back: each thread we did spawn is parked on its own
-                    // shell, so `Job::Exit` + join reaps it. No orphan survives.
+                    // Roll back: `Job::Exit` + join reaps every spawned thread.
                     for shell in shared.shells.iter().take(handles.len()) {
                         shell.submit(Job::Exit);
                     }
@@ -375,13 +326,10 @@ impl ThreadPool {
         Ok((shared, handles))
     }
 
-    /// (Re)create the pool with `n >= 1` threads (`setoption Threads`). Builds
-    /// the NEW set FIRST, and only then waits for any running search, exits and
-    /// joins the old threads, and swaps them in — so a spawn failure returns
-    /// `Err` with the existing (working) pool left completely untouched, and
-    /// the caller keeps playing on it (mirrors the fallible `Hash` resize). The
-    /// only cost is a brief `old + new` thread overlap. All per-thread state
-    /// (histories, TM) on the new set is rebuilt fresh.
+    /// (Re)create the pool with `n >= 1` threads (`setoption Threads`).
+    /// Builds the NEW set FIRST, then shuts down and swaps out the old — a
+    /// spawn failure returns `Err` with the existing pool untouched. Cost: a
+    /// brief `old + new` thread overlap. Per-thread state is rebuilt fresh.
     pub fn set(&mut self, n: usize) -> std::io::Result<()> {
         let n = n.max(1);
         if n == self.size() {
@@ -399,16 +347,14 @@ impl ThreadPool {
         self.shared.shells.len()
     }
 
-    /// Read-only handle to the shared block (flags + counters), for the UCI
-    /// layer's `stop`/`ponderhit` and mid-search `info` node aggregation.
+    /// Read-only handle to the shared block (flags + counters).
     pub fn shared(&self) -> &Arc<PoolShared> {
         &self.shared
     }
 
-    /// UCI `go` (§3.6). Non-blocking: waits for the previous search, clears
-    /// the flags, installs per-`go` state on every thread, then wakes ONLY the
-    /// main thread and returns. The main worker wakes the helpers itself
-    /// (§3.7 C), after bumping the TT generation.
+    /// UCI `go`. Non-blocking: waits for the previous search, clears the
+    /// flags, installs per-`go` state on every thread, then wakes ONLY the
+    /// main thread and returns; the main worker wakes the helpers itself.
     pub fn start_thinking(
         &self,
         board: &Board,
@@ -417,19 +363,10 @@ impl ThreadPool {
         options: Options,
         output: Arc<dyn UciSink>,
     ) {
-        // Step 1: wait for the previous search to FULLY finish, on every shell
-        // — not just main. On the normal path main's step-E epilogue already
-        // joined the helpers before parking, so this is the old single-shell
-        // wait at nil extra cost. But "main idle ⇒ all idle" is FALSE when the
-        // main worker's job panicked before that epilogue: `thread_main` set
-        // `stop` on the caught unwind, yet its helpers only wind down once
-        // something waits on them. Waiting on all shells here reaps any such
-        // stranded helper BEFORE step 2 revives `stop` — otherwise a helper
-        // that first reads `stop` only after `stop.store(false)` would never
-        // stop, and step 3's `submit(Setup)` to its still-`busy` shell would
-        // block forever, wedging the UCI thread (review round 3). `cmd_go`
-        // already pre-waits, so this is defense-in-depth that makes
-        // `start_thinking` self-sufficient rather than relying on its caller.
+        // Step 1: wait on EVERY shell, not just main. NOTE: "main idle ⇒ all
+        // idle" is FALSE after a main-job panic — a stranded helper must be
+        // reaped BEFORE step 2 clears `stop`, or it never stops and step 3's
+        // `submit` to its still-busy shell wedges the UCI thread.
         self.wait_for_search_finished();
         // Step 2: clear control flags.
         self.shared.stop.store(false, Ordering::Relaxed);
@@ -437,9 +374,7 @@ impl ThreadPool {
         self.shared.ponder.store(limits.ponder, Ordering::Relaxed);
         // Steps 3–4: install per-`go` state on every thread. Root-move
         // construction is deterministic from board + searchmoves, so each
-        // worker rebuilds the identical list in `iterative_deepening` (design
-        // deviation from §3.6 step 3's "clone one list" — equivalent order,
-        // one fewer clone; noted in design/13 §3.6).
+        // worker rebuilds the identical list itself (design/13 §3.6).
         for shell in &self.shared.shells {
             shell.submit(Job::Setup(Box::new(SetupJob {
                 board: board.clone(),
@@ -448,8 +383,7 @@ impl ThreadPool {
                 output: Arc::clone(&output),
             })));
         }
-        // Step 5: wait for all setups (so main sees every helper parked-idle
-        // when it wakes them).
+        // Step 5: wait for all setups.
         for shell in &self.shared.shells {
             shell.wait_idle();
         }
@@ -457,39 +391,29 @@ impl ThreadPool {
         self.shared.shells[0].submit(Job::Search { tt: Arc::clone(tt) });
     }
 
-    /// `stop`: request every worker to finish (§3.10). Relaxed — a data-free
-    /// signal.
+    /// `stop`: request every worker to finish. Relaxed — a data-free signal.
     pub fn stop(&self) {
         self.shared.stop.store(true, Ordering::Relaxed);
     }
 
-    /// `ponderhit`: the pondered move was played — clear the ponder flag so
-    /// the main worker's clock goes live and its busy-wait releases (§3.7 D).
+    /// `ponderhit`: clear the ponder flag so the main worker's clock goes
+    /// live and its busy-wait releases.
     pub fn ponderhit(&self) {
         self.shared.ponder.store(false, Ordering::Relaxed);
     }
 
-    /// Wait until the search is fully finished (§3.5). In normal operation the
-    /// main worker's epilogue (`main_search` step E) stops and joins every
-    /// helper before it parks, so main-idle already implies all-idle — but if
-    /// the main worker's job PANICS before that epilogue, its helpers keep
-    /// running (and holding `Arc<TranspositionTable>` clones) after main parks.
-    /// Waiting on EVERY shell — not just `shells[0]` — guarantees that once
-    /// this returns no worker is busy and every per-`go` TT clone has been
-    /// dropped, so the UCI thread's `Arc::get_mut(&mut tt)` (uci `tt_mut`)
-    /// cannot race a live helper. `thread_main` sets `stop` on a caught panic
-    /// so those helpers actually wind down (bounded wait, never a hang). Cheap
-    /// in the common case: the helpers are already parked, each extra
-    /// `wait_idle` returns at once; at Threads=1 it is exactly the old
-    /// single-shell wait.
+    /// Wait until the search is fully finished. NOTE: waits on EVERY shell,
+    /// not just main — after a main-job panic the helpers can outlive main,
+    /// and only the all-shells wait guarantees every per-`go` TT clone is
+    /// dropped before the UCI thread's `Arc::get_mut`. Bounded because
+    /// `thread_main` sets `stop` on a caught panic; cheap when already parked.
     pub fn wait_for_search_finished(&self) {
         for shell in &self.shared.shells {
             shell.wait_idle();
         }
     }
 
-    /// `ucinewgame`: reset every worker (histories, TM). Waits for the search
-    /// to finish first, then runs `Clear` on all threads.
+    /// `ucinewgame`: wait for the search, then run `Clear` on all threads.
     pub fn clear(&self) {
         self.wait_for_search_finished();
         for shell in &self.shared.shells {
@@ -508,9 +432,7 @@ impl ThreadPool {
         self.shared.tb_hits()
     }
 
-    /// Test hook: run `f` on the main worker and wait for completion. Uses the
-    /// `Job::Custom` dispatch to reach the otherwise-encapsulated worker state
-    /// (e.g. asserting a per-game field was reset by `ucinewgame`).
+    /// Test hook: run `f` on the main worker (via `Job::Custom`) and wait.
     #[cfg(test)]
     pub fn run_on_main<F: FnOnce(&mut Worker) + Send + 'static>(&self, f: F) {
         self.wait_for_search_finished();
@@ -519,8 +441,7 @@ impl ThreadPool {
     }
 
     /// Stop, wait for main idle, then Exit + join every thread. Shared by
-    /// [`ThreadPool::set`] and `Drop`; must never hang (a joined-thread test
-    /// runs under a timeout).
+    /// [`ThreadPool::set`] and `Drop`; must never hang.
     fn shutdown(&mut self) {
         self.shared.stop.store(true, Ordering::Relaxed);
         self.shared.shells[0].wait_idle();
@@ -545,7 +466,6 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::time::{Duration, Instant};
 
-    // ---- Send/Sync marker assertions (§3.12) ----
     fn assert_send<T: Send>() {}
     fn assert_sync<T: Sync>() {}
 
@@ -562,7 +482,7 @@ mod tests {
     }
 
     /// Run `f` on a fresh detached thread and fail if it does not finish
-    /// within `limit` — every pool test must be hang-proof (§5).
+    /// within `limit` — every pool test must be hang-proof.
     fn with_timeout(limit: Duration, f: impl FnOnce() + Send + 'static) {
         let done = Arc::new((Mutex::new(false), Condvar::new()));
         let d2 = Arc::clone(&done);
@@ -597,7 +517,6 @@ mod tests {
         with_timeout(Duration::from_secs(10), || {
             let pool = ThreadPool::new(4);
             let counter = Arc::new(AtomicUsize::new(0));
-            // Submit a Custom job to every thread; each bumps a shared count.
             for shell in &pool.shared.shells {
                 let c = Arc::clone(&counter);
                 shell.submit(Job::Custom(Box::new(move |_w| {
@@ -683,12 +602,9 @@ mod tests {
         });
     }
 
-    /// §5 acceptance: the `best_move_changes` harvest loses no count under a
-    /// hammering writer. The owner bump is `fetch_add` (an atomic RMW) and the
-    /// main worker harvests with `swap(0)`, so every increment is accounted
-    /// exactly once — accumulated harvest + residual must equal N. A plain
-    /// load+store bump would fail this (it can lose or double-count against the
-    /// concurrent `swap`).
+    /// The `best_move_changes` harvest loses no count under a hammering
+    /// writer: accumulated harvest + residual must equal N. A plain
+    /// load+store bump would fail this.
     #[test]
     fn best_move_changes_harvest_loses_no_counts() {
         with_timeout(Duration::from_secs(10), || {
@@ -711,26 +627,21 @@ mod tests {
         });
     }
 
-    /// A panicking job must not wedge the pool (§3.3): after a `Custom` job
-    /// panics, its thread must release `busy`, re-park, and still service the
-    /// next job — `wait_idle` must return (not hang) and later work must run.
-    /// The pre-fix code let the unwind kill the thread with `busy == true`, so
-    /// every subsequent `wait_idle`/`shutdown`/`go` blocked forever.
+    /// A panicking job must not wedge the pool: its thread must release
+    /// `busy`, re-park, and still service the next job.
     #[test]
     fn a_panicking_job_does_not_wedge_the_pool() {
         with_timeout(Duration::from_secs(10), || {
-            // The panicking job runs the default hook (stderr backtrace); mute
-            // it for this test so the output stays clean, then restore.
+            // Mute the default panic hook for clean test output, then restore.
             let prev = std::panic::take_hook();
             std::panic::set_hook(Box::new(|_| {}));
 
             let pool = ThreadPool::new(2);
-            // Panic on the MAIN thread's shell — the worst case, since main
-            // idle ⇒ all idle drives shutdown/next-go waits.
+            // Panic on the MAIN thread's shell — the worst case.
             pool.shared.shells[0].submit(Job::Custom(Box::new(|_w| {
                 panic!("boom");
             })));
-            // Must return despite the panic (the fix clears `busy` on unwind).
+            // Must return despite the panic (`busy` cleared on unwind).
             pool.shared.shells[0].wait_idle();
 
             std::panic::set_hook(prev);
@@ -743,20 +654,14 @@ mod tests {
             })));
             pool.shared.shells[0].wait_idle();
             assert_eq!(ran.load(Ordering::SeqCst), 7, "pool must survive a panic");
-            // Drop must also not hang (Exit + join on a live thread).
         });
     }
 
-    /// Round-2 lifecycle fix (§3.5, review): a panic in the MAIN worker's job
-    /// must not leave the helpers running. The main worker's stop-and-join
-    /// epilogue lives INSIDE its job, so a panic before it never sets `stop`;
-    /// `thread_main` therefore sets `stop` on any caught unwind, and
-    /// `wait_for_search_finished` waits on EVERY shell. Together they guarantee
-    /// that once the wait returns no helper is still busy (holding an
-    /// `Arc<TT>` clone) — the window that would let the UCI thread's
-    /// `Arc::get_mut` in `tt_mut` panic a second time. Here two helpers spin
-    /// like a live search until they see `stop`; only the panic-set `stop` can
-    /// release them, and only the all-shells wait can observe it.
+    /// A panic in the MAIN worker's job must not leave the helpers running:
+    /// `thread_main` sets `stop` on a caught unwind and
+    /// `wait_for_search_finished` waits on EVERY shell. Two helpers spin like
+    /// a live search until they see `stop`; only the panic-set `stop` can
+    /// release them.
     #[test]
     fn a_main_panic_stops_helpers_so_the_all_shells_wait_joins() {
         with_timeout(Duration::from_secs(10), || {
@@ -765,8 +670,7 @@ mod tests {
 
             let pool = ThreadPool::new(3);
             pool.shared.stop.store(false, Ordering::Relaxed);
-            // Helpers busy-loop until they observe `stop` — a live search that
-            // never stops itself, exactly the case a main panic must not strand.
+            // Helpers busy-loop until they observe `stop`.
             for shell in pool.shared.shells.iter().skip(1) {
                 let shared = Arc::clone(&pool.shared);
                 shell.submit(Job::Custom(Box::new(move |_w| {
@@ -780,8 +684,7 @@ mod tests {
                 panic!("boom");
             })));
 
-            // Returns only once the panic-set `stop` has released both helpers
-            // and every shell has parked — a hang here fails via `with_timeout`.
+            // Returns only once the panic-set `stop` released both helpers.
             pool.wait_for_search_finished();
             std::panic::set_hook(prev);
 
@@ -789,7 +692,7 @@ mod tests {
                 pool.shared.stop.load(Ordering::Relaxed),
                 "a caught panic must request stop so helpers wind down"
             );
-            // Every shell is serviceable again (proves they re-parked, not hung).
+            // Every shell is serviceable again.
             let ran = Arc::new(AtomicUsize::new(0));
             for shell in &pool.shared.shells {
                 let r = Arc::clone(&ran);
@@ -804,8 +707,7 @@ mod tests {
         });
     }
 
-    /// A `UciSink` that drops everything — a `Setup` needs one, but this test
-    /// only inspects worker board state, never output.
+    /// A `UciSink` that drops everything.
     struct NullSink;
     impl UciSink for NullSink {
         fn emit_info(&self, _: &crate::search::SearchInfo, _: i64) {}
@@ -820,18 +722,14 @@ mod tests {
         fn emit_bestmove_none(&self) {}
     }
 
-    /// §5 setup-propagation: a `Job::Setup` clones the board WITH its game
-    /// history (D8, §3.2), so a pooled worker's `root_board` sees the same
-    /// repetition state the session board does — the per-thread repetition
-    /// detection is self-contained. Verified at the worker level via
-    /// `run_on_main`, which the session-level test at `uci.rs` cannot reach.
+    /// A `Job::Setup` clones the board WITH its game history, so a pooled
+    /// worker sees the same repetition state the session board does.
     #[test]
     fn setup_propagates_repetition_history_to_the_worker() {
         use crate::moves::Move;
         use crate::types::Square;
         with_timeout(Duration::from_secs(10), || {
-            // Four reversible knight moves each side: the start position
-            // repeats twofold (same shuffle as the uci.rs session test).
+            // Four reversible knight moves each side: startpos repeats twofold.
             let shuffle = [
                 (Square::G1, Square::F3),
                 (Square::G8, Square::F6),

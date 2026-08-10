@@ -1,46 +1,15 @@
 //! UCI entry point: argv subcommand dispatch, then the blocking stdin loop.
 //!
-//! Contracts: `design/01-architecture.md` §3.1/§3.3.18 (the `run()` seam;
-//! argv subcommands run to completion before the loop) and
-//! `design/12-uci-time-management.md` §3.3–§3.6 (command grammar, move
-//! text, options table, `go` limits) plus its robustness rules: never
-//! panic on input, unknown commands answer `info string`, EOF on stdin is
-//! `quit` — GUIs close the pipe, and a dead engine loses on time.
-//!
-//! P5 state (doc 12 §4 steps 1–6): everything from P4 — `position`
-//! (startpos/fen + atomic move application), the move-text layer
-//! (`move_to_uci`/`move_from_uci`), the §3.5 options table with full
-//! `setoption` semantics (including the `Debug Log File` stdin/stdout
-//! tee), `ucinewgame` per-game TM reset, `go`-limit parsing into
-//! [`Limits`] — plus the live `go` session (doc 12 §3.2): the search runs
-//! on its own thread while this thread keeps reading stdin, `stop` flips a
-//! shared flag, blocking commands apply the implicit-stop rule, and the
-//! worker prints `info` lines (§3.13 v1 scope) and the exactly-once
-//! `bestmove` — after `stop`/`ponderhit` only, in infinite/ponder mode
-//! (the busy-wait rule). wtime/btime go through
-//! [`TimeManager::init`](crate::timeman::TimeManager::init) with
-//! the `maximum` hard wall enforced in the search's `check_time` and,
-//! since doc 12 step 7 (P7), the v1 soft stop ending deepening at the
-//! first iteration boundary past `optimum` (doc 12 §3.9 subset, owned by
-//! the search's ID loop); the four-factor soft-stop stack and real
-//! pondering are doc 12 steps 8–9. The
-//! in-session `bench`/`perft`/`go perft`/`eval` dev commands land with doc
-//! 12 step 12. The argv subcommands are live: `perft <depth> [fen]` prints
-//! a real SF-format divide (P3, design/06 §3.2) and `bench ... perft` runs
-//! perft-mode bench.
-//!
-//! P6 state (doc 08 §4 steps 7–8): [`Engine`] owns the shared
-//! `Arc<TranspositionTable>` (D23); `setoption name Hash` resizes it
-//! between searches via `Arc::get_mut` — fallible per doc 08 §3.13,
-//! allocation shortfall answers
-//! `info string Failed to allocate <req> MB hash, using <got> MB` and the
-//! engine keeps playing — while `Clear Hash` and `ucinewgame` clear it.
-//! Each `go` clones the handle into its search thread ([`run_search`]
-//! holds it for the job's duration and bumps `tt.new_search()` once, doc
-//! 13 §3.4/§3.7 B — dropped at job end, so the idle UCI thread stays the
-//! sole holder and `Arc::get_mut` keeps working), the worker probes and
-//! stores through it (doc 07's call sites), and completed PV lines carry
-//! `info hashfull` (§3.13).
+//! Contracts (design/01 §3.1, design/12 §3.3–§3.6): argv subcommands run to
+//! completion before the loop; never panic on input; unknown commands answer
+//! `info string`; EOF on stdin is `quit` — GUIs close the pipe, and a dead
+//! engine loses on time. Each `go` hands the search to the thread pool while
+//! this thread keeps reading stdin; `stop` flips a shared flag, blocking
+//! commands apply the implicit-stop rule, and the worker prints the `info`
+//! lines and the exactly-once `bestmove`. [`Engine`] owns the shared
+//! `Arc<TranspositionTable>` (D23): `setoption name Hash` resizes it between
+//! searches via `Arc::get_mut`; allocation shortfall answers `info string`
+//! and the engine keeps playing.
 
 use crate::attacks;
 use crate::bench;
@@ -64,32 +33,25 @@ use std::str::{FromStr, SplitWhitespace};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
-/// Public engine name (D41, doc 12 §3.3) plus manifest version. The Cargo
-/// package and binary retain their stable internal `chessengine` identifiers.
+/// Public engine name plus manifest version; the Cargo package and binary
+/// retain their internal `chessengine` identifiers.
 const NAME: &str = concat!("ARCHON ", env!("CARGO_PKG_VERSION"));
-/// `id author` text, likewise from the manifest `authors` field.
+/// `id author` text, from the manifest `authors` field.
 const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
 
-/// The program front door (design/01 §3.1): argv subcommands (`bench`,
-/// `perft <depth> [fen...]`, `d`) run to completion; with no subcommand
-/// this blocks on the stdin UCI loop until `quit`/EOF.
+/// The program front door: argv subcommands run to completion; with no
+/// subcommand this blocks on the stdin UCI loop until `quit`/EOF.
 pub fn run() {
-    // Force the magic attack tables before any command runs (design/03
-    // §3.7): the ~21 ms magic search never happens mid-search, and the
-    // LazyLock branch is always-taken from here on. `main` is a one-line
-    // delegator to this function, so this IS startup.
+    // Force the magic attack tables at startup so the ~21 ms magic search
+    // never happens mid-search (design/03 §3.7).
     crate::attacks::tables();
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("bench") => cmd_bench_argv(&args[1..]),
         Some("perft") => cmd_perft_argv(&args[1..]),
-        // Hidden NNUE dev surface (design/11 §3.4, P13 step 1): the raw
-        // forward-pass oracle and a deterministic test-net writer. Not part
-        // of the UCI protocol; used by tools/nnue/verify_forward.sh.
+        // Hidden NNUE dev surface: forward-pass oracle + test-net writer.
         Some("nnue-eval") => cmd_nnue_eval_argv(&args[1..]),
-        // SPSA driver preflight (D45, tune builds): every runtime tunable as
-        // `NAME<TAB>current-value`, one per line — the driver validates its
-        // campaign config against this before burning any games.
+        // SPSA driver preflight: every runtime tunable as NAME<TAB>value.
         #[cfg(feature = "tune")]
         Some("tunables") => {
             for (name, value) in crate::search::params::tunables_list()
@@ -101,9 +63,7 @@ pub fn run() {
             }
         }
         Some("nnue-testnet") => cmd_nnue_testnet_argv(&args[1..]),
-        // `d`: board diagram + FEN + key + checkers (design/12 §3.15).
-        // Outside a UCI session the "current" position is the start
-        // position.
+        // `d` outside a session prints the start position.
         Some("d") => {
             let _ = print_board(&mut io::stdout().lock(), &Board::startpos());
         }
@@ -112,34 +72,27 @@ pub fn run() {
         )),
         None => {
             let stdin = io::stdin();
-            // Deliberately NOT StdoutLock: the search worker prints from
-            // its own thread, and a lock held by this thread would block
-            // it forever. [`SharedOut`]'s mutex is the line-atomicity
-            // guarantee instead (doc 12 §3.13).
+            // Deliberately NOT StdoutLock — the search worker prints from its
+            // own thread; [`SharedOut`]'s mutex is the line-atomicity guarantee.
             let out = SharedOut::new(io::stdout());
             uci_loop(stdin.lock(), &out);
         }
     }
 }
 
-/// Report an argv usage error on stderr and exit 1.
-///
-/// `process::exit` skips destructors — fine at the program front door:
-/// nothing below `run()` holds state that needs unwinding, and stderr is
-/// unbuffered. Inside the UCI *loop* errors never exit (doc 12 §3.3).
+/// Report an argv usage error on stderr and exit 1. Fine at the program
+/// front door; inside the UCI *loop* errors never exit (doc 12 §3.3).
 fn exit_usage(msg: fmt::Arguments<'_>) -> ! {
     eprintln!("{msg}");
     std::process::exit(1)
 }
 
-/// `chessengine bench [ttMB] [threads] [limit] [fens] [type]`
-/// (design/06 §3.6).
+/// `chessengine bench [ttMB] [threads] [limit] [fens] [type]` (design/06 §3.6).
 fn cmd_bench_argv(args: &[String]) {
     match bench::BenchParams::parse(args) {
         Ok(params) => {
-            // Optional 6th arg: an NNUE net path (design/11 §3.4.5). Load it as
-            // the active net before the run so the NNUE-on node count can be
-            // recorded; a bad net exits cleanly rather than searching on PSQT.
+            // Optional 6th arg: an NNUE net path. A bad net exits cleanly
+            // rather than silently searching on PSQT.
             if let Some(net) = &params.net
                 && let Err(e) = nnue::set_eval_file(net)
             {
@@ -151,11 +104,10 @@ fn cmd_bench_argv(args: &[String]) {
     }
 }
 
-/// `chessengine perft <depth> [fen...]` — the CLI convenience face of
-/// perft divide (design/06 §3.2); the FEN may span several argv tokens.
+/// `chessengine perft <depth> [fen...]` — perft divide from the CLI; the
+/// FEN may span several argv tokens.
 fn cmd_perft_argv(args: &[String]) {
-    // divide requires depth >= 1 (design/06 §3.2); reject 0 here rather
-    // than panic on external input (design/01 §3.4 error zones).
+    // divide requires depth >= 1; reject 0 rather than panic on input.
     let depth = args.first().and_then(|tok| tok.parse::<u32>().ok());
     let Some(depth @ 1..) = depth else {
         exit_usage(format_args!(
@@ -174,16 +126,9 @@ fn cmd_perft_argv(args: &[String]) {
 }
 
 /// `chessengine nnue-eval <net.cenn> [fen...]` — the raw NNUE forward-pass
-/// oracle (design/11 §3.4, P13 step 1). Loads a CENN net and prints its
-/// integer centipawn forward-pass value for each position, one per line:
-///
-/// - with a FEN in argv (which may span several tokens): score that one
-///   position;
-/// - with no FEN: read one FEN per line from stdin, score each.
-///
-/// The output is a deterministic integer, cross-checked bit-for-bit against
-/// the independent Python reference (`tools/nnue/nnue_ref.py`). This is the
-/// forward-pass bit-oracle; the vs-`bullet` cross-check folds in at step 3.
+/// oracle, one integer per position. With a FEN in argv (may span several
+/// tokens): score that position; with none: one FEN per line from stdin.
+/// Deterministic; cross-checked bit-for-bit against `tools/nnue/nnue_ref.py`.
 fn cmd_nnue_eval_argv(args: &[String]) {
     let Some(net_path) = args.first() else {
         exit_usage(format_args!(
@@ -206,9 +151,8 @@ fn cmd_nnue_eval_argv(args: &[String]) {
     let raw = std::fs::read(net_path)
         .unwrap_or_else(|e| exit_usage(format_args!("nnue-eval: reading {net_path}: {e}")));
 
-    // CEN2 and CEN5 are the SOTA container's two versions (perf study 30);
-    // CEN3/CEN4 below are DIFFERENT net families, which is why the SOTA bump
-    // had to skip to 5.
+    // CEN3/CEN4 are DIFFERENT net families — that is why the SOTA container
+    // bump skipped from CEN2 to CEN5.
     let loaded = if cfg!(feature = "sota")
         && raw.len() >= 4
         && (raw[0..4] == *b"CEN2" || raw[0..4] == *b"CEN5")
@@ -263,7 +207,6 @@ fn cmd_nnue_eval_argv(args: &[String]) {
         }
     };
 
-    // Build eval context once (reused for every FEN).
     #[cfg(feature = "sota")]
     let mut sota_ctx = match &loaded {
         LoadedNet::V2(net) => Some(nnue::sota_context::SotaContext::new(net)),
@@ -291,18 +234,13 @@ fn cmd_nnue_eval_argv(args: &[String]) {
                 let ctx = sota_ctx.as_mut().unwrap();
                 ctx.refresh_root(&board);
                 let val = ctx.evaluate(&board, 0);
-                // The disagreement head, when the net carries a DIS1 section.
-                // `None` for every net that does not, so the columns below —
-                // and therefore the NNUE gate's eval hash — are unchanged for
-                // every existing net. Nine significant digits: the JAX↔Rust
-                // parity check reads these, and f32 round-trips exactly at 9.
+                // Disagreement head (DIS1 section); `None` otherwise so the
+                // eval hash is unchanged. 9 sig digits: f32 round-trips there.
                 let dis = ctx
                     .disagreement(&board, 0)
                     .map(|d| format!("\tdis {:.9e} {:.9e}", d[0], d[1]))
                     .unwrap_or_default();
-                // D47 learnability probe: with a CPL1 sidecar beside the net,
-                // append the policy-argmax move (plain cp output is unchanged
-                // for sidecar-less nets, so existing probe scripts keep parsing).
+                // With a CPL1 policy sidecar, append the policy-argmax move.
                 match (nnue::active_policy_head(), ctx.last_l2()) {
                     (Some(head), Some(l2)) => match head.best_move(&board, l2) {
                         Some(m) => {
@@ -337,10 +275,8 @@ fn cmd_nnue_eval_argv(args: &[String]) {
     };
 
     if args.len() > 1 {
-        // FEN given on the command line (may span several argv tokens).
         score_fen(&args[1..].join(" "));
     } else {
-        // Batch mode: one FEN per line from stdin.
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             let line = line.unwrap_or_else(|e| exit_usage(format_args!("nnue-eval: stdin: {e}")));
@@ -353,10 +289,7 @@ fn cmd_nnue_eval_argv(args: &[String]) {
 }
 
 /// `chessengine nnue-testnet <out.cenn> <seed> <screlu|crelu>` — write a
-/// deterministic pseudo-random CENN test net (design/11 §3.4.5/§3.4.7). A
-/// dev/test fixture, NOT a trained net; the single source of net bytes both
-/// the Rust `nnue-eval` and the Python oracle read, so their forward passes
-/// compare on identical weights.
+/// deterministic pseudo-random CENN test net for forward-pass comparison.
 fn cmd_nnue_testnet_argv(args: &[String]) {
     let usage = || -> ! {
         exit_usage(format_args!(
@@ -389,11 +322,8 @@ fn cmd_nnue_testnet_argv(args: &[String]) {
 // Move text (design/12 §3.4)
 // ---------------------------------------------------------------------------
 
-/// `Move` -> UCI long algebraic text. `Move::NULL` is our none-sentinel
-/// (D2) and prints as `(none)`, the SF convention for `bestmove` with no
-/// legal moves. Everything else defers to the `Display` impl (from + to +
-/// lowercase promotion letter); castling needs no translation because our
-/// internal encoding is already the king-to-castling-square form (D2/D10).
+/// `Move` -> UCI long algebraic text. `Move::NULL` prints as `(none)`;
+/// everything else defers to `Display`.
 pub fn move_to_uci(m: Move) -> String {
     if m == Move::NULL {
         "(none)".to_string()
@@ -402,12 +332,9 @@ pub fn move_to_uci(m: Move) -> String {
     }
 }
 
-/// Parse a UCI move token against the legal moves of `board`:
-/// a token is a legal move iff it formats identically to one of them, so
-/// the formatter is the single source of truth and promotion/ep/castling
-/// disambiguation comes for free. Case-insensitive (GUIs occasionally send
-/// `E2E4` or `e7e8Q`). O(legal moves) with a `String` per candidate — only
-/// runs on `position`/`searchmoves` parsing, never in search.
+/// Parse a UCI move token: legal iff it formats identically to a generated
+/// legal move, so the formatter is the single source of truth.
+/// Case-insensitive. O(legal moves) — never runs in search.
 pub fn move_from_uci(board: &Board, token: &str) -> Option<Move> {
     let token = token.to_ascii_lowercase();
     let mut list = MoveList::new();
@@ -419,17 +346,13 @@ pub fn move_from_uci(board: &Board, token: &str) -> Option<Move> {
 // Options table (design/12 §3.5)
 // ---------------------------------------------------------------------------
 
-/// `Hash` spin range in MiB, straight from the owner (doc 08 §3.13:
-/// SF's 64-bit cap; the range is a sanity bound on the option, not a
-/// promise the allocation succeeds — `resize` is fallible).
+/// `Hash` spin range in MiB — a sanity bound on the option, not a promise
+/// the allocation succeeds (`resize` is fallible).
 const HASH_MB_MIN: i64 = MIN_HASH_MB as i64;
 const HASH_MB_MAX: i64 = MAX_HASH_MB as i64;
 
-/// UCI `Threads` upper bound (design/12 §9.6; Reckless bundle D31):
-/// `max(4 · available_parallelism, 512)`, a hardware-scaled ceiling — a
-/// lazy-SMP pool never usefully exceeds a few times the core count. Falls
-/// back to 512 when the hardware thread count is unavailable. Exposed so
-/// the handshake test can pin the same value it registers.
+/// UCI `Threads` upper bound: `max(4 · available_parallelism, 512)`.
+/// Exposed so the handshake test can pin the value it registers.
 pub fn max_threads() -> i64 {
     std::thread::available_parallelism()
         .map(|n| (4 * n.get() as i64).max(512))
@@ -437,8 +360,7 @@ pub fn max_threads() -> i64 {
 }
 
 /// What kind of option an entry is, with its default and (for spins) the
-/// clamping range. The kind is immutable after registration; only
-/// [`OptionValue`] changes on `setoption`.
+/// clamping range. Immutable after registration.
 #[derive(Clone, Copy, Debug)]
 pub enum OptionKind {
     Check { default: bool },
@@ -447,8 +369,7 @@ pub enum OptionKind {
     Text { default: &'static str },
 }
 
-/// Current value of an option. Buttons carry no value — their effect is
-/// the side effect of pressing them.
+/// Current value of an option; buttons carry no value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OptionValue {
     Check(bool),
@@ -475,8 +396,7 @@ impl fmt::Display for OptionEntry {
                 write!(f, "spin default {default} min {min} max {max}")
             }
             OptionKind::Button => write!(f, "button"),
-            // `<empty>` is the GUI-conventional spelling of an empty
-            // string default (SF prints the same).
+            // `<empty>` is the GUI-conventional empty string default.
             OptionKind::Text { default } => {
                 let shown = if default.is_empty() {
                     "<empty>"
@@ -490,22 +410,15 @@ impl fmt::Display for OptionEntry {
 }
 
 /// The options table (doc 12 §3.5). Registration order == `uci` print
-/// order; lookup is case-insensitive. Typed accessors hide the table from
-/// the rest of the engine. `Clone` because each `go` session ships a
-/// snapshot to the search thread (`setoption` never changes options under
-/// a running search, §3.5, so a snapshot is always current).
+/// order; lookup is case-insensitive. `Clone` because each `go` ships a
+/// snapshot to the search thread.
 #[derive(Clone)]
 pub struct Options {
     entries: Vec<OptionEntry>,
 }
 
 impl Options {
-    /// The v1 table with SF-current defaults/ranges (D20). Consumers:
-    /// `Move Overhead`/`nodestime`/`Ponder` feed [`TimeManager::init`];
-    /// `Debug Log File` drives the I/O tee in this module; `Hash`/`Clear
-    /// Hash` act on the TT (P6), `Threads` rebuilds the pool (P8),
-    /// `MultiPV` is read at each `go` (P5+) — until those land the values
-    /// are stored and parroted, nothing more.
+    /// The v1 table with SF-current defaults/ranges (D20).
     pub fn new() -> Options {
         let register = |name, kind| OptionEntry {
             name,
@@ -562,22 +475,13 @@ impl Options {
                     max: 10000,
                 },
             ),
-            // Low-verbosity report mode (design/12 §3.13; Reckless
-            // bundle D31): suppress the per-iteration `info` lines and
-            // print one summary line before `bestmove`. Pure I/O, for
-            // high-frequency self-play log volume — bench-neutral.
+            // Low-verbosity report mode: one summary line before `bestmove`.
             register("Minimal", OptionKind::Check { default: false }),
-            // NNUE net file (design/11 §3.4.5, P13 step 4). Empty (the
-            // default) ⇒ NNUE OFF and eval is PSQT — so the DEFAULT engine,
-            // and the depth-6 bench fingerprint, are unchanged. Setting it
-            // loads + validates a CENN net and makes it the active eval;
-            // embedding a default net is a later step (opt-in for now).
+            // NNUE net file. Empty (the default) ⇒ NNUE OFF, eval is PSQT.
             register("EvalFile", OptionKind::Text { default: "" }),
         ];
-        // In-search observation capture (design/16 §3.5.5, D45a): ADVERTISED
-        // only under `datagen` so fastchess forwards `option.X=v`, and so the
-        // tournament/bench binary's option block (and the D24 fingerprint) is
-        // byte-unchanged. Registration order == uci print order.
+        // Observation capture (design/16 §3.5.5): advertised only under
+        // `datagen`, so the tournament binary's option block is byte-unchanged.
         #[cfg(feature = "datagen")]
         {
             entries.push(register("ObsCapturePath", OptionKind::Text { default: "" }));
@@ -614,10 +518,9 @@ impl Options {
         self.entries.iter()
     }
 
-    /// `setoption` core (doc 12 §3.5): case-insensitive lookup, spin
-    /// values range-clamped after parse, parse failure leaves the value
-    /// unchanged. Returns the CANONICAL name on success (callers key side
-    /// effects off it); the `Err` string is ready for `info string`.
+    /// `setoption` core: case-insensitive lookup, spin values range-clamped,
+    /// parse failure leaves the value unchanged. Returns the CANONICAL name
+    /// on success (callers key side effects off it).
     pub fn set(&mut self, name: &str, value: Option<&str>) -> Result<&'static str, String> {
         let Some(entry) = self
             .entries
@@ -649,8 +552,7 @@ impl Options {
                 entry.value = OptionValue::Spin(parsed.clamp(min, max));
             }
             OptionKind::Text { .. } => {
-                // Missing value and the `<empty>` sentinel both mean the
-                // empty string (that is how a GUI unsets a string option).
+                // Missing value and `<empty>` both mean the empty string.
                 let v = match value {
                     None | Some("<empty>") => "",
                     Some(v) => v,
@@ -689,8 +591,7 @@ impl Options {
         self.check("Ponder")
     }
 
-    /// Low-verbosity report mode (design/12 §3.13): suppress per-iteration
-    /// `info` lines, printing one summary before `bestmove`.
+    /// Low-verbosity report mode: one summary line before `bestmove`.
     pub fn minimal(&self) -> bool {
         self.check("Minimal")
     }
@@ -740,8 +641,7 @@ impl Options {
         }
     }
 
-    /// In-search observation capture (design/16 §3.5.5, D45a). The shard path;
-    /// empty ⇒ capture OFF. Only registered/parsed under `datagen`.
+    /// The observation-capture shard path; empty ⇒ capture OFF.
     #[cfg(feature = "datagen")]
     pub fn obs_capture_path(&self) -> &str {
         match self
@@ -784,10 +684,8 @@ impl Default for Options {
 // Debug Log File tee (design/12 §3.5)
 // ---------------------------------------------------------------------------
 
-/// The open `Debug Log File`: every stdin/stdout line is appended with a
-/// direction marker (`<<` in, `>>` out) and a monotonic ms timestamp since
-/// the logger opened. Write failures degrade silently — logging must never
-/// crash or stall the engine.
+/// The open `Debug Log File`: every stdin/stdout line, direction-marked
+/// (`<<`/`>>`) and ms-timestamped. Write failures degrade silently.
 struct DebugLog {
     file: File,
     opened: Instant,
@@ -808,10 +706,8 @@ impl DebugLog {
     }
 }
 
-/// `Write` adapter over the engine's stdout that tees complete output
-/// lines into the debug log. All protocol output flows through one of
-/// these, so the log captures the whole dialogue at the two existing choke
-/// points (the read loop logs input; this wrapper logs output).
+/// `Write` adapter over the engine's stdout that tees complete output lines
+/// into the debug log (the read loop logs input; this wrapper logs output).
 struct UciOut<W: Write> {
     out: W,
     log: Option<DebugLog>,
@@ -834,9 +730,8 @@ impl<W: Write> UciOut<W> {
         }
     }
 
-    /// Reconfigure logging per the option value: close any open log, then
-    /// open (append) the new path if non-empty. Open failure degrades to
-    /// an `info string` and no logging (doc 12 §3.5).
+    /// Close any open log, then open (append) the new path if non-empty.
+    /// Open failure degrades to an `info string` and no logging.
     fn set_log_path(&mut self, path: &str) -> io::Result<()> {
         self.log = None;
         self.partial.clear();
@@ -877,12 +772,9 @@ impl<W: Write> Write for UciOut<W> {
     }
 }
 
-/// Line-atomic shared output (doc 12 §3.13): the UCI thread and the search
-/// worker both print through one mutex-guarded [`UciOut`], so lines from
-/// concurrent writers can never interleave mid-line, and the `Debug Log
-/// File` tee sees ALL stdout traffic — search output included. `Clone`
-/// shares the sink (an `Arc` under the hood); the manual impl avoids a
-/// spurious `W: Clone` bound.
+/// Line-atomic shared output (doc 12 §3.13): both threads print through one
+/// mutex-guarded [`UciOut`], so writers never interleave mid-line and the
+/// log tee sees ALL stdout traffic. `Clone` shares the sink.
 struct SharedOut<W: Write>(Arc<Mutex<UciOut<W>>>);
 
 impl<W: Write> Clone for SharedOut<W> {
@@ -896,17 +788,13 @@ impl<W: Write> SharedOut<W> {
         SharedOut(Arc::new(Mutex::new(UciOut::new(out))))
     }
 
-    /// Lock for one line (or one short multi-line block, e.g. the `uci`
-    /// handshake). A poisoned mutex — some writer panicked mid-line —
-    /// degrades to the inner value: a protocol loop that must never die
-    /// (doc 12 §3.3) prefers possibly-torn log output over propagating
-    /// the panic.
+    /// Lock for one line/block. A poisoned mutex degrades to the inner
+    /// value: possibly-torn log output beats propagating a panic.
     fn lock(&self) -> MutexGuard<'_, UciOut<W>> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Recover the raw sink; callable only when every search thread has
-    /// been joined (test harness use).
+    /// Recover the raw sink; callable only after every search is joined.
     #[cfg(test)]
     fn into_inner(self) -> W {
         let mutex = Arc::try_unwrap(self.0)
@@ -919,11 +807,9 @@ impl<W: Write> SharedOut<W> {
     }
 }
 
-/// The output side of the threading layer's [`UciSink`] (design/13 §3.3):
-/// the main worker writes `info`/`bestmove` through this from its own thread.
-/// Type-erasing `SharedOut<W>` to `Arc<dyn UciSink>` keeps `ThreadPool` free
-/// of the stream's `W` type parameter; all formatting stays here. Every method
-/// takes the mutex for one whole line/block, so writes never interleave.
+/// The output side of the threading layer's [`UciSink`]: the main worker
+/// writes `info`/`bestmove` through this; every method takes the mutex for
+/// one whole line/block.
 impl<W: Write + Send> UciSink for SharedOut<W> {
     fn emit_info(&self, info: &SearchInfo, elapsed_ms: i64) {
         let mut out = self.lock();
@@ -938,8 +824,7 @@ impl<W: Write + Send> UciSink for SharedOut<W> {
     }
 
     fn emit_bestmove(&self, tail: Option<(SearchInfo, i64)>, best: Move, ponder: Option<Move>) {
-        // One lock for the whole block so the final `info` and `bestmove` can
-        // never interleave with UCI-thread output (doc 12 §3.2 step 4).
+        // One lock for the whole block so `info` and `bestmove` stay adjacent.
         let mut out = self.lock();
         if let Some((info, elapsed_ms)) = tail {
             let _ = writeln!(out, "{}", format_info(&info, elapsed_ms));
@@ -966,32 +851,23 @@ impl<W: Write + Send> UciSink for SharedOut<W> {
 // Engine — the session glue aggregate (design/12 §3.1, P5/P6 subset)
 // ---------------------------------------------------------------------------
 
-/// The glue aggregate owned by the UCI loop (doc 12 §3.1). Holds the session
-/// position, the options table, the shared transposition table, and the
-/// long-lived [`ThreadPool`] (design/13): the search workers live inside the
-/// pool's parked threads, so `go` is non-blocking (the UCI thread returns to
-/// stdin immediately) and `bestmove` is printed exactly once per `go`, by the
-/// main worker.
+/// The glue aggregate owned by the UCI loop (doc 12 §3.1): session position,
+/// options, shared TT, and the long-lived [`ThreadPool`] — `go` is
+/// non-blocking and `bestmove` is printed exactly once per `go`.
 pub struct Engine {
     board: Board,
     options: Options,
-    /// The one large shared-mutable structure (D23): each `go` clones this
-    /// handle into a `Job::Search` per thread; between searches the UCI
-    /// thread is the only holder, so [`Engine::tt_mut`] gets `&mut` for
-    /// resize/clear via `Arc::get_mut` (doc 13 §3.4) with zero locking on the
-    /// probe path.
+    /// D23: each `go` clones this handle per thread; between searches the
+    /// UCI thread is the only holder, so [`Engine::tt_mut`] gets `&mut` via
+    /// `Arc::get_mut` with zero locking on the probe path.
     tt: Arc<TranspositionTable>,
-    /// The parked search-thread pool (design/13 §3.5). Sized by the `Threads`
-    /// option; owns every [`Worker`] and the shared flag/counter block.
+    /// The parked search-thread pool, sized by the `Threads` option.
     pool: ThreadPool,
 }
 
 impl Engine {
     pub fn new() -> Engine {
         let options = Options::new();
-        // The startup default allocation (Hash default, 16 MB). Doc 01
-        // §3.4 permits this one to be fatal; `resize`'s halving fallback
-        // makes even it survive anything short of total memory exhaustion.
         let tt = Arc::new(TranspositionTable::new(options.hash_mb() as usize));
         let pool = ThreadPool::new(options.threads() as usize);
         Engine {
@@ -1002,54 +878,41 @@ impl Engine {
         }
     }
 
-    /// Exclusive TT access for resize/clear, legal only between searches
-    /// (doc 13 §3.4, D23). After [`Engine::wait_for_search_finished`] every
-    /// `Job::Search`'s `Arc<TT>` clone has been dropped (the search finished),
-    /// so the UCI thread holds the only strong reference and `Arc::get_mut`
-    /// cannot fail; a `None` here would be an engine bug, never a
-    /// protocol-input error.
+    /// Exclusive TT access for resize/clear, legal only between searches: a
+    /// `None` from `Arc::get_mut` here is an engine bug, never input error.
     fn tt_mut(&mut self) -> &mut TranspositionTable {
         Arc::get_mut(&mut self.tt).expect("no search running: UCI thread holds the only TT handle")
     }
 
-    /// `ucinewgame` (doc 12 §3.3/§3.7): clear the TT (doc 08 §3.14) and reset
-    /// every worker (per-thread histories, per-game TM state — the "first
-    /// move of the game" defaults measurably affect move-1 time usage) via a
-    /// `Clear` job on every thread. Deliberately does NOT touch the session
-    /// position — GUIs send `position` separately.
+    /// `ucinewgame`: clear the TT and reset every worker (histories, per-game
+    /// TM state). Does NOT touch the session position — GUIs send `position`.
     pub fn new_game(&mut self) {
         self.wait_for_search_finished();
         self.tt_mut().clear();
         self.pool.clear();
     }
 
-    /// Finish any running search, applying the implicit-stop rule (doc 12
-    /// §3.2): a blocking command that arrives mid-search sets `stop`, the
-    /// pending `bestmove` flushes normally (exactly-once untouched), and the
-    /// wait is therefore always bounded — `go infinite` followed by a
-    /// mid-search `position` can never deadlock. No-op when idle.
+    /// Finish any running search (the implicit-stop rule): set `stop`, let
+    /// the pending `bestmove` flush — the wait is always bounded. No-op idle.
     pub fn wait_for_search_finished(&mut self) {
         self.pool.stop();
         self.pool.wait_for_search_finished();
     }
 
     /// `stop`: request every worker to finish; the main worker prints its
-    /// `bestmove` and parks (§3.2). Harmless no-op when idle (§3.3).
+    /// `bestmove` and parks. Harmless no-op when idle.
     pub fn stop_search(&self) {
         self.pool.stop();
     }
 
-    /// `ponderhit`: the GUI played the expected move — clear the shared
-    /// ponder flag so the main worker's busy-wait releases and its clock goes
-    /// live (design/13 §3.7 D). Harmless no-op when idle (§3.3).
+    /// `ponderhit`: clear the shared ponder flag so the worker's busy-wait
+    /// releases and its clock goes live. Harmless no-op when idle.
     pub fn ponderhit(&self) {
         self.pool.ponderhit();
     }
 
-    /// Test-only: wait for the search WITHOUT the implicit stop, letting a
-    /// self-terminating `go` (depth/nodes/movetime) run to natural
-    /// completion so its output is deterministic. Would hang on
-    /// `go infinite` — deliberate, tests must stop those explicitly.
+    /// Test-only: wait WITHOUT the implicit stop, so a self-terminating `go`
+    /// runs to natural completion. Hangs on `go infinite` — deliberate.
     #[cfg(test)]
     fn join_search(&self) {
         self.pool.wait_for_search_finished();
@@ -1066,15 +929,11 @@ impl Default for Engine {
 // The command loop (design/12 §3.3)
 // ---------------------------------------------------------------------------
 
-/// The blocking UCI loop, generic over the byte streams (`impl BufRead` /
-/// [`SharedOut`]) so unit tests drive it with in-memory buffers while
-/// `run()` passes stdin/stdout. `W: Send + 'static` because each `go`
-/// clones the shared sink into its search thread.
-///
-/// Loop-exit rules (doc 12 §3.3): `quit`, stdin EOF, or a read error all
-/// leave the loop; a write error means the GUI is gone, same thing. No
-/// input line may panic. On exit, any running search is stopped and
-/// joined so its `bestmove` flushes before the process ends.
+/// The blocking UCI loop, generic over the byte streams so unit tests drive
+/// it with in-memory buffers. Loop-exit rules (doc 12 §3.3): `quit`, stdin
+/// EOF, or a read/write error all leave the loop. No input line may panic.
+/// On exit, any running search is stopped and joined so its `bestmove`
+/// flushes before the process ends.
 fn uci_loop<W: Write + Send + 'static>(input: impl BufRead, out: &SharedOut<W>) {
     let mut engine = Engine::new();
     for line in input.lines() {
@@ -1090,20 +949,16 @@ fn uci_loop<W: Write + Send + 'static>(input: impl BufRead, out: &SharedOut<W>) 
             break;
         }
     }
-    // `quit`/EOF: stop + join (doc 12 §3.2) — the exactly-once `bestmove`
-    // contract holds even for a search interrupted by process exit.
+    // `quit`/EOF: stop + join so the pending `bestmove` flushes.
     engine.wait_for_search_finished();
     let _ = out.lock().flush();
 }
 
-/// Handle one input line (the doc 12 §3.3 dispatch shape).
-/// Returns `Ok(false)` exactly when the loop should end (`quit`).
-///
-/// Commands legal DURING a search (`stop`, `ponderhit`, `isready` — a
-/// liveness ping, not a barrier) are handled without waiting; every other
-/// state-touching command first goes through
-/// [`Engine::wait_for_search_finished`] and its implicit-stop rule
-/// (§3.2), so the wait is always bounded.
+/// Handle one input line; returns `Ok(false)` exactly when the loop should
+/// end (`quit`). Commands legal DURING a search (`stop`, `ponderhit`,
+/// `isready` — a liveness ping, not a barrier) are handled without waiting;
+/// every other state-touching command first goes through
+/// [`Engine::wait_for_search_finished`], so the wait is always bounded.
 fn dispatch<W: Write + Send + 'static>(
     engine: &mut Engine,
     line: &str,
@@ -1112,8 +967,8 @@ fn dispatch<W: Write + Send + 'static>(
     let mut tokens = line.split_whitespace();
     match tokens.next() {
         Some("uci") => {
-            // One lock for the whole handshake block: GUI parsers may
-            // assume the id/option/uciok lines arrive uninterrupted.
+            // One lock for the whole handshake block: GUIs may assume the
+            // id/option/uciok lines arrive uninterrupted.
             let mut out = out.lock();
             writeln!(out, "id name {NAME}")?;
             writeln!(out, "id author {AUTHOR}")?;
@@ -1121,11 +976,8 @@ fn dispatch<W: Write + Send + 'static>(
                 writeln!(out, "{entry}")?;
             }
             // SPSA tunables (D45): fastchess only forwards `option.X=v` for
-            // options the engine ADVERTISES here — an unadvertised name is
-            // silently dropped and both sides of a perturbation pair play
-            // identical defaults (caught 2026-07-17: 135/135 batches with
-            // exactly mirror-cancelled results). `type string` sidesteps
-            // spin min/max declarations; set_tunable parses and validates.
+            // options ADVERTISED here — an unadvertised name is silently
+            // dropped and both sides play identical defaults.
             #[cfg(feature = "tune")]
             for (name, value) in crate::search::params::tunables_list()
                 .into_iter()
@@ -1153,9 +1005,7 @@ fn dispatch<W: Write + Send + 'static>(
             engine.wait_for_search_finished(); // dev commands wait (§3.15)
             print_board(&mut *out.lock(), &engine.board)?;
         }
-        // In-session dev commands (doc 12 §3.15, step 12): perft divide and
-        // the static-eval trace print to the shared stream; `bench` runs the
-        // fixed suite on its own worker/TT (diagnostics to stderr).
+        // In-session dev commands (doc 12 §3.15).
         Some("perft") => {
             engine.wait_for_search_finished();
             cmd_perft_session(&engine.board, tokens, &mut *out.lock())?;
@@ -1169,8 +1019,7 @@ fn dispatch<W: Write + Send + 'static>(
             cmd_bench_session(tokens, &mut *out.lock())?;
         }
         Some("quit") => return Ok(false),
-        // Accepted-but-ignored per the UCI spec (doc 12 §3.3): routing
-        // these through the unknown branch would spam GUIs that send them.
+        // Accepted-but-ignored per the UCI spec (no unknown-command spam).
         Some("debug" | "register") => {}
         // Everything else is absorbed, never fatal (doc 12 §3.3).
         Some(_) => writeln!(out.lock(), "info string Unknown command: '{}'", line.trim())?,
@@ -1179,10 +1028,9 @@ fn dispatch<W: Write + Send + 'static>(
     Ok(true)
 }
 
-/// `setoption name <id...> [value <x...>]` (doc 12 §3.5): the name may
-/// contain spaces — tokens after `name` up to the literal `value` (or end
-/// of line); the value is the rest of the line, whitespace-joined. All
-/// errors answer `info string` and change nothing.
+/// `setoption name <id...> [value <x...>]`: the name may contain spaces —
+/// tokens after `name` up to the literal `value`; the value is the rest of
+/// the line. All errors answer `info string` and change nothing.
 fn cmd_setoption<W: Write>(
     engine: &mut Engine,
     mut tokens: SplitWhitespace,
@@ -1201,14 +1049,8 @@ fn cmd_setoption<W: Write>(
         name_tokens.push(tok);
     }
     let name = name_tokens.join(" ");
-    // SPSA tunables (D45): in a tune build every params.rs scalar is a
-    // runtime option under its SCREAMING_SNAKE name. Checked before the
-    // standard table so a tunable can never be shadowed by it; the name
-    // shapes are disjoint anyway (standard options contain spaces or
-    // lowercase). Unknown/garbage values answer `info string` like every
-    // other setoption error — but a VALID set must stay silent (fastchess
-    // treats unexpected stdout between games as noise, and the SPSA driver
-    // preflights names via `chessengine tunables`).
+    // SPSA tunables (D45), checked before the standard table. A VALID set
+    // must stay silent — fastchess treats unexpected stdout as noise.
     #[cfg(feature = "tune")]
     if let Some(raw) = value.as_deref()
         && (crate::search::params::set_tunable(&name, raw).is_ok()
@@ -1219,22 +1061,14 @@ fn cmd_setoption<W: Write>(
     }
     match engine.options.set(&name, value.as_deref()) {
         Err(msg) => writeln!(out, "info string {msg}"),
-        // Side effects, keyed off the canonical name. They run
-        // synchronously so a following `isready` is the GUI's sync point
-        // (§3.5). The searches-must-be-finished precondition (needed by the
-        // `Hash`/`Clear Hash`/`Threads` arms, which `Arc::get_mut` the TT or
-        // rebuild the pool) is enforced by dispatch's
-        // `wait_for_search_finished()` before every `setoption` (design/13
-        // §3.4), so all `Job::Search` `Arc<TT>` clones are already dropped.
+        // Side effects, keyed off the canonical name; synchronous, so a
+        // following `isready` is the GUI's sync point. No search is running
+        // (dispatch waited), so the TT/pool are exclusively ours.
         Ok("Debug Log File") => {
             let path = engine.options.debug_log_file().to_string();
             out.set_log_path(&path)
         }
-        // `Hash`: resize + clear (doc 12 §3.5 table). The stored option
-        // value is already range-clamped, and `resize` is fallible
-        // (doc 08 §3.13): on allocation shortfall it fell back through
-        // halved sizes — announce the achieved size and keep playing,
-        // never abort mid-session.
+        // `Hash`: resize + clear; on shortfall announce and keep playing.
         Ok("Hash") => {
             let requested = engine.options.hash_mb() as usize;
             let got = engine.tt_mut().resize(requested);
@@ -1248,25 +1082,16 @@ fn cmd_setoption<W: Write>(
             }
         }
         Ok("Clear Hash") => {
-            // Clears the TT (doc 08 §3.14); histories join with doc 09.
             engine.tt_mut().clear();
             Ok(())
         }
-        // `EvalFile` (design/11 §3.4.5, P13 step 4): (re)load the active NNUE
-        // net from the stored path, or turn NNUE off (⇒ PSQT) when empty. The
-        // `wait_for_search_finished()` in dispatch guarantees no worker is mid
-        // -search, so swapping the process-wide active net is safe here; each
-        // subsequent `go` installs it at its eval boundary. A load failure
-        // (bad file, checksum, `OutWeightOutOfClip`, …) answers `info string`
-        // and leaves the previous net in place — never a panic (§3.3).
+        // `EvalFile`: (re)load the active NNUE net, or NNUE off (⇒ PSQT) when
+        // empty. A load failure keeps the previous net — never a panic.
         Ok("EvalFile") => {
             let path = engine.options.eval_file().to_string();
             match nnue::set_eval_file(&path) {
-                // Always report which evaluator is now live. A load that
-                // fails silently -- or a build that cannot read the format --
-                // otherwise leaves the engine on PSQT with no sign of it, and
-                // every measurement taken afterwards is attributed to the
-                // wrong evaluator (2026-07-27, twice).
+                // Always report which evaluator is now live: a silent PSQT
+                // fallback misattributes every measurement taken afterwards.
                 Ok(()) => {
                     let kind = nnue::active_eval_kind();
                     if !path.trim().is_empty() && kind == "PSQT" {
@@ -1283,13 +1108,8 @@ fn cmd_setoption<W: Write>(
                 Err(e) => writeln!(out, "info string ERROR EvalFile: {e}"),
             }
         }
-        // `Threads` (re)builds the pool with the clamped count (design/13
-        // §3.5): waits for any running search, joins the old threads, spawns
-        // the new set. Histories and TM state are rebuilt fresh. `set` is
-        // fallible (§3.3): if the OS refuses the spawn (thread `ulimit` /
-        // `pids.max`) it leaves the current pool intact and returns `Err` —
-        // announce the shortfall and keep playing, exactly like the fallible
-        // `Hash` resize above, never panic mid-session on input.
+        // `Threads` (re)builds the pool; if the OS refuses the spawn the
+        // current pool stays intact — announce and keep playing.
         Ok("Threads") => {
             let requested = engine.options.threads() as usize;
             match engine.pool.set(requested) {
@@ -1303,46 +1123,20 @@ fn cmd_setoption<W: Write>(
                 }
             }
         }
-        // Other values are stored above; nothing further yet.
         Ok(_) => Ok(()),
     }
 }
 
-/// `position (startpos | fen <f1..f6>) [moves <m>...]` (doc 12 §3.3).
+/// Whether `board` can legally be the root of a search — a check
+/// [`Board::from_fen`] deliberately does not make (king-less analysis boards
+/// are supported for tooling). Two conditions: both kings present, and the
+/// side NOT to move is not in check — from such a FEN `generate_legal` would
+/// emit a king capture, after which every king-keyed structure reads a king
+/// that is not there.
 ///
-/// Moves are parsed against the legal move list of the evolving position
-/// and applied ATOMICALLY on a scratch board: if any token fails, the
-/// engine's position is left unchanged (SF exits the process here; we
-/// prefer to stay alive — a documented robustness divergence, §9.3).
-/// Applying the whole list through `make_move` builds the ply-indexed
-/// `StateInfo` history inside `Board` (D8) — exactly what repetition
-/// detection and rule-50 need.
-/// Whether `board` can legally be the root of a search — the check
-/// [`Board::from_fen`] deliberately does not make.
-///
-/// Two conditions: both kings are present, and the side that is **not** to move
-/// is not in check. The second is the one that matters. A FEN like
-/// `4k3/8/8/8/8/8/4R3/4K3 w - - 0 1` is accepted by every parser and is
-/// unreachable by legal play, and from it `generate_legal` emits `Rxe8` — its
-/// legality filter vets only pinned, king and en-passant moves and has no
-/// king-capture test. After that capture every king-keyed structure in the
-/// engine (check bookkeeping, pin geometry, the D30 threat map's king x-ray,
-/// the HalfKA king bucket, the Finny cache key) reads a king that is not there.
-///
-/// Until perf study 13 this class was caught in release by `Board::king_square`'s
-/// `expect("king must exist")` — several times per node, on the hot path, to
-/// guard input the UCI layer should never have accepted (design/12 §3.3: never
-/// panic on input). §4.3 removed that cost; this is the replacement.
-/// `from_fen` stays permissive on purpose, because king-less analysis boards
-/// are a supported class for tooling that never searches.
-///
-/// **Written against the `attacks::` free functions rather than
-/// `Board::attackers_to_exist`, deliberately.** The obvious spelling — a
-/// `Board::is_legal_root` method calling `attackers_to_exist` and `king_square`
-/// — measured **+90.6 i/n on the search**, for a predicate the search never
-/// executes: one new caller shifts LLVM's inline cost model for those helpers
-/// engine-wide, and `#[cold]` + `#[inline(never)]` did not contain it (perf
-/// study 13 §5.5). This form measured neutral.
+/// NOTE: written against the `attacks::` free functions, not
+/// `Board::attackers_to_exist`, deliberately — the method spelling shifts
+/// inline decisions engine-wide and measurably slowed the search.
 fn is_legal_root(board: &Board) -> bool {
     let (us, them) = (board.side_to_move(), board.side_to_move().flip());
     let our_king = board.pieces(us, PieceType::King);
@@ -1363,6 +1157,9 @@ fn is_legal_root(board: &Board) -> bool {
     attacked.is_empty()
 }
 
+/// `position (startpos | fen <f1..f6>) [moves <m>...]`: moves are applied
+/// ATOMICALLY on a scratch board — if any token fails, the engine's position
+/// is unchanged. `make_move` builds the history repetition detection needs.
 fn cmd_position<W: Write>(
     engine: &mut Engine,
     mut tokens: SplitWhitespace,
@@ -1382,9 +1179,7 @@ fn cmd_position<W: Write>(
             Board::startpos()
         }
         Some("fen") => {
-            // Collect tokens up to the literal `moves` (which take_while
-            // also consumes) or end of line; `from_fen` accepts 4-6
-            // fields.
+            // Tokens up to `moves` or end of line; `from_fen` accepts 4-6 fields.
             let fen = (&mut tokens)
                 .take_while(|&tok| tok != "moves")
                 .collect::<Vec<_>>()
@@ -1406,7 +1201,6 @@ fn cmd_position<W: Write>(
             );
         }
     };
-    // Whatever remains is the move list.
     for tok in tokens {
         let Some(m) = move_from_uci(&board, tok) else {
             return writeln!(out, "info string Invalid move '{tok}' in position command");
@@ -1414,14 +1208,9 @@ fn cmd_position<W: Write>(
         let gives_check = board.gives_check(m);
         board.make_move(m, gives_check);
     }
-    // D33 reviewer A / perf study 13 §5.4: refuse an ILLEGAL root here rather
-    // than discovering it deep inside `make_move`. A FEN in which the side not
-    // to move is already in check is accepted by every parser and unreachable
-    // by legal play, and from it `generate_legal` will emit a king capture —
-    // after which the engine is searching a position with a missing king.
-    // Design/12 §3.3 says the UCI layer never panics on input; the corollary is
-    // that it also never *accepts* input it cannot search. The previous position
-    // is left untouched, which is the same failure mode as a malformed FEN.
+    // Refuse an ILLEGAL root here rather than deep inside the search: the
+    // UCI layer never accepts input it cannot search. The previous position
+    // is kept, as for a malformed FEN.
     if !is_legal_root(&board) {
         return writeln!(
             out,
@@ -1433,11 +1222,9 @@ fn cmd_position<W: Write>(
     Ok(())
 }
 
-/// `go [<param>...]` (doc 12 §3.6, §3.2 step 1): finish any previous
-/// session (implicit stop — a well-behaved GUI never overlaps, but we
-/// tolerate it), parse the limits, and hand the search state to a fresh
-/// worker thread. This thread returns to reading stdin immediately; the
-/// worker prints every `info` line and the exactly-once `bestmove`.
+/// `go [<param>...]`: finish any previous session (implicit stop), parse
+/// the limits, hand the search to the pool, and return to stdin at once;
+/// the worker prints every `info` line and the exactly-once `bestmove`.
 fn cmd_go<W: Write + Send + 'static>(
     engine: &mut Engine,
     tokens: SplitWhitespace,
@@ -1445,10 +1232,8 @@ fn cmd_go<W: Write + Send + 'static>(
 ) -> io::Result<()> {
     engine.wait_for_search_finished();
     // ARCHON_TT_CLEAR_PER_GO=1: clear the TT (only — histories stay) before
-    // every search. A DIAGNOSTIC arm, not a feature: it prices the NET value
-    // of TT carryover between moves, after the 2026-08-08 forensics found
-    // stale cross-move entries causal for 108/149 mined blunders (warm replay
-    // reproduces, Clear Hash cures). Default off ⇒ bit-identical behaviour.
+    // every search. A DIAGNOSTIC arm pricing the net value of TT carryover
+    // between moves, not a feature. Default off ⇒ bit-identical behaviour.
     {
         use std::sync::OnceLock;
         static CLEAR_PER_GO: OnceLock<bool> = OnceLock::new();
@@ -1461,8 +1246,7 @@ fn cmd_go<W: Write + Send + 'static>(
     // Stamp root material for printed-score normalisation (display only).
     set_root_material(wdl_material(&engine.board));
     let limits = parse_go(&engine.board, tokens, &mut *out.lock())?;
-    // `go perft <d>` is a dev command (doc 12 §3.15): run perft divide from
-    // the session position rather than launching a search.
+    // `go perft <d>`: perft divide from the session position, no search.
     if let Some(depth) = limits.perft {
         return if depth >= 1 {
             let mut b = engine.board.clone();
@@ -1474,11 +1258,7 @@ fn cmd_go<W: Write + Send + 'static>(
             )
         };
     }
-    // Non-blocking hand-off to the pool (design/13 §3.6): install per-`go`
-    // state on every worker and wake the main worker, then return to stdin at
-    // once. The main worker (thread 0) runs the search on its own thread and
-    // prints every `info` line plus the exactly-once `bestmove`; helpers
-    // diverge through aspiration jitter and TT races and vote at the end.
+    // Non-blocking hand-off to the pool (design/13 §3.6).
     let sink: Arc<dyn UciSink> = Arc::new(out.clone());
     engine.pool.start_thinking(
         &engine.board,
@@ -1494,13 +1274,9 @@ fn cmd_go<W: Write + Send + 'static>(
 // info formatting (design/12 §3.13–§3.14)
 // ---------------------------------------------------------------------------
 
-/// Format one completed PV line (doc 12 §3.13 field scope): depth,
-/// seldepth, multipv, score (with bound suffix), nodes, nps, hashfull (the
-/// TT permille estimate, doc 08 §3.10), wall-clock time, pv — the doc's SF
-/// field order, minus the deferred `wdl`/`tbhits`. The `info` throttle that
-/// decides WHICH lines reach here lives in the ID loop
-/// (`params::INFO_THROTTLE_NODES()`, doc 12 step 10). One `String` so the
-/// caller can emit it as a single write.
+/// Format one completed PV line (doc 12 §3.13): depth, seldepth, multipv,
+/// score (with bound suffix), nodes, nps, hashfull, time, pv — SF field
+/// order. One `String` so the caller emits it as a single write.
 fn format_info(info: &SearchInfo, elapsed_ms: i64) -> String {
     use std::fmt::Write as _; // writing to a String cannot fail
     let time = elapsed_ms.max(0);
@@ -1545,11 +1321,9 @@ impl fmt::Display for UciScore {
     }
 }
 
-/// Material of the root position of the current search, for score
-/// normalisation only. Display-only state: nothing in search reads it, and a
-/// stale value can at worst mis-scale a printed number. An atomic rather than a
-/// threaded parameter because `SearchInfo` carries no board and the UCI
-/// protocol runs one search at a time; stamped by `cmd_go`.
+/// Material of the current search's root, for printed-score normalisation
+/// only — nothing in search reads it. An atomic because `SearchInfo`
+/// carries no board; stamped by `cmd_go`.
 static ROOT_MATERIAL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(58);
 
 /// Stamp the root material for score normalisation. Called once per `go`.
@@ -1570,24 +1344,11 @@ pub fn wdl_material(board: &Board) -> i32 {
         + 9 * n(PieceType::Queen)
 }
 
-/// Our internal value in Stockfish's PRINTED-cp frame.
-///
-/// WHY THIS EXISTS. We print raw internal values; Stockfish divides its own by
-/// `a = p_a(material)` in `to_cp` (`eca43a97:src/uci.cpp:554`). The result was
-/// that our printed scores ran ~2.07x Stockfish's for the same position, which
-/// is a hazard every time a human compares the two — it manufactured a "266 cp
-/// gap at depth 1" and a "400 cp PV disagreement" in one session, three times
-/// over. design/12 §3.14 reserved this seam.
-///
-/// THIS DOES NOT TOUCH THE EVAL SCALE. Internal values, search margins and the
-/// network scale are unchanged; over 6000 games the shipped scale IS the
-/// optimum and moving it to SF parity costs ~18 Elo. Only the printed number
-/// moves.
-///
-/// The divisor is MATERIAL-DEPENDENT, so a fixed 2.07 would agree in the
-/// middlegame and drift in the endgame. This ports SF's cubic exactly, then
-/// applies our own frame ratio: our internal is 0.538 of SF's internal
-/// (`eval-frame` study), so sf_printed = 100 * (v / 0.538) / a.
+/// Our internal value in Stockfish's PRINTED-cp frame — display only;
+/// internal values, search margins and the network scale are untouched.
+/// SF divides its internal value by a material-dependent cubic
+/// `a = p_a(material)`; this ports that cubic, then applies our frame ratio
+/// (our internal is 0.538 of SF's): sf_printed = 100 * (v / 0.538) / a.
 pub fn to_cp(v: Value, material: i32) -> Value {
     const AS: [f64; 4] = [
         -72.325_658_36,
@@ -1601,13 +1362,9 @@ pub fn to_cp(v: Value, material: i32) -> Value {
     (100.0 * (v as f64 / ARCHON_PER_SF_INTERNAL) / a).round() as Value
 }
 
-/// Split a ply-relative internal value into the UCI `cp`/`mate` form
-/// (doc 12 §3.14): mate plies convert to full moves — rounding up on the
-/// winning side (our mating move counts), truncating on the losing side,
-/// matching SF exactly (Rust `/` truncates like C++). Outside the mate
-/// bands the value passes through as centipawns: `to_cp` is the identity
-/// while eval phase A/B prints raw internal values; the WDL normalization
-/// seam replaces it in phase C (§3.14).
+/// Split a ply-relative internal value into the UCI `cp`/`mate` form:
+/// mate plies convert to full moves — rounding up on the winning side,
+/// truncating on the losing side, matching SF. Else centipawns via `to_cp`.
 pub fn format_score(v: Value) -> UciScore {
     debug_assert!(crate::types::is_valid(v) && v.abs() != VALUE_INFINITE);
     if is_mate(v) {
@@ -1624,21 +1381,17 @@ pub fn format_score(v: Value) -> UciScore {
     }
 }
 
-/// Parse the `go` parameter tokens into [`Limits`] (doc 12 §3.6):
-/// parameters in any order, except `searchmoves` which consumes all
-/// remaining tokens (SF behavior; matches how GUIs emit it). Unknown or
-/// malformed tokens are skipped silently (protocol robustness); bad
-/// `searchmoves` tokens warn via `info string` and are dropped —
-/// root-move building decides later whether to ignore the whole filter
-/// (§3.6). `start_time` is stamped at entry.
+/// Parse the `go` parameters into [`Limits`] (doc 12 §3.6): any order,
+/// except `searchmoves` which consumes all remaining tokens (SF behavior).
+/// Unknown/malformed tokens are skipped silently; bad `searchmoves` tokens
+/// warn and are dropped.
 fn parse_go<W: Write>(
     board: &Board,
     mut tokens: SplitWhitespace,
     out: &mut UciOut<W>,
 ) -> io::Result<Limits> {
-    /// Parse the next token as a number; `None` (and the token still
-    /// consumed) when missing or malformed — mirroring how SF's stream
-    /// extraction leaves the field alone.
+    /// Parse the next token as a number; `None` (token still consumed)
+    /// when missing or malformed.
     fn next_num<T: FromStr>(tokens: &mut SplitWhitespace) -> Option<T> {
         tokens.next().and_then(|tok| tok.parse().ok())
     }
@@ -1657,10 +1410,8 @@ fn parse_go<W: Write>(
                         }
                     }
                 }
-                // §3.6: every token unparseable/illegal in a position
-                // that has legal moves — root-move building will ignore
-                // the filter wholesale; tell the GUI why it gets a
-                // normal bestmove instead of `(none)`.
+                // Every token unparseable/illegal: the filter will be ignored
+                // wholesale — tell the GUI why it gets a normal bestmove.
                 if any_token && limits.searchmoves.is_empty() {
                     let mut legal = MoveList::new();
                     movegen::generate_legal(board, &mut legal);
@@ -1669,8 +1420,7 @@ fn parse_go<W: Write>(
                     }
                 }
             }
-            // wtime/btime may be negative in GUI lag situations; parse
-            // into i64 and let TM's max(1, ...) clamps handle it (§3.6).
+            // wtime/btime may be negative under GUI lag; TM's clamps handle it.
             "wtime" => {
                 if let Some(v) = next_num(&mut tokens) {
                     limits.time[Color::White as usize] = v;
@@ -1709,10 +1459,8 @@ fn parse_go<W: Write>(
     Ok(limits)
 }
 
-/// In-session `perft <depth>` / `go perft <depth>` (doc 12 §3.15, §3.3):
-/// print `perft::divide` (per-root-move splits + `Nodes searched:` total)
-/// from the session position. `divide` requires `depth >= 1`; a bad depth
-/// answers `info string` and changes nothing (never panics on GUI input).
+/// In-session `perft <depth>` / `go perft <depth>`: `perft::divide` from
+/// the session position. A bad depth answers `info string`.
 fn cmd_perft_session(
     board: &Board,
     mut tokens: SplitWhitespace,
@@ -1727,11 +1475,8 @@ fn cmd_perft_session(
     }
 }
 
-/// In-session `eval` (doc 12 §3.15, step 12): the static evaluation of the
-/// session position. Phase A eval is material + PSQT, so the trace is a
-/// single value from the side-to-move's perspective; the rich per-term
-/// breakdown lands with the eval doc's later phases. `to_cp` is still the
-/// identity (doc 12 §3.14), so the value prints in raw internal units.
+/// In-session `eval`: the static evaluation of the session position, in raw
+/// internal units from the side-to-move's perspective.
 fn cmd_eval(board: &Board, out: &mut impl Write) -> io::Result<()> {
     // Reflect the active eval: install the EvalFile net (if any) and refresh
     // its root accumulator so the trace shows the NNUE value, else PSQT.
@@ -1757,39 +1502,23 @@ fn cmd_eval(board: &Board, out: &mut impl Write) -> io::Result<()> {
     )
 }
 
-/// In-session `bench [ttMB [threads [limit [fenFile [limitType]]]]]`
-/// (doc 12 §3.15, step 12): the same fixed-suite run as the argv front
-/// door, on its own worker/TT. Diagnostics and the signature report go to
-/// stderr (design/06 §3.6); a malformed argument answers `info string`
-/// and never exits the loop (§3.3).
+/// In-session `bench [ttMB [threads [limit [fenFile [limitType]]]]]`: the
+/// same fixed-suite run as the argv front door, on its own worker/TT.
+/// Diagnostics go to stderr; a malformed argument answers `info string`.
 fn cmd_bench_session(tokens: SplitWhitespace, out: &mut impl Write) -> io::Result<()> {
     let args: Vec<String> = tokens.map(String::from).collect();
     match bench::BenchParams::parse(&args) {
-        // The `current`-position source (design/06 §3.6) is not yet wired to
-        // the session board; reject it here rather than hit `suite_entries`'
-        // `todo!()` — "never panic on input" (§3.3).
+        // The `current`-position source is not yet wired to the session
+        // board; reject it rather than hit `suite_entries`' `todo!()`.
         Ok(params) if matches!(params.fens, bench::FenSource::Current) => writeln!(
             out,
             "info string bench: the 'current' fen source is not wired in-session yet; \
              use 'default' or a fen file"
         ),
         Ok(params) => {
-            // Load the optional 6th arg's net, exactly as the argv front door
-            // does (`cmd_bench_argv`). Without this the session `bench`
-            // PARSED the net and then silently ignored it, so every
-            // in-session bench ran on PSQT while reporting nothing amiss —
-            // `bench 16 1 13 wl50 depth <net>` returned 3536295 (PSQT) here
-            // against 2068701 (NNUE) from the identical argv invocation.
-            //
-            // That silence is what made it expensive: a whole day of
-            // node-count measurements (tools/frame_ablate.py and the
-            // frame-scale sweeps drive bench over a UCI pipe) were taken on
-            // the wrong evaluator and looked entirely plausible, because a
-            // PSQT tree is a perfectly reasonable-looking tree.
-            //
-            // A bad path answers `info string` and keeps the loop alive
-            // rather than exiting, per §3.3 — the argv door may exit, a
-            // session must not.
+            // NOTE: the 6th-arg net must actually LOAD — parsing it and
+            // silently ignoring it benches PSQT while reporting nothing
+            // amiss. A bad path answers `info string`; a session never exits.
             if let Some(net) = &params.net
                 && let Err(e) = nnue::set_eval_file(net)
             {
@@ -1802,8 +1531,7 @@ fn cmd_bench_session(tokens: SplitWhitespace, out: &mut impl Write) -> io::Resul
     }
 }
 
-/// `d` output (doc 12 §3.15): diagram, `Fen:`, `Key:` (16 hex digits,
-/// D9), and `Checkers:` (the checking pieces' squares).
+/// `d` output: diagram, `Fen:`, `Key:` (16 hex digits), `Checkers:`.
 fn print_board(out: &mut impl Write, board: &Board) -> io::Result<()> {
     writeln!(out, "{board}")?;
     writeln!(out)?;
@@ -1823,9 +1551,8 @@ mod tests {
     use crate::fen::START_FEN;
     use crate::types::Square;
 
-    /// Drive the loop over a scripted stdin, returning captured stdout.
-    /// The loop's exit path joins any search thread, so the capture is
-    /// complete and the `Arc` unwrap in `into_inner` cannot fail.
+    /// Drive the loop over a scripted stdin, returning captured stdout. The
+    /// exit path joins any search thread, so the capture is complete.
     fn session(input: &str) -> String {
         let out = SharedOut::new(Vec::new());
         uci_loop(input.as_bytes(), &out);
@@ -1850,12 +1577,9 @@ mod tests {
         }
     }
 
-    /// Multi-thread interleaving smoke (design/13 §5, plan step 4): at
-    /// `Threads=4`, 500 short searches with `stop`/`isready`/`position`/
-    /// `ucinewgame` woven in must all answer exactly one legal `bestmove`,
-    /// with no hang or panic. Runs in a DEBUG build, so make/unmake's
-    /// `assert_consistent` validates every thread's per-thread board at every
-    /// node — any threading-induced corruption trips the oracle here.
+    /// Multi-thread interleaving smoke: 500 short searches with other
+    /// commands woven in must all answer exactly one legal `bestmove`, no
+    /// hang or panic; `assert_consistent` validates every board per node.
     #[test]
     fn multithread_interleaved_search_smoke() {
         let mut input = String::from("setoption name Threads value 4\n");
@@ -1879,17 +1603,13 @@ mod tests {
         }
         input.push_str("quit\n");
         let out = session_timeout(&input, 120);
-        // Exactly-once: one bestmove per `go`, never `(none)` (every position
-        // here has legal moves).
         let bestmoves = out.lines().filter(|l| l.starts_with("bestmove ")).count();
         assert_eq!(bestmoves, go_count, "one bestmove per go (exactly-once)");
         assert!(
             !out.contains("bestmove (none)"),
             "no position here is mate/stalemate"
         );
-        // Every bestmove token is a well-formed UCI move (4-5 chars, files/
-        // ranks/promo) — a garbled move would signal cross-thread corruption
-        // of the winning report.
+        // A garbled move would signal cross-thread corruption of the report.
         for line in out.lines().filter(|l| l.starts_with("bestmove ")) {
             let mv = line.split_whitespace().nth(1).unwrap_or("");
             assert!(
@@ -1901,15 +1621,9 @@ mod tests {
         }
     }
 
-    /// Voting-ENABLED multi-thread search (design/13 §3.8, review round 3): a
-    /// `go` without a fixed depth (here a node budget) leaves best-thread
-    /// voting ON, so the main worker actually runs `elect_winner` →
-    /// `best_thread`, gathers every helper's cross-shell `SearchReport`, and
-    /// may republish/persist a helper's winning line — the whole path the
-    /// fixed-depth `go depth 4` smoke skips (voting is disabled under
-    /// `limits.depth`). At `Threads=4` two node-budgeted searches must each
-    /// answer exactly one well-formed `bestmove`, with no hang, and the debug
-    /// build validates every thread's board via `assert_consistent` per node.
+    /// Voting-ENABLED multi-thread search: a `go` without a fixed depth
+    /// leaves best-thread voting ON — the path the fixed-depth smoke skips
+    /// (voting is disabled under `limits.depth`).
     #[test]
     fn multithread_voting_enabled_search_smoke() {
         let input = concat!(
@@ -1938,11 +1652,8 @@ mod tests {
         }
     }
 
-    /// Stop-latency bound (design/13 §5, §8 criterion 4, plan step 7): a
-    /// `go infinite` at N = cores threads on a busy middlegame, stopped after
-    /// 100 ms, must return from `wait_for_search_finished` well under the
-    /// 50 ms hard bound (target < 5 ms). Prints the measured number
-    /// (`cargo test -- --nocapture`).
+    /// Stop-latency bound (design/13 §8): a stopped `go infinite` must
+    /// return from `wait_for_search_finished` under the 50 ms hard bound.
     #[test]
     fn stop_latency_is_bounded() {
         let cores = std::thread::available_parallelism()
@@ -1984,8 +1695,7 @@ mod tests {
 
     /// Run one command against an existing engine, returning its output.
     /// Joins (without stopping) any search the command started, so a
-    /// self-terminating `go` line's whole `info`/`bestmove` stream is
-    /// captured deterministically after natural completion.
+    /// self-terminating `go` is captured after natural completion.
     fn command_on(engine: &mut Engine, line: &str) -> String {
         let out = SharedOut::new(Vec::new());
         dispatch(engine, line, &out).expect("Vec sink never fails");
@@ -2003,7 +1713,6 @@ mod tests {
 
     #[test]
     fn uci_handshake() {
-        // doc 12 §3.3: id name, id author, the options block, then uciok.
         let out = session("uci\nquit\n");
         assert!(out.contains("id name ARCHON "), "{out}");
         assert!(out.contains("id author "), "{out}");
@@ -2014,12 +1723,9 @@ mod tests {
 
     #[test]
     fn uci_lists_the_options_verbatim() {
-        // doc 12 §3.5/§8.1: exactly the v1 table + the P10 additions
-        // (hardware-scaled Threads ceiling, `Minimal` report mode), in
-        // registration order with correct types/defaults/ranges.
         let out = session("uci\nquit\n");
-        // Under `datagen` the four ObsCapture options (design/16 §3.5.5) are
-        // registered after EvalFile; the default build must not carry them.
+        // Under `datagen` the four ObsCapture options are registered after
+        // EvalFile; the default build must not carry them.
         let obs_block = if cfg!(feature = "datagen") {
             "option name ObsCapturePath type string default <empty>\n\
              option name ObsCaptureMinDepth type spin default 6 min 0 max 246\n\
@@ -2079,15 +1785,12 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn eof_is_quit() {
-        // doc 12 §3.3: EOF == quit (cutechess/fastchess close the pipe).
         // The script has no `quit`; the loop must still terminate cleanly.
         assert!(session("isready\n").contains("readyok\n"));
     }
 
     #[test]
     fn garbage_is_absorbed_never_fatal() {
-        // design/01 §4 step 5: garbage lines produce `info string` and the
-        // loop keeps serving commands afterwards.
         let out = session("banana split\nuci\n###\nisready\nquit\n");
         assert!(
             out.contains("info string Unknown command: 'banana split'"),
@@ -2099,14 +1802,11 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn debug_and_register_are_consumed_silently() {
-        // doc 12 §3.3: spec commands we don't implement produce NO output
-        // (no unknown-command spam at GUIs that send them).
         assert_eq!(session("debug on\nregister later\nquit\n"), "");
     }
 
     #[test]
     fn stop_and_ponderhit_are_idle_noops() {
-        // doc 12 §3.3: harmless with no active search — and silent.
         assert_eq!(session("stop\nponderhit\nucinewgame\nquit\n"), "");
     }
 
@@ -2119,11 +1819,7 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn no_panic_on_junk_torrent() {
-        // "Never panic on any input" — near-miss commands, the in-session
-        // dev commands (which must run/absorb cleanly, never hit a todo!
-        // stub), non-ASCII, control characters, and malformed-but-real P4
-        // commands. `bench` is omitted deliberately: it runs the full fixed
-        // suite (slow), tested elsewhere.
+        // "Never panic on any input"; `bench` omitted (slow, tested elsewhere).
         let junk = "uciready\nucii\nquitt quit\nd d d\nположение\n\u{1}\u{7f}\n\
                     go depth 4\nposition startpos moves e2e4\n\
                     position fen banana\nposition moves e2e4\n\
@@ -2132,14 +1828,11 @@ option name EvalFile type string default <empty>
                     stop\nponderhit\nucinewgame\neval\nperft 1\n\
                     bench 1 1 1 default depth\ngo perft 3\nquit\n";
         let out = session(junk);
-        // A genuinely unknown command is still absorbed (the loop stayed
-        // alive through everything up to `quit`).
         assert!(
             out.contains("info string Unknown command: 'uciready'"),
             "{out}"
         );
-        // The dev commands ran rather than being rejected: `perft 1` from
-        // startpos is 20, and `eval` printed a static evaluation.
+        // The dev commands ran: `perft 1` from startpos is 20.
         assert!(out.contains("Nodes searched: 20"), "{out}");
         assert!(out.contains("Final evaluation:"), "{out}");
     }
@@ -2206,7 +1899,7 @@ option name EvalFile type string default <empty>
     #[test]
     fn position_moves_build_history_for_repetition() {
         // Four reversible knight moves: the start position repeats, and
-        // the board history (D8) must know (doc 12 §3.3).
+        // the board history must know.
         let (engine, _) =
             command("position startpos moves g1f3 g8f6 f3g1 f6g8 g1f3 g8f6 f3g1 f6g8");
         assert!(engine.board.has_repeated());
@@ -2246,8 +1939,7 @@ option name EvalFile type string default <empty>
         let mut engine = Engine::new();
         command_on(&mut engine, "position startpos moves d2d4");
         let before = engine.board.to_fen();
-        // Second e2e4 is illegal (square empty after the first): the whole
-        // command must be rejected, leaving the d2d4 position.
+        // Second e2e4 is illegal: the whole command must be rejected.
         let out = command_on(&mut engine, "position startpos moves e2e4 e2e4");
         assert!(
             out.contains("info string Invalid move 'e2e4' in position command"),
@@ -2266,16 +1958,8 @@ option name EvalFile type string default <empty>
         assert_eq!(engine.board.to_fen(), before);
     }
 
-    /// D33 reviewer A / perf study 13 §5.4. `from_fen` accepts both of these —
-    /// it validates fields, not legality — and before the guard the engine
-    /// searched them, generated a king capture from the first one, and ran the
-    /// rest of the search on a board with no black king. The `king_square`
-    /// rewrite in §4.3 removed the release panic that used to catch it, so this
-    /// test is the replacement tripwire.
-    ///
-    /// It fails if `Board::is_legal_root` drops either of its two conditions:
-    /// delete the `has_both_kings()` term and the second case is accepted,
-    /// delete the `attackers_to_exist` term and the first is.
+    /// `from_fen` accepts both of these (it validates fields, not legality).
+    /// Fails if `is_legal_root` drops either of its two conditions.
     #[test]
     fn position_illegal_root_is_rejected_and_atomic() {
         for fen in [
@@ -2294,8 +1978,8 @@ option name EvalFile type string default <empty>
         }
     }
 
-    /// The guard must not reject anything legal: a plain check (the side TO
-    /// move in check) is perfectly searchable, and so is every startpos line.
+    /// The guard must not reject anything legal — the side TO move in check
+    /// is perfectly searchable.
     #[test]
     fn position_legal_roots_including_checks_are_accepted() {
         for fen in [
@@ -2381,8 +2065,7 @@ option name EvalFile type string default <empty>
     // -- Hash / Clear Hash TT wiring (doc 08 §4 step 8; doc 12 §3.5) --------
 
     /// Plant a recognizable entry in the engine's TT through the public
-    /// probe/write API (search integration is doc 08 step 7; until then
-    /// the tests are the TT's only writer).
+    /// probe/write API.
     fn plant_tt_entry(engine: &Engine, key: u64) {
         use crate::tt::Bound;
         engine.tt.probe(key).writer.write(
@@ -2430,8 +2113,6 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn ucinewgame_clears_the_tt() {
-        // doc 12 §3.3 command table: `ucinewgame` clears the TT (histories
-        // join with doc 09; per-game TM reset asserted separately below).
         let mut engine = Engine::new();
         let key = 0xFACE_FEED_0000_0003;
         plant_tt_entry(&engine, key);
@@ -2441,9 +2122,8 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn mid_search_hash_setoption_implicitly_stops_then_applies() {
-        // doc 12 §3.5 step 1: a mid-search `setoption` first stops the
-        // search (bestmove flushes exactly once), THEN resizes — the
-        // Arc::get_mut path must never race a live session.
+        // A mid-search `setoption` first stops the search (bestmove flushes
+        // exactly once), THEN resizes — Arc::get_mut must never race.
         let out = session("go infinite\nsetoption name Hash value 2\nisready\nquit\n");
         assert_eq!(bestmoves(&out), 1, "{out}");
         assert!(out.contains("readyok\n"), "{out}");
@@ -2479,7 +2159,6 @@ option name EvalFile type string default <empty>
         assert!(out.contains("readyok\n"), "{out}");
         let log = std::fs::read_to_string(&path).expect("debug log was created");
         let _ = std::fs::remove_file(&path);
-        // Both directions, marked and timestamped (doc 12 §3.5).
         assert!(log.contains("<< isready"), "{log}");
         assert!(log.contains(">> readyok"), "{log}");
         // The unsetting line itself is still logged; the log closes after.
@@ -2532,7 +2211,7 @@ option name EvalFile type string default <empty>
         assert_eq!(out, "");
         assert_eq!(limits.time[Color::White as usize], 0);
         assert_eq!(limits.time[Color::Black as usize], 100);
-        // `go perft` parses as a dev limit (§3.15; wired in step 12).
+        // `go perft` parses as a dev limit.
         let (limits, _) = parse_limits(START_FEN, "perft 5");
         assert_eq!(limits.perft, Some(5));
     }
@@ -2540,8 +2219,7 @@ option name EvalFile type string default <empty>
     #[test]
     fn go_searchmoves_consumes_the_tail() {
         let (limits, out) = parse_limits(START_FEN, "depth 5 searchmoves e2e4 d2d4 depth 9");
-        // `depth 9` after searchmoves is a (failed) move token, NOT a
-        // parameter (SF behavior).
+        // `depth 9` after searchmoves is a (failed) move token, NOT a parameter.
         assert_eq!(limits.depth, Some(5));
         assert_eq!(limits.searchmoves.len(), 2);
         assert_eq!(move_to_uci(limits.searchmoves[0]), "e2e4");
@@ -2557,8 +2235,7 @@ option name EvalFile type string default <empty>
         let mut engine = Engine::new();
         command_on(&mut engine, "position startpos moves e2e4");
         // Dirty the main worker's per-game TM persist, then verify
-        // `ucinewgame` (a `Clear` job) resets it. The worker lives inside the
-        // pool thread, so poke it through the `Job::Custom` test hook.
+        // `ucinewgame` resets it, via the `Job::Custom` test hook.
         engine.pool.run_on_main(|w| {
             w.manager.as_mut().unwrap().persist.original_time_adjust = 1.5;
         });
@@ -2582,8 +2259,7 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn go_depth_emits_info_lines_then_exactly_one_bestmove() {
-        // Mate-in-1: the completed depth-2 search must find d1d8 with an
-        // exact mate score, and the transcript shape is deterministic.
+        // Mate-in-1: deterministic transcript, exact mate score.
         let mut engine = Engine::new();
         command_on(
             &mut engine,
@@ -2593,7 +2269,6 @@ option name EvalFile type string default <empty>
         assert_eq!(bestmoves(&out), 1, "{out}");
         let bestmove_line = out.lines().last().unwrap();
         assert!(bestmove_line.starts_with("bestmove d1d8"), "{out}");
-        // §3.13 v1 fields, in order, one line per completed iteration.
         let infos: Vec<&str> = out.lines().filter(|l| l.starts_with("info ")).collect();
         assert_eq!(infos.len(), 2, "{out}");
         assert!(infos[0].starts_with("info depth 1 seldepth "), "{out}");
@@ -2609,10 +2284,8 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn go_mate_self_terminates_on_the_mate_limit() {
-        // doc 12 §3.9's mate-limit stop end-to-end: `go mate 1` rides
-        // `Limits::mate` from parse_go into the ID loop's §3.5 check
-        // (doc 07). No depth/time/node limit here, so only the mate rule
-        // can end the session — a regression hangs rather than passes.
+        // No depth/time/node limit here, so only the mate rule can end the
+        // session — a regression hangs rather than passes.
         let mut engine = Engine::new();
         command_on(
             &mut engine,
@@ -2629,9 +2302,8 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn ponder_from_tt_offers_only_validated_moves() {
-        // doc 12 §3.2 step 4: the 1-ply-PV fallback probes the TT after
-        // making the best move and must validate everything it reads
-        // (doc 08 §3.5).
+        // The 1-ply-PV fallback probes the TT after making the best move
+        // and must validate everything it reads.
         use crate::tt::Bound;
         let tt = TranspositionTable::new(MIN_HASH_MB);
         let board = Board::startpos();
@@ -2653,8 +2325,7 @@ option name EvalFile type string default <empty>
             Some(reply)
         );
 
-        // A garbage/collided move (illegal after 1.e4: it moves a WHITE
-        // pawn with black to play) is dropped by the validation contract.
+        // A garbage/collided move (illegal after 1.e4) is dropped.
         let foreign = Move::normal(Square::A2, Square::A3);
         tt.probe(key)
             .writer
@@ -2664,8 +2335,7 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn ponder_from_tt_refuses_immediate_draws() {
-        // The "not an immediate draw" guard (doc 12 §3.2 step 4): the
-        // best move lands on the 100th quiet halfmove, so the resulting
+        // The best move lands on the 100th quiet halfmove, so the resulting
         // position is a 50-move draw — no pondering into a dead game.
         use crate::tt::Bound;
         let tt = TranspositionTable::new(MIN_HASH_MB);
@@ -2684,12 +2354,8 @@ option name EvalFile type string default <empty>
     #[test]
     fn bestmove_carries_a_ponder_move_when_the_pv_is_long_enough() {
         let mut engine = Engine::new();
-        // KRK mate-in-2 rather than the startpos: after the S0 optimism
-        // landing, near-tie startpos roots can be dither-promoted (the
-        // documented §3.3 freshness truncation publishes an honestly
-        // length-1 PV). A forced mate PV is 3 plies, decisive scores are
-        // dither-exempt, and the property under test is the UCI ponder
-        // plumbing — so the fixture must make PV >= 2 deterministic.
+        // KRK mate-in-2 rather than startpos: near-tie startpos roots can
+        // publish a length-1 PV; the fixture makes PV >= 2 deterministic.
         let _ = command_on(&mut engine, "position fen k7/8/2K5/8/8/8/8/7R w - - 0 1");
         let out = command_on(&mut engine, "go depth 6");
         assert_eq!(bestmoves(&out), 1, "{out}");
@@ -2705,7 +2371,7 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn mated_root_answers_info_depth_0_and_bestmove_none() {
-        // Fool's mate: white is checkmated (doc 12 §3.2 step 2, §5 item 7).
+        // Fool's mate: white is checkmated.
         let mut engine = Engine::new();
         command_on(
             &mut engine,
@@ -2725,7 +2391,6 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn go_infinite_prints_bestmove_only_after_stop() {
-        // Scripted: `stop` releases the busy-wait; exactly one bestmove.
         let out = session("go infinite\nstop\nquit\n");
         assert_eq!(bestmoves(&out), 1, "{out}");
     }
@@ -2745,8 +2410,7 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn blocking_commands_implicitly_stop_a_running_search() {
-        // §3.2/§5 item 8: a mid-search `position` flushes the pending
-        // bestmove, then applies; `d` (also blocking) proves it applied.
+        // A mid-search `position` flushes the pending bestmove, then applies.
         let out = session("go infinite\nposition startpos moves e2e4\nd\nquit\n");
         assert_eq!(bestmoves(&out), 1, "{out}");
         assert!(
@@ -2762,8 +2426,7 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn two_go_cycles_answer_exactly_one_bestmove_each() {
-        // Distinct mate-in-1 positions prove the position change between
-        // searches applied (doc 12 §4 steps 5-6 done-conditions).
+        // Distinct mate-in-1 positions prove the position change applied.
         let mut engine = Engine::new();
         command_on(
             &mut engine,
@@ -2784,27 +2447,20 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn ponderhit_releases_a_finished_ponder_search() {
-        // `go ponder depth 1` finishes searching, then busy-waits; the
-        // ponderhit must release exactly one bestmove without a hang
-        // (§3.2 step 3 — the full ponder machine is step 9).
+        // The finished ponder search busy-waits until ponderhit releases it.
         let out = session("go ponder depth 1\nponderhit\nquit\n");
         assert_eq!(bestmoves(&out), 1, "{out}");
     }
 
     #[test]
     fn timed_ponder_search_stops_only_after_ponderhit() {
-        // The §3.8 ponder guard: the expired movetime cannot stop the
-        // pondering search, so the session hinges on `ponderhit` flipping
-        // the shared flag — then the next check_time poll stops it and
-        // exactly one bestmove flows (§3.10 v1 subset).
+        // An expired movetime cannot stop a pondering search.
         let out = session("go ponder movetime 1\nponderhit\nquit\n");
         assert_eq!(bestmoves(&out), 1, "{out}");
     }
 
     #[test]
     fn isready_answers_during_a_search() {
-        // `isready` is a liveness ping (§3.2): it must not wait for the
-        // infinite search — the readyok arrives while the search runs.
         let out = session("go infinite\nisready\nstop\nquit\n");
         assert!(out.contains("readyok\n"), "{out}");
         assert_eq!(bestmoves(&out), 1, "{out}");
@@ -2812,8 +2468,6 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn go_perft_runs_divide_not_a_search() {
-        // doc 12 §3.15 step 12: `go perft N` runs perft divide from the
-        // session position (startpos here) — no search, no bestmove.
         let (_, out) = command("go perft 4");
         assert!(out.contains("Nodes searched: 197281"), "{out}");
         assert_eq!(bestmoves(&out), 0, "{out}");
@@ -2821,9 +2475,7 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn unusable_searchmoves_warns_and_still_searches() {
-        // §3.6/§5 item 9: only-invalid searchmoves → warn, search all
-        // moves, never a fake `bestmove (none)`. (`depth` before
-        // `searchmoves` — the latter consumes the whole tail, §3.6.)
+        // Only-invalid searchmoves → warn, search all moves.
         let mut engine = Engine::new();
         let out = command_on(&mut engine, "go depth 1 searchmoves e2e5");
         assert!(
@@ -2861,9 +2513,7 @@ option name EvalFile type string default <empty>
             format_score(VALUE_MATE_IN_MAX_PLY),
             UciScore::Mate((MAX_PLY as i32 + 1) / 2)
         );
-        // Centipawn scores are NORMALISED into Stockfish's printed frame
-        // (`to_cp`); mate scores above are move counts and pass through
-        // untouched, which is the contract this test pins.
+        // Cp scores are NORMALISED (`to_cp`); mate scores pass through.
         assert_eq!(format_score(0), UciScore::Cp(0));
         let m = ROOT_MATERIAL.load(std::sync::atomic::Ordering::Relaxed);
         assert_eq!(format_score(123), UciScore::Cp(to_cp(123, m)));
@@ -2877,14 +2527,12 @@ option name EvalFile type string default <empty>
 
     #[test]
     fn to_cp_tracks_stockfishs_material_curve() {
-        // SF's divisor a = p_a(material) is material-dependent, so a fixed
-        // ratio would agree in the middlegame and drift in the endgame. Same
-        // internal value, two material regimes, must NOT map to the same cp.
+        // The divisor is material-dependent: same internal value, two
+        // material regimes, different cp.
         let opening = to_cp(300, 78);
         let endgame = to_cp(300, 17);
         assert_ne!(opening, endgame);
-        // The anchor: SF fits at material 58, where a ~ 385, so 1 internal
-        // point is ~1/2.07 printed cp.
+        // The anchor: at material 58, 1 internal point ~ 1/2.07 printed cp.
         let anchor = to_cp(207, 58);
         assert!(
             (anchor - 100).abs() <= 2,
@@ -2915,8 +2563,7 @@ option name EvalFile type string default <empty>
             hashfull: 13,
             pv: &pv,
         };
-        // The score field is NORMALISED (`to_cp`), so this pins the field
-        // ORDER against the transform rather than hardcoding a raw value.
+        // Pins the field ORDER against the transform, not a raw value.
         let cp = to_cp(42, ROOT_MATERIAL.load(std::sync::atomic::Ordering::Relaxed));
         assert_eq!(
             format_info(&info, 2000),
