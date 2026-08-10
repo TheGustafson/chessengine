@@ -151,6 +151,10 @@ def build_cfg(spec: dict, start_sb: int) -> TrainConfig:
             "ft_sparsity_warmup_superbatches", 0.0),
         warmup_superbatches=spec.get("warmup_superbatches", 0.0),
         ema_decay=spec.get("ema_decay", 0.0),
+        # 2026-08 audit item 1: ONE run key drives both the loader's batch
+        # labels (here) and the export's OBL1 section (ArchSpec.from_run_spec
+        # reads the same key), so the two cannot disagree.
+        bucket_layout=str(spec.get("arch_bucket_layout", "legacy")),
         start_superbatch=start_sb)
 
 

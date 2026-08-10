@@ -1414,6 +1414,7 @@ mod tests {
             ft_scale: crate::eval::nnue::sota_head::FtScale::from_flat_iter(std::iter::repeat_n(
                 1u8, ACC,
             )),
+            bucket_layout: crate::eval::nnue::sota_head::LEGACY_BUCKET_LAYOUT,
         };
         let piece_count = board.all_occupancy().count() as usize;
         let (cp, _sigma, _wdl) = head.forward(

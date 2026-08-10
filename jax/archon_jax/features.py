@@ -569,7 +569,8 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
               threat_code2d: np.ndarray | None = None,
               threat_region: str = "",
               bucket_regions: tuple[str, ...] = (),
-              sf_bucket: bool = False) -> dict:
+              sf_bucket: bool = False,
+              bucket_layout: np.ndarray | None = None) -> dict:
     """records -> the dense/sparse training tensors, bullet-mapper-parity.
 
     Returns dict with:
@@ -597,7 +598,11 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
     """
     dec = DecodedBatch(recs)
     hk = halfka_batch(dec)
-    bucket = OUTPUT_BUCKETS_LAYOUT[np.minimum(dec.piece_count, 32)]
+    # 2026-08 audit item 1: the partition is per-RUN now (ArchSpec /
+    # TrainConfig.bucket_layout); None keeps the legacy module default so
+    # every existing caller is byte-identical.
+    layout = OUTPUT_BUCKETS_LAYOUT if bucket_layout is None else bucket_layout
+    bucket = layout[np.minimum(dec.piece_count, 32)]
     # Richer-representation study: king-region-conditioned OUTPUT buckets (the
     # head-side, refresh-free form of context refinement). Bits are read from
     # the STM perspective; each named bit doubles the bucket space. The arch's

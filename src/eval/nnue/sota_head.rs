@@ -216,26 +216,78 @@ pub(crate) const fn threat_quant_for(shift: u32) -> i32 {
 /// (design/11 §12.6).
 const DEQUANT: f32 = (1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QUANT * L1_QUANT) as f32;
 
-/// Piece-count → output bucket (non-uniform: fine at mid-material, coarse at the
-/// extremes — copy Reckless's *shape*, retune boundaries on our data later).
-const OUTPUT_BUCKETS_LAYOUT: [usize; 33] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, // 0..8 pieces
-    1, 1, 1, 1, // 9..12
-    2, 2, 2, 2, // 13..16
-    3, 3, 3, // 17..19
-    4, 4, 4, // 20..22
-    5, 5, 5, // 23..25
-    6, 6, 6, // 26..28
-    7, 7, 7, 7, // 29..32
-];
+/// Domain of the output-bucket map: `popcount(occupancy)` ∈ `0..=32`.
+pub const PIECE_COUNT_BINS: usize = 33;
 
-/// The output bucket the head selects for a total piece count — exposed so
-/// tests, tools, and the debug oracle can pin the T6c skip against the SAME
-/// bucket index the forward uses.
-#[inline]
-pub fn output_bucket(piece_count: usize) -> usize {
-    OUTPUT_BUCKETS_LAYOUT[piece_count]
+/// A piece-count → output-bucket map. **Per-net data since 2026-08** (the
+/// OBL1 container section, [`super::sota_loader`]): a net is trained against
+/// one specific partition of the piece-count axis, so the partition belongs
+/// to the net, not to the binary. Containers without an OBL1 section imply
+/// [`LEGACY_BUCKET_LAYOUT`], which keeps every existing net bit-identical.
+pub type BucketLayout = [u8; PIECE_COUNT_BINS];
+
+/// Expand `BUCKETS` inclusive piece-count ceilings into the full map: a piece
+/// count lands in the first bucket whose ceiling covers it. Ceilings must be
+/// strictly increasing and end at 32 — a shorter last ceiling fails const
+/// evaluation on the out-of-bounds index below.
+const fn layout_from_ceilings(ceilings: [u8; BUCKETS]) -> BucketLayout {
+    let mut map = [0u8; PIECE_COUNT_BINS];
+    let mut count = 0;
+    while count < PIECE_COUNT_BINS {
+        let mut bucket = 0;
+        while (ceilings[bucket] as usize) < count {
+            bucket += 1;
+        }
+        map[count] = bucket as u8;
+        count += 1;
+    }
+    map
 }
+
+/// The implied layout of every container WITHOUT an OBL1 section — i.e. every
+/// net trained before 2026-08.
+///
+/// ATTRIBUTION / REMEDIATION (2026-08 originality audit, item 1 —
+/// `docs/audit/2026-08-originality/00-synthesis.md` §2): these boundaries were
+/// adopted from Reckless (AGPLv3) by the pre-audit hand-copied table this
+/// expression replaces. They are retained — as computed ranges, not as the
+/// copied table text — ONLY because they are baked into every already-trained
+/// net: the head's per-bucket weights were fitted against this exact
+/// partition, so changing the default silently degrades every existing net
+/// and moves the NNUE gate's eval-hash pin. **Delete this constant when the
+/// pre-OBL1 nets retire.** New nets carry [`ARCHON_BUCKET_LAYOUT`] (or their
+/// own) in the container.
+pub const LEGACY_BUCKET_LAYOUT: BucketLayout =
+    layout_from_ceilings([8, 12, 16, 19, 22, 25, 28, 32]);
+
+/// ARCHON's own output-bucket layout: equal-mass buckets over the piece-count
+/// distribution of ARCHON's training data — derived, not designed, so the
+/// boundaries are a measured property of our corpus rather than anyone's
+/// hand-tuned table.
+///
+/// Derivation (reproducible): `tools/nnue/derive_output_buckets.py` over the
+/// first 100M records of `fishpack32-sf5k.shuf.bin` (globally shuffled, so a
+/// prefix is a uniform sample; 50,135,273,696 B = 1,566,727,303 records,
+/// first-MiB sha256 `f403e94e…010101`). Rule: ceiling k = smallest piece
+/// count whose cumulative mass reaches k/8 of the sample, last ceiling forced
+/// to 32. Full receipt (histogram, per-bucket mass 9.0–16.5%):
+/// `docs/audit/2026-08-originality/output-buckets-derivation.txt`.
+///
+/// The derived map agrees with the legacy map on only 16/33 piece counts —
+/// our corpus is materially lighter than Reckless's boundaries assume, so
+/// equal mass pulls every interior ceiling down. The FIRST ceiling (8) does
+/// coincide with the legacy one; that is where 15.0% of our sample's
+/// cumulative mass happens to land, and the coincidence is flagged here per
+/// the audit's honesty rule.
+///
+/// Ships with the FIRST net trained under it (the OBL1 section); until then
+/// nothing selects it at runtime, so today's eval is untouched.
+pub const ARCHON_BUCKET_LAYOUT: BucketLayout = layout_from_ceilings(ARCHON_BUCKET_CEILINGS);
+
+/// The derived inclusive ceilings behind [`ARCHON_BUCKET_LAYOUT`] — kept as
+/// the 8 numbers the derivation actually produces so the tool's output can be
+/// diffed against the shipped value directly.
+pub const ARCHON_BUCKET_CEILINGS: [u8; BUCKETS] = [8, 10, 13, 15, 18, 21, 25, 32];
 
 // The head's five bucket-selected weight tables, and the skip lane, named as
 // what they are: `BUCKETS` fixed-size blocks. Perf study 26 §3 — as
@@ -352,6 +404,12 @@ pub struct SotaHead {
     /// fat-pointer range check plus a `try_into` length check with a panic edge
     /// in the eval's hot path.
     pub ft_scale: FtScale,
+    /// This net's piece-count → output-bucket map: the container's OBL1
+    /// section, or [`LEGACY_BUCKET_LAYOUT`] when the container has none —
+    /// which is every net trained before 2026-08, kept bit-identical by that
+    /// default. The map is trained INTO the head's per-bucket weights, so it
+    /// travels with them.
+    pub bucket_layout: BucketLayout,
 }
 
 /// Pairwise-multiply FT activation (design/11 §12.3 step 1): sum the two
@@ -475,6 +533,15 @@ impl Default for HeadScratch {
 }
 
 impl SotaHead {
+    /// The output bucket THIS NET selects for a total piece count — the same
+    /// index the forward pass uses, exposed so tests, tools, and the debug
+    /// oracle pin the T6c skip against it. A method, not a free function,
+    /// because the map is per-net data (see [`BucketLayout`]).
+    #[inline]
+    pub fn output_bucket(&self, piece_count: usize) -> usize {
+        usize::from(self.bucket_layout[piece_count])
+    }
+
     /// int8 sparse matmul over the nonzero groups → dequantized SCReLU f32[L2]
     /// (design/11 §12.3 step 3). Products accumulate in i32, matching Bullet's
     /// affine layer and the `dpbusd` semantics used by the reference design.
@@ -718,7 +785,7 @@ impl SotaHead {
         // (d0dff381 -> caab9574), which would have made every number below a
         // property of the edit rather than of the arm.
         #[cfg(any(feature = "hskip60", feature = "htail60"))]
-        let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
+        let bucket = usize::from(self.bucket_layout[piece_count]);
         // PERF STUDY 60 arm `htail` — hint the head's TAIL tables at the top of
         // the forward pass.
         //
@@ -798,7 +865,7 @@ impl SotaHead {
         #[cfg(feature = "foldcount")]
         super::foldcount::NNZ.hit(count);
         #[cfg(not(any(feature = "hskip60", feature = "htail60")))]
-        let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
+        let bucket = usize::from(self.bucket_layout[piece_count]);
         self.propagate_l1(ft, &nnz[..count], bucket, l1_out);
         let l1 = l1_out;
         let l2 = self.propagate_l2(l1, bucket);
@@ -1029,6 +1096,7 @@ mod tests {
             l3_wdl_biases: None,
             skip_weights: None,
             ft_scale: FtScale::from_flat_iter(std::iter::repeat_n(1u8, L1)),
+            bucket_layout: LEGACY_BUCKET_LAYOUT,
         }
     }
 
@@ -1115,13 +1183,102 @@ mod tests {
         let (b, _, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
         assert_eq!(a, b, "deterministic");
         assert!(a.abs() < 100_000, "finite, sane cp");
-        // piece counts 20 and 32 map to different buckets (4 vs 7).
-        assert_eq!(OUTPUT_BUCKETS_LAYOUT[20], 4);
-        assert_eq!(OUTPUT_BUCKETS_LAYOUT[32], 7);
+        // piece counts 20 and 32 map to different buckets (4 vs 7 on the
+        // legacy layout the synthetic head carries).
+        assert_eq!(head.output_bucket(20), 4);
+        assert_eq!(head.output_bucket(32), 7);
         // stm flip changes which half leads → generally a different value.
         let (w, _, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
         let (bl, _, _) = head.forward(&pst, &threat, Color::Black, 20, &ZERO_PSQT);
         assert!(w != bl, "side-to-move relativity is wired");
+    }
+
+    /// 2026-08 originality audit, item 1: the ceiling expansion is now the
+    /// ONLY definition of both layouts. Pin the legacy expansion against the
+    /// historical bucket EDGES (the behavior every pre-OBL1 net was trained
+    /// under — this is the legacy-default-preservation test), and the ARCHON
+    /// expansion against its committed derivation receipt
+    /// (`docs/audit/2026-08-originality/output-buckets-derivation.txt`).
+    #[test]
+    fn bucket_layouts_expand_their_ceilings_exactly() {
+        // Legacy partition: 0..=8 | 9..=12 | 13..=16 | 17..=19 | 20..=22 |
+        // 23..=25 | 26..=28 | 29..=32. Both edges of every bucket.
+        for (count, bucket) in [
+            (0usize, 0u8),
+            (8, 0),
+            (9, 1),
+            (12, 1),
+            (13, 2),
+            (16, 2),
+            (17, 3),
+            (19, 3),
+            (20, 4),
+            (22, 4),
+            (23, 5),
+            (25, 5),
+            (26, 6),
+            (28, 6),
+            (29, 7),
+            (32, 7),
+        ] {
+            assert_eq!(LEGACY_BUCKET_LAYOUT[count], bucket, "legacy count {count}");
+        }
+        // ARCHON partition per the derivation receipt: 0..=8 | 9..=10 |
+        // 11..=13 | 14..=15 | 16..=18 | 19..=21 | 22..=25 | 26..=32.
+        for (count, bucket) in [
+            (0usize, 0u8),
+            (8, 0),
+            (9, 1),
+            (10, 1),
+            (11, 2),
+            (13, 2),
+            (14, 3),
+            (15, 3),
+            (16, 4),
+            (18, 4),
+            (19, 5),
+            (21, 5),
+            (22, 6),
+            (25, 6),
+            (26, 7),
+            (32, 7),
+        ] {
+            assert_eq!(ARCHON_BUCKET_LAYOUT[count], bucket, "archon count {count}");
+        }
+        // Structural sanity for any layout the expansion can build: total,
+        // monotone with no skipped bucket, covering all BUCKETS.
+        for layout in [&LEGACY_BUCKET_LAYOUT, &ARCHON_BUCKET_LAYOUT] {
+            assert_eq!(layout[0], 0);
+            assert_eq!(usize::from(layout[PIECE_COUNT_BINS - 1]), BUCKETS - 1);
+            for pair in layout.windows(2) {
+                assert!(
+                    pair[1] == pair[0] || pair[1] == pair[0] + 1,
+                    "monotone, no skipped bucket: {pair:?}"
+                );
+            }
+        }
+    }
+
+    /// New-layout selection (audit item 1): a head carrying a different
+    /// layout selects different buckets through the REAL forward pass, and
+    /// piece counts the two layouts agree on stay bit-identical.
+    #[test]
+    fn forward_reads_the_per_net_bucket_layout() {
+        let legacy = synth_head();
+        let mut archon = synth_head();
+        archon.bucket_layout = ARCHON_BUCKET_LAYOUT;
+        let (pst, threat) = synth_accs();
+        // Piece count 11: legacy bucket 1, ARCHON bucket 2. The synthetic
+        // head's per-bucket tables differ, so the values must differ.
+        assert_eq!(legacy.output_bucket(11), 1);
+        assert_eq!(archon.output_bucket(11), 2);
+        let (a, _, _) = legacy.forward(&pst, &threat, Color::White, 11, &ZERO_PSQT);
+        let (b, _, _) = archon.forward(&pst, &threat, Color::White, 11, &ZERO_PSQT);
+        assert_ne!(a, b, "the forward pass must read the net's own layout");
+        // Piece count 8 is bucket 0 in BOTH layouts → identical output.
+        let (a0, _, _) = legacy.forward(&pst, &threat, Color::White, 8, &ZERO_PSQT);
+        let (b0, _, _) = archon.forward(&pst, &threat, Color::White, 8, &ZERO_PSQT);
+        assert_eq!(a0, b0, "a shared bucket evaluates bit-identically");
     }
 
     /// T6c: the head adds EXACTLY `(psqt[stm][b] − psqt[ntm][b]) >> 8` cp on
@@ -1143,7 +1300,7 @@ mod tests {
 
         for stm in Color::ALL {
             for piece_count in [2usize, 9, 20, 32] {
-                let bucket = OUTPUT_BUCKETS_LAYOUT[piece_count];
+                let bucket = head.output_bucket(piece_count);
                 let (base, _, _) = head.forward(&pst, &threat, stm, piece_count, &ZERO_PSQT);
                 let (skip, _, _) = head.forward(&pst, &threat, stm, piece_count, &psqt);
                 let s = stm as usize;
@@ -1159,7 +1316,7 @@ mod tests {
         // Arithmetic-shift semantics on a negative difference: −1 >> 8 == −1
         // (floor), never 0 (truncation).
         let mut neg = ZERO_PSQT;
-        neg[0][OUTPUT_BUCKETS_LAYOUT[20]] = -1;
+        neg[0][head.output_bucket(20)] = -1;
         let (base, _, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
         let (skip, _, _) = head.forward(&pst, &threat, Color::White, 20, &neg);
         assert_eq!(skip - base, -1, "arithmetic shift floors toward −∞");

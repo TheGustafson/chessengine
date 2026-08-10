@@ -615,7 +615,7 @@ impl SotaContext {
         // it bounds how much of the value the threat channel carries.
         #[cfg(feature = "foldcount")]
         {
-            let b = super::sota_head::output_bucket(piece_count);
+            let b = self.net.head.output_bucket(piece_count);
             let s = stm as usize;
             super::foldcount::stash_psqt_only((psqt[s][b] - psqt[s ^ 1][b]) >> 8);
             let hka_psqt = combine_psqt(halfka_psqt, &super::sota_head::ZERO_PSQT);
@@ -899,7 +899,6 @@ mod tests {
     #[test]
     fn psqt_net_matches_fresh_and_adds_exactly_the_skip() {
         use super::super::sota_accumulator::refresh_psqt_halfka;
-        use super::super::sota_head::output_bucket;
         use super::super::sota_threats::refresh_psqt_threat;
 
         let psqt_net = leaked_psqt_test_net();
@@ -941,7 +940,9 @@ mod tests {
             // (b) psqt eval == plain eval + the exact shifted difference.
             let base = without.evaluate(&board, ply + 1);
             let stm = board.side_to_move() as usize;
-            let bucket = output_bucket(board.all_occupancy().count() as usize);
+            let bucket = psqt_net
+                .head
+                .output_bucket(board.all_occupancy().count() as usize);
             let mut totals = [[0i32; super::super::sota_head::BUCKETS]; 2];
             for (i, &persp) in Color::ALL.iter().enumerate() {
                 let hk = refresh_psqt_halfka(psqt_net.halfka_psqt(), &board, persp);

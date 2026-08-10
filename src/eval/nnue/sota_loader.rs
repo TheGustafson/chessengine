@@ -134,6 +134,15 @@ pub const SKIP_MAGIC: [u8; 4] = *b"SKP1";
 /// still carry a TRM1 (the identity/shuffle instrumentation arms); a net whose
 /// header says less MUST.
 pub const REMAP_MAGIC: [u8; 4] = *b"TRM1";
+/// OBL1 magic (2026-08 originality-audit item 1 — the per-net output-bucket
+/// layout): `b"OBL1" | u32 bins (= 33) | u8[33]`, the LAST optional section
+/// (after TRM1 / SKP1 / PSQ1 / the payload, whichever of those exist).
+/// Entry `c` is the output bucket the head selects for total piece count `c`;
+/// every entry must be `< out_buckets`. Absent ⇒ the container predates the
+/// section and implies [`sota_head::LEGACY_BUCKET_LAYOUT`], which keeps every
+/// pre-2026-08 net bit-identical. Rides OUTSIDE the header checksum, like
+/// every other trailer.
+pub const BUCKETS_MAGIC: [u8; 4] = *b"OBL1";
 /// PSQ1 section header length: magic + u32 num_buckets + u32 rows.
 const PSQT_HEADER_LEN: usize = 12;
 
@@ -231,6 +240,7 @@ impl PartialEq for SotaNetwork {
             && self.psqt_weights == other.psqt_weights
             && self.head.network_scale == other.head.network_scale
             && self.head.threat_shift == other.head.threat_shift
+            && self.head.bucket_layout == other.head.bucket_layout
             && self.head.l1_weights == other.head.l1_weights
             && self.head.l1_biases == other.head.l1_biases
             && self.head.l2_weights == other.head.l2_weights
@@ -719,24 +729,36 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     // Recode POC: optional TRM1 trailer after SKP1 (or directly after PSQ1 /
     // the payload). Mandatory when the header's threat row count is
     // compressed; `None` = the identity code = every net before this change.
-    let threat_remap = {
-        let skip_len = if skip_weights.is_empty() {
-            0
-        } else {
-            12 + skip_weights.len() * 4
-        };
-        let tail2 = &tail[skip_len.min(tail.len())..];
-        if tail2.len() >= 4 && tail2[0..4] == REMAP_MAGIC {
-            Some(parse_remap_section(tail2, threat_rows)?)
-        } else {
-            None
-        }
+    let skip_len = if skip_weights.is_empty() {
+        0
+    } else {
+        12 + skip_weights.len() * 4
+    };
+    let tail2 = &tail[skip_len.min(tail.len())..];
+    let threat_remap = if tail2.len() >= 4 && tail2[0..4] == REMAP_MAGIC {
+        Some(parse_remap_section(tail2, threat_rows)?)
+    } else {
+        None
     };
     if has_threats && threat_rows != THREAT_DIMS && threat_remap.is_none() {
         return Err(SotaNnueError::BadRemap {
             detail: "compressed threat table (threat_dims < 60720) without a TRM1 section",
         });
     }
+    // OBL1 (2026-08): optional per-net output-bucket layout, the LAST
+    // section. Absent = the legacy map = bit-identical to every net and
+    // every build before the section existed (see BUCKETS_MAGIC).
+    let remap_len = if threat_remap.is_some() {
+        12 + THREAT_DIMS * 2
+    } else {
+        0
+    };
+    let tail3 = &tail2[remap_len.min(tail2.len())..];
+    let bucket_layout = if tail3.len() >= 4 && tail3[0..4] == BUCKETS_MAGIC {
+        parse_bucket_section(tail3)?
+    } else {
+        sota_head::LEGACY_BUCKET_LAYOUT
+    };
 
     let head = SotaHead {
         l1_weights,
@@ -753,6 +775,7 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
         l3_wdl_biases: None,
         skip_weights: (!skip_weights.is_empty()).then(|| quantise_skip_lane(&skip_weights)),
         ft_scale,
+        bucket_layout,
     };
 
     Ok(SotaNetwork {
@@ -814,6 +837,43 @@ fn parse_remap_section(sec: &[u8], threat_rows: usize) -> Result<Box<ThreatRemap
         *dst = v;
     }
     Ok(table)
+}
+
+/// Parse an OBL1 section (starting at its magic): the net's piece-count →
+/// output-bucket layout ([`BUCKETS_MAGIC`]). Strict: the bin count must be
+/// exactly [`sota_head::PIECE_COUNT_BINS`] and every entry `< BUCKETS` — the
+/// forward pass indexes the per-bucket weight tables with these values, and
+/// the load-time check is what keeps that index unchecked-cheap. Tolerant of
+/// further trailing bytes (future sections).
+fn parse_bucket_section(sec: &[u8]) -> Result<sota_head::BucketLayout, SotaNnueError> {
+    const HDR: usize = 8;
+    let need = HDR + sota_head::PIECE_COUNT_BINS;
+    if sec.len() < need {
+        return Err(SotaNnueError::TooShort {
+            need,
+            got: sec.len(),
+        });
+    }
+    let bins = read_u32(sec, 4);
+    if bins as usize != sota_head::PIECE_COUNT_BINS {
+        return Err(SotaNnueError::WrongDim {
+            field: "bucket_layout_bins",
+            expected: sota_head::PIECE_COUNT_BINS as u32,
+            found: bins,
+        });
+    }
+    let mut layout = [0u8; sota_head::PIECE_COUNT_BINS];
+    for (dst, &entry) in layout.iter_mut().zip(&sec[HDR..need]) {
+        if usize::from(entry) >= BUCKETS {
+            return Err(SotaNnueError::WrongDim {
+                field: "bucket_layout_entry",
+                expected: BUCKETS as u32,
+                found: u32::from(entry),
+            });
+        }
+        *dst = entry;
+    }
+    Ok(layout)
 }
 
 /// Parse an SKP1 section (starting at its magic). Strict on this build's
@@ -1548,6 +1608,14 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
             out.extend_from_slice(&r.to_le_bytes());
         }
     }
+    // Optional OBL1 trailer (2026-08): present only when the net's
+    // piece-count → bucket layout differs from the legacy default, so every
+    // existing net serializes byte-identically.
+    if net.head.bucket_layout != sota_head::LEGACY_BUCKET_LAYOUT {
+        out.extend_from_slice(&BUCKETS_MAGIC);
+        out.extend_from_slice(&(sota_head::PIECE_COUNT_BINS as u32).to_le_bytes());
+        out.extend_from_slice(&net.head.bucket_layout);
+    }
     out
 }
 
@@ -1790,6 +1858,7 @@ pub(crate) mod tests {
                 l3_wdl_biases: None,
                 skip_weights: None,
                 ft_scale: sota_head::FtScale::from_flat_iter(std::iter::repeat_n(1u8, ACC)),
+                bucket_layout: sota_head::LEGACY_BUCKET_LAYOUT,
             },
         }
     }
@@ -2180,6 +2249,94 @@ pub(crate) mod tests {
         assert!(back.psqt_weights.is_empty());
         assert!(back.halfka_psqt().is_empty());
         assert!(back.threat_psqt().is_empty());
+    }
+
+    /// 2026-08 originality audit, item 1 — the OBL1 contract:
+    /// (a) legacy-default preservation — a container without the section
+    ///     loads with [`sota_head::LEGACY_BUCKET_LAYOUT`] and its serialized
+    ///     bytes are untouched by the section's existence;
+    /// (b) round-trip — an ARCHON-layout net appends exactly the 41-byte
+    ///     OBL1 trailer and loads back equal (PartialEq covers the layout);
+    /// (c) new-layout selection — the loaded head selects through its OWN map.
+    #[test]
+    fn obl1_round_trip_and_legacy_byte_identity() {
+        let legacy = test_net_with_threats();
+        let mut archon = test_net_with_threats();
+        archon.head.bucket_layout = sota_head::ARCHON_BUCKET_LAYOUT;
+
+        let legacy_bytes = serialize(&legacy);
+        let archon_bytes = serialize(&archon);
+        assert_eq!(
+            archon_bytes.len(),
+            legacy_bytes.len() + 8 + sota_head::PIECE_COUNT_BINS,
+            "OBL1 is exactly magic + u32 bins + u8[33]"
+        );
+        assert_eq!(
+            archon_bytes[..legacy_bytes.len()],
+            legacy_bytes[..],
+            "a legacy net's bytes are a strict prefix — nothing else moved"
+        );
+        assert_eq!(archon_bytes[legacy_bytes.len()..][..4], BUCKETS_MAGIC);
+
+        let back = load_v2_bytes(&legacy_bytes).expect("legacy net loads");
+        assert_eq!(back.head.bucket_layout, sota_head::LEGACY_BUCKET_LAYOUT);
+        assert_eq!(back.head.output_bucket(11), 1, "legacy: count 11 → bucket 1");
+
+        let back = load_v2_bytes(&archon_bytes).expect("OBL1 net loads");
+        assert_eq!(back.head.bucket_layout, sota_head::ARCHON_BUCKET_LAYOUT);
+        assert_eq!(back.head.output_bucket(11), 2, "ARCHON: count 11 → bucket 2");
+        assert_eq!(back, archon, "full net equality including the layout");
+    }
+
+    /// OBL1 is the LAST trailer: it stacks after PSQ1 + TRM1 in one container
+    /// and the whole thing round-trips. (SKP1 is dropped by the serializer,
+    /// so the recode fixture covers the deepest real trailer chain.)
+    #[test]
+    fn obl1_rides_after_the_other_trailers() {
+        let (mut compressed, _) = test_recode_pair_pub();
+        compressed.head.bucket_layout = sota_head::ARCHON_BUCKET_LAYOUT;
+        let bytes = serialize(&compressed);
+        let back = load_v2_bytes(&bytes).expect("psqt+trm1+obl1 net loads");
+        assert_eq!(back.head.bucket_layout, sota_head::ARCHON_BUCKET_LAYOUT);
+        assert_eq!(back, compressed);
+    }
+
+    /// OBL1 validation: wrong bin count, out-of-range entry, truncation —
+    /// each a loud loader error, never a silently mis-bucketed net.
+    #[test]
+    fn obl1_rejects_bad_sections() {
+        let mut net = test_net_with_threats();
+        net.head.bucket_layout = sota_head::ARCHON_BUCKET_LAYOUT;
+        let good = serialize(&net);
+        let sec = good.len() - (8 + sota_head::PIECE_COUNT_BINS);
+
+        // Wrong bin count.
+        let mut bytes = good.clone();
+        bytes[sec + 4..sec + 8].copy_from_slice(&32u32.to_le_bytes());
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::WrongDim {
+                field: "bucket_layout_bins",
+                ..
+            })
+        ));
+
+        // Entry out of range (== BUCKETS).
+        let mut bytes = good.clone();
+        bytes[sec + 8] = BUCKETS as u8;
+        assert!(matches!(
+            load_v2_bytes(&bytes),
+            Err(SotaNnueError::WrongDim {
+                field: "bucket_layout_entry",
+                ..
+            })
+        ));
+
+        // Truncated section.
+        assert!(matches!(
+            load_v2_bytes(&good[..good.len() - 1]),
+            Err(SotaNnueError::TooShort { .. })
+        ));
     }
 
     #[test]
