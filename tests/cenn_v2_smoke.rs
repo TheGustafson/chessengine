@@ -41,6 +41,7 @@ fn cenn_v2_round_trip_and_evaluate() {
         threat_remap: None,
         psqt_weights: Vec::new().into(),
         head: SotaHead {
+            bucket_layout: chessengine::eval::nnue::sota_head::LEGACY_BUCKET_LAYOUT,
             l1_weights,
             l1_biases,
             l2_weights,

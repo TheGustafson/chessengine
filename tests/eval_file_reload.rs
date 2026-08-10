@@ -27,6 +27,7 @@ fn tiny_net(scale: i32) -> SotaNetwork {
         threat_remap: None,
         psqt_weights: Vec::new().into(),
         head: SotaHead {
+            bucket_layout: chessengine::eval::nnue::sota_head::LEGACY_BUCKET_LAYOUT,
             l1_weights: vec![0i8; BUCKETS * L2 * L1].into(),
             l1_biases: vec![0.0; BUCKETS * L2].into(),
             l2_weights: vec![0.0; BUCKETS * L2 * L3].into(),

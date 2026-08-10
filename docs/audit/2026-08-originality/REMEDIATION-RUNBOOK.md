@@ -39,6 +39,7 @@ pins bit-for-bit; that reproduction is step 2/3's whole point.
 
 ```bash
 cargo test
+cargo test --features "$(cat engines/canonical/arch.txt)"   # the OBL1/kernel tests are sota-gated; a default run never compiles them
 cargo test --release -- --ignored perft_full_suite   # attacks.rs was touched (D24 ritual)
 cargo clippy --all-targets
 ```
