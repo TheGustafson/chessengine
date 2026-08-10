@@ -1,1 +1,0 @@
-r1 base nodes=5001624 instructions:u=5905.510217 cycles:u=4189.367204 branches:u=619.317529 ex_ret_brn_misp:u=24.192826 L1-dcache-loads:u=3006.641274 

@@ -4,6 +4,9 @@ version = "0.1.0"
 # Feeds the UCI `id author` line via CARGO_PKG_AUTHORS (design/12 §3.3).
 authors = ["TheGustafson"]
 edition = "2024"
+license = "GPL-3.0-or-later"
+description = "ARCHON — a UCI chess engine with an NNUE evaluation trained on its own data pipeline"
+repository = "https://github.com/TheGustafson/chessengine"
 
 [dependencies]
 

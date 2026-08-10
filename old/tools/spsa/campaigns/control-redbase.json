@@ -1,7 +1,0 @@
-{
-  "name": "control-redbase",
-  "comment": "Harness positive control (not one of the 8 decisions): start RED_BASE detuned to 1541 (1.5x its 1027 default, a known-bad ~+50%-reduction-offset detune) and verify SPSA walks it BACK toward default. If it cannot recover a deliberate detune, flat campaign results are harness insensitivity, not flat landscapes. Single param so the whole gradient budget concentrates on it.",
-  "params": [
-    {"name": "RED_BASE", "min": 500, "max": 2054}
-  ]
-}

@@ -1,4 +1,0 @@
-  cycles panel a2ext -> a3inl   rounds=15
-    NULL (byte-identical copy)   median= +0.401%  faster_in=6/15  min= -4.571%  max= +8.170%
-    ARM  (a3inl)                 median= -0.963%  faster_in=9/15  min= -6.686%  max= +6.113%
-    VERDICT: an arm delta is real only if it clears the NULL row.

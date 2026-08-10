@@ -1,2 +1,0 @@
-arm=nosnap eval_hash=5ca978e012da1bb0 eval=OK d13_nodes=1922947 node=OK bench_nodes=5001562 instructions=34036325186 cycles=31889419578 branches=3890122974 nps=820735
-arm=final eval_hash=5ca978e012da1bb0 eval=OK d13_nodes=1922947 node=OK bench_nodes=5001562 instructions=33199993848 cycles=33239716713 branches=3874058542 nps=778332

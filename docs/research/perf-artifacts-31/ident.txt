@@ -1,2 +1,0 @@
-s31-base               i/n= 5653.84 br/n= 588.65 nodes= 5,001,562 hash=5ca978e012da1bb0
-s31-p1-densepush       i/n= 5653.06 br/n= 588.21 nodes= 5,001,562 hash=5ca978e012da1bb0

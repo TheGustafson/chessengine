@@ -475,6 +475,7 @@ arm**; **stay on ONE position, no aggregates during diagnosis**.
 
 ## `old/` — archived, not deleted
 
+2026-08-10: `old/` was DELETED from the tracked tree (release cleanup, approved); recover any of it via git history (`git show 9a8613a4^:old/...`). Original archive note:
 2026-07-28: 371 files (206 one-shot campaign scripts, 129 per-session research
 docs, raw perf artifacts) were moved to `old/` because nothing live referenced
 them. Verified: no live file references any moved path, and

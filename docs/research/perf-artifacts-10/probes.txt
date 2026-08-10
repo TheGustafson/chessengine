@@ -1,4 +1,0 @@
-probe=base                         instr=35,045,570,772 nodes= 5,001,562 per_node=  7006.9 cyc_per_node=  5924.0 hash=5ca978e012da1bb0
-probe=resolve-checks               instr=34,763,399,400 nodes= 5,001,562 per_node=  6950.5 cyc_per_node=  8147.6 hash=5ca978e012da1bb0
-probe=finny-diff                   instr=34,837,451,614 nodes= 5,001,562 per_node=  6965.3 cyc_per_node=  6754.4 hash=5ca978e012da1bb0
-probe=finny-hoist-only             instr=34,744,897,614 nodes= 5,001,562 per_node=  6946.8 cyc_per_node=  6781.5 hash=5ca978e012da1bb0

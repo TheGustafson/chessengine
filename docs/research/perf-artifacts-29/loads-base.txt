@@ -1,4 +1,0 @@
-base       nodes=5001562   i/n= 5654.23 br/n= 588.73 loads/n= 3055.832 misses/n= 608.776 miss-rate=19.9218%
-census     nodes=5001562   i/n= 5673.73 br/n= 588.73 loads/n= 3058.530 misses/n= 618.088 miss-rate=20.2087%
-base       nodes=5001562   i/n= 5654.23 br/n= 588.73 loads/n= 3047.443 misses/n= 614.907 miss-rate=20.1778%
-census     nodes=5001562   i/n= 5673.73 br/n= 588.73 loads/n= 3063.601 misses/n= 613.546 miss-rate=20.0269%

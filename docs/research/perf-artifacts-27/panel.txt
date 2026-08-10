@@ -1,4 +1,0 @@
-  panel base -> final   rounds=12
-    NULL  instructions= +0.000% [ -0.000, +0.000]  branches= -0.000% [ -0.000, +0.000]  branch-misses= -0.280% [ -0.770, +0.892]  L1d-load-misses= -0.241% [ -0.683, +0.282]
-    ARM   instructions= -1.087% [ -1.087, -1.087]  branches= -0.972% [ -0.972, -0.972]  branch-misses= +0.747% [ -0.274, +2.114]  L1d-load-misses= -0.495% [ -0.911, -0.058]
-    VERDICT: an arm delta is real only if it clears the NULL row.

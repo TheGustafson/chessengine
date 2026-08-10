@@ -1,8 +1,0 @@
-  ...10/24
-  ...20/24
-
-NULL (byte-identical): median -0.376%  sd 1.137  sign 17/24 neg  p=0.0639
-ARM                  : median +0.354%  sd 0.941  sign 8/24 neg  p=0.1516
-
-NOT LICENSED: null median -0.376% vs arm +0.354%.
-The instrument cannot resolve this arm under current load. Re-run on a quieter box or raise --rounds; do NOT quote the arm.

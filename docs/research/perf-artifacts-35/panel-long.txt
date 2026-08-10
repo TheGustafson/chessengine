@@ -1,6 +1,0 @@
-r1   base         nodes=15001568  i/n= 5478.11 cyc/n= 4348.56 loads/n= 2968.472 miss/n= 592.045 rate=19.944% stall/n= 2515.91
-r1   null         nodes=15001568  i/n= 5478.11 cyc/n= 4434.15 loads/n= 2965.430 miss/n= 592.074 rate=19.966% stall/n= 2576.93
-r1   after        nodes=15001568  i/n= 5453.11 cyc/n= 4745.50 loads/n= 2976.490 miss/n= 591.996 rate=19.889% stall/n= 2879.79
-r1   hookc        nodes=15001568  i/n= 5466.80 cyc/n= 4470.53 loads/n= 2961.125 miss/n= 595.528 rate=20.112% stall/n= 2583.12
-r2   null         nodes=15001568  i/n= 5478.11 cyc/n= 4635.64 loads/n= 2976.323 miss/n= 592.168 rate=19.896% stall/n= 2806.17
-r2   after        nodes=15001568  i/n= 5453.11 cyc/n= 4906.13 loads/n= 2953.198 miss/n= 595.708 rate=20.172% stall/n= 2995.09

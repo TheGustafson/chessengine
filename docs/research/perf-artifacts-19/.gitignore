@@ -1,4 +1,0 @@
-# Stashed probe binaries (~1.2 MB each) — regenerate with probe19.sh <label>.
-bin/
-cg/bin-*
-*.eng

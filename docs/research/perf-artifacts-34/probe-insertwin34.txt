@@ -1,6 +1,0 @@
-r1   marm       nodes=5001624   i/n= 5960.137 cyc/n= 4432.836 br/n= 623.802 misp/n=24.4341 loads/n= 3022.384
-r1   moff       nodes=5001624   i/n= 5960.137 cyc/n= 4209.417 br/n= 623.802 misp/n=24.2333 loads/n= 3025.774
-r1   mon        nodes=5001624   i/n= 6001.978 cyc/n= 4630.450 br/n= 620.495 misp/n=23.7165 loads/n= 3009.617
-r2   moff       nodes=5001624   i/n= 5960.137 cyc/n= 4479.097 br/n= 623.802 misp/n=24.2181 loads/n= 3010.507
-r2   mon        nodes=5001624   i/n= 6001.978 cyc/n= 4428.254 br/n= 620.494 misp/n=23.6519 loads/n= 3067.792
-r2   marm       nodes=5001624   i/n= 5960.137 cyc/n= 4292.038 br/n= 623.802 misp/n=24.8947 loads/n= 3025.130

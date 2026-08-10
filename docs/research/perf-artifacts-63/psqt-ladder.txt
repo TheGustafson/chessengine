@@ -1,7 +1,0 @@
-### PSQT ladder  2026-07-31T20:15:17-04:00
- 20:15:17 up 2 days, 59 min,  1 user,  load average: 1.68, 1.72, 2.29
-label           nodes  eval-hash                                                        text-bytes instructions
-base          5001562  2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4    760085  27346635516
-q0            5001562  2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4    760085  27346634884
-q1            5001562  2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4    760117  27346634388
-q2            5001562  2e1ede9521624dd89eab4eb1bae0a1ea568cd6cf7e85b668179a7b5e93cf79c4    761461  27382224624

@@ -1,4 +1,0 @@
-A base                           n=6 cyc_n=  4727.8 ins_n=  6086.5 ipc=1.287 l1m_n= 625.51 ma64_n=  985.00
-B base2                          n=6 cyc_n=  4567.3 ins_n=  6086.5 ipc=1.333 l1m_n= 623.78 ma64_n=  989.08
-  paired dcyc_n (B-A): median=  -282.1 min= -1528.5 max=  +181.2 all_same_sign=False
-  medians: dcyc_n=  -160.5 (-3.40%) dins_n=   -0.00 (-0.000%) dl1m_n=  -1.72 dma64_n=   +4.08  nodes=[5001562]

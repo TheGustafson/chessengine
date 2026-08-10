@@ -1,9 +1,0 @@
-counter                      base       NULL        ARM  arm-neg
-----------------------------------------------------------------
-cycles/node               4821.83    +0.495%    -5.569%    6/8
-instructions/node         5659.75    +0.000%    +5.582%    0/8
-load-stall/node           2796.33    +0.554%   -15.639%    8/8
-L1d loads/node            3051.08    -0.145%    -0.842%    8/8
-L1d misses/node            616.84    +0.199%    -5.959%    8/8
-
-nodes: base {5001562} arm {5001624}  (NOT node-identical -- expected, the eval changed)

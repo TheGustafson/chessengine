@@ -1,3 +1,0 @@
-probe=base-main                      instr=34,743,249,976 nodes= 5,001,562 per_node=  6946.5 brs_per_node=  843.1 hash=5ca978e012da1bb0
-probe=psqt-rows-hoist                instr=34,740,643,937 nodes= 5,001,562 per_node=  6946.0 brs_per_node=  842.3 hash=5ca978e012da1bb0
-probe=resolve-select                 instr=34,744,777,890 nodes= 5,001,562 per_node=  6946.8 brs_per_node=  838.1 hash=5ca978e012da1bb0

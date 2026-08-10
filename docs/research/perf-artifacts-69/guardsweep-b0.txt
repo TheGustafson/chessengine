@@ -1,6 +1,0 @@
-# 136 guard-shaped static reads in s69-b0
-  ops/node  sites  guarded static
-    3.4029     45  chessengine::attacks::TABLES+0x1040
-    0.6518      5  chessengine::eval::nnue::sota_features::THREAT_TABLES+0x888
-    0.1534      2  chessengine::cuckoo::CUCKOO+0x14000
-    4.2081    136  TOTAL

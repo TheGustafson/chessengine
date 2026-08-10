@@ -1,8 +1,0 @@
-8eb2792be104720d338e59d3330d5c44d4574b1e6269da49651cbe5c202e89da  /tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/verif/eval800-a3f892e.txt
-8eb2792be104720d338e59d3330d5c44d4574b1e6269da49651cbe5c202e89da  /tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/verif/eval800-b46c026.txt
-8eb2792be104720d338e59d3330d5c44d4574b1e6269da49651cbe5c202e89da  /tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/verif/eval800-d47.txt
-8eb2792be104720d338e59d3330d5c44d4574b1e6269da49651cbe5c202e89da  /tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/verif/eval800-tip.txt
-0c33e2e06a7ffb4e87c3c8e2394a57d130b24c046cf192ff2e9205cab88f3efc  /tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/verif/nodes50-a3f892e.txt
-0c33e2e06a7ffb4e87c3c8e2394a57d130b24c046cf192ff2e9205cab88f3efc  /tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/verif/nodes50-b46c026.txt
-0c33e2e06a7ffb4e87c3c8e2394a57d130b24c046cf192ff2e9205cab88f3efc  /tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/verif/nodes50-d47.txt
-0c33e2e06a7ffb4e87c3c8e2394a57d130b24c046cf192ff2e9205cab88f3efc  /tmp/claude-1000/-home-nick-projects-chessengine/61b8a705-638b-4a89-a73b-e4fc2a5170a2/scratchpad/verif/nodes50-tip.txt

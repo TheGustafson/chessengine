@@ -1,9 +1,0 @@
---- 3-way round-robin, n=10 per arm, core 2 ---
-A base                     cyc=  4820.6 ins=  6086.5 l1m= 624.25 l2m=  74.35
-N base2                    cyc=  4889.0 ins=  6086.5 l1m= 622.88 l2m=  73.69
-B a3only                   cyc=  4795.4 ins=  6078.4 l1m= 621.34 l2m=  72.44
-  NULL  (same binary)  paired dcyc: median=   +90.4 (+1.87%) [-382, +414]  neg=3/10 same_sign=False
-                       medians: dcyc=   +68.4 (+1.42%) dins=  +0.00 (+0.000%) dl1m= -1.36 dl2m= -0.66
-  ARM                  paired dcyc: median=   +22.7 (+0.47%) [-615, +658]  neg=5/10 same_sign=False
-                       medians: dcyc=   -25.2 (-0.52%) dins=  -8.08 (-0.133%) dl1m= -2.91 dl2m= -1.91
-  nodes=[5001562]

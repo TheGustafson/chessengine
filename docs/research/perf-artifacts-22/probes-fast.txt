@@ -1,9 +1,0 @@
-fast=baseline                           instr=30,446,435,279 nodes= 5,001,562 per_node=  6087.4 brs_per_node=  643.3 bmiss_per_node= 19.93 hash=5ca978e012da1bb0
-fast=a12-hotcold-finnylayout            instr=30,777,995,747 nodes= 5,001,562 per_node=  6153.7 brs_per_node=  652.3 bmiss_per_node= 19.99 hash=5ca978e012da1bb0
-fast=a1-hotcold-only                    instr=30,740,026,203 nodes= 5,001,562 per_node=  6146.1 brs_per_node=  650.9 bmiss_per_node= 19.77 hash=5ca978e012da1bb0
-fast=a12b-boxed-arrays                  instr=30,399,941,157 nodes= 5,001,562 per_node=  6078.1 brs_per_node=  640.8 bmiss_per_node= 19.66 hash=5ca978e012da1bb0
-fast=probe-one-extra-acc-copy           instr=31,187,446,149 nodes= 5,001,562 per_node=  6235.5 brs_per_node=  653.6 bmiss_per_node= 20.18 hash=5ca978e012da1bb0
-fast=a3-finny-rowzip                    instr=30,403,821,067 nodes= 5,001,562 per_node=  6078.9 brs_per_node=  641.4 bmiss_per_node= 19.63 hash=5ca978e012da1bb0
-fast=a34-outline-kingbranch             instr=30,391,117,320 nodes= 5,001,562 per_node=  6076.3 brs_per_node=  641.6 bmiss_per_node= 20.37 hash=5ca978e012da1bb0
-fast=a3only-final                       instr=30,403,823,693 nodes= 5,001,562 per_node=  6078.9 brs_per_node=  641.4 bmiss_per_node= 22.20 hash=5ca978e012da1bb0
-fast=merged-s21-plus-s22                instr=30,362,016,828 nodes= 5,001,562 per_node=  6070.5 brs_per_node=  646.8 bmiss_per_node= 22.20 hash=5ca978e012da1bb0
