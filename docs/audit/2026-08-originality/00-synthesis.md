@@ -43,23 +43,50 @@ weights tracked; zobrist keys ≠ SF's (own draw order from SF's seed).
 
 **Remediate the Reckless items, then GPLv3 at first distribution.**
 
-Pre-distribution checklist (≈ an afternoon + one retune):
+Pre-distribution checklist (≈ an afternoon + one retune). **Status column
+added 2026-08-10** (remediation pass; details + post-training validation
+steps in `REMEDIATION-RUNBOOK.md` in this directory):
+
 1. Retune `OUTPUT_BUCKETS_LAYOUT` boundaries on our own data (ships naturally
    with the next net generation; head shape unchanged, only the piece-count→
    bucket map). Kills finding 1.
+   **DONE-in-worktree (`e3a8b78f`)** — equal-mass layout derived from 100M
+   own-corpus records (`tools/nnue/derive_output_buckets.py`, receipt
+   `output-buckets-derivation.txt`); carried per-net via the new OBL1
+   container section with a legacy default so every existing net is
+   bit-identical (the eval-hash pin is the acceptance test, runbook step 2);
+   trainer mirrored (spec/data/features/checkpoint/netpack + run key
+   `arch_bucket_layout`). Compile/test deferred to the runbook (no-cargo box).
 2. Restate the two ~15-line scalar kernels (`activate`, `find_nnz`) from the
    math, not the reference. Kills finding 2's L3 elements.
+   **DONE-in-worktree (`89c3dcf9`)** — restated with a different
+   decomposition, identical arithmetic; proven by a new randomized property
+   test against the byte-untouched SIMD backends (runbook step 1 decides it).
 3. Delete `old/tools/nnue/patches/` from the tree (git history is not
    distribution of the working tree; optionally scrub). Kills finding 3.
+   **DONE (`1424f8c9`)** — no live references (checked incl. ledger recipes);
+   no history rewrite.
 4. Convert the five quoted note fragments to pseudocode. Kills finding 7.
+   **DONE (`4540388c`)** — all 8 quoted/near-quoted blocks across notes
+   05/07/13 converted (a superset of the five named); constants kept as facts.
 5. Delete the tracked profraw. Kills finding 8.
+   **DONE (`1424f8c9`)** — plus a tree-wide `*.profraw`/`*.profdata`
+   gitignore so the class cannot recur.
 6. Optional independence polish: pick our own magic seeds (multipliers are
    re-derived at launch; any valid seeds work, zero functional cost) and our
    own bench suite.
+   **Seeds: RUNBOOK (`823c1287`)** — `find_own_magic_seeds` harness landed
+   (#[ignore]d sweep + oracle validation); execution needs cargo, runbook
+   step 4; shipped row untouched under a REMEDIATION-PENDING notice.
+   **Bench suite: STAGED (`34af97b7`)** — 49 ARCHON-original positions from
+   our own games (`src/bench_positions_archon.rs`, tool + receipt committed),
+   compiled+tested but not activated: activation moves the D24 `Bench:` pin,
+   runbook step 5.
 7. Add LICENSE (GPLv3) + Cargo.toml license field at distribution time.
    GPLv3 moots finding 4 (the selection/arrangement question) entirely — it
    is the SF-family norm. AGPLv3 is only needed if Reckless-derived
    expression is *kept*, which the checklist removes.
+   **OPEN (distribution-time owner decision; unchanged).**
 
 ## 3. Originality verdict
 
