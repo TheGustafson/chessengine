@@ -1,5 +1,11 @@
 # ARCHON perf study #11 — the fair target, and the instrument that lied
 
+> **2026-08-10 (license audit R2-1):** the SF-derived artifacts this study cites
+> (`sfcount11-nnue_accumulator.cpp.txt` — a verbatim GPL source copy — and the
+> `*sfeca*` disassembly listings) were removed from the tracked tree; regenerate
+> per `perf-artifacts-11/README-regenerate.txt` if ever needed.
+
+
 Date: 2026-07-29. Eleventh commissioned study (8:
 `perf-study-8-nps-parity-2026-07-28.md`, 9: `perf-study-9-parity-items-2026-07-28.md`,
 10: `perf-study-10-parity-floor-2026-07-28.md`). Raw artifacts and instruments:
