@@ -25,10 +25,6 @@ pub mod accumulator;
 /// Cache-line-aligned heap slices for the weight tables (perf study 20 §5).
 #[cfg(feature = "sota")]
 pub mod aligned;
-/// Perf study 29's exact accumulator load census — instrumentation only,
-/// compiled out unless `--features foldcount`.
-#[cfg(feature = "foldcount")]
-pub mod foldcount;
 pub mod loader;
 pub mod network;
 /// D47 deployed policy head (CPL1 sidecar + selected-row scorer) — needs the
@@ -43,9 +39,6 @@ pub mod simd;
 /// Exact HalfKAv2_hm plus the protected classic SCReLU head (CENN-v3).
 #[cfg(feature = "sota")]
 pub mod simple_halfka;
-/// Perf study 49's known-answer stall injector — DIAGNOSTIC ONLY.
-#[cfg(feature = "skidprobe")]
-mod skidprobe;
 /// Incremental HalfKA stack and Finny cache for the SOTA net.
 #[cfg(feature = "sota")]
 mod sota_accumulator;

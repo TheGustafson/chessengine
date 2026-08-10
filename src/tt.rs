@@ -259,8 +259,6 @@ impl TtEntry {
         generation: u8,
     ) {
         let tag = key as u16;
-        #[cfg(feature = "ttcensus42")]
-        crate::ttcensus42::bump(&crate::ttcensus42::SAVES);
         let same_key = tag == self.key16.load(Relaxed);
 
         // Rule 1 — ttMove preservation: keep the old move only when the
@@ -288,8 +286,6 @@ impl TtEntry {
             debug_assert!(d > DEPTH_NONE && new_d < 256);
             debug_assert!(generation <= GENERATION_MASK);
             debug_assert!(i16::try_from(v).is_ok() && i16::try_from(ev).is_ok());
-            #[cfg(feature = "ttcensus42")]
-            crate::ttcensus42::bump(&crate::ttcensus42::SAVE_ACCEPT);
             self.key16.store(tag, Relaxed);
             self.depth8.store(new_d as u8, Relaxed);
             self.gen_bound8.store(
@@ -427,8 +423,6 @@ impl TtWriter<'_> {
     /// (doc 07) uses `penalize(1)`.
     pub fn penalize(&self, penalty: i32) {
         debug_assert!(penalty >= 0);
-        #[cfg(feature = "ttcensus42")]
-        crate::ttcensus42::bump(&crate::ttcensus42::PENALIZE);
         let d = i32::from(self.entry.depth8.load(Relaxed));
         self.entry.depth8.store((d - penalty).max(0) as u8, Relaxed);
     }
@@ -527,33 +521,8 @@ impl TranspositionTable {
         let cluster = self.cluster_for(key);
         let tag = key as u16;
 
-        #[cfg(feature = "ttcensus42")]
-        {
-            use crate::ttcensus42 as c;
-            c::bump(&c::PROBES);
-            c::note_cluster(std::ptr::from_ref(cluster) as usize);
-        }
-
         for entry in &cluster.entries {
             if entry.key16.load(Relaxed) == tag {
-                #[cfg(feature = "ttcensus42")]
-                {
-                    use crate::ttcensus42 as c;
-                    c::bump(&c::TAG_MATCH);
-                    // Which slot matched, derived from the address rather than
-                    // from an `enumerate()` index: the loop above is the hot
-                    // path and the default build must keep exactly the shape it
-                    // had before this census existed. Entries are `size_of::
-                    // <TtEntry>()` apart inside the cluster, so the division is
-                    // exact.
-                    let slot = (std::ptr::from_ref(entry) as usize
-                        - std::ptr::from_ref(cluster) as usize)
-                        / size_of::<TtEntry>();
-                    c::bump([&c::SLOT0, &c::SLOT1, &c::SLOT2][slot]);
-                    if entry.is_occupied() {
-                        c::bump(&c::HITS);
-                    }
-                }
                 return Probe {
                     hit: entry.is_occupied(),
                     data: entry.read(),
@@ -698,8 +667,6 @@ impl TranspositionTable {
     /// cycles per node against a measured 129.4.
     #[inline]
     pub fn prefetch(&self, key: Key) {
-        #[cfg(feature = "ttcensus42")]
-        crate::ttcensus42::bump(&crate::ttcensus42::PREFETCH);
         #[cfg(all(target_arch = "x86_64", not(feature = "ttnopf42")))]
         {
             // Perf study 42 arms. `ttnopf42` removes the hint entirely (the

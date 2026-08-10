@@ -517,11 +517,6 @@ impl SotaContext {
     /// i16 lanes per moved piece), and it keeps the big net's own stacks valid so
     /// any later undecided node evaluates the big net exactly as before.
     pub fn push(&mut self, dirty: DirtyPiece, ply: usize, post_move_board: &Board) {
-        // Learned-representation study Tier-0: unconditional make-time HalfKA
-        // delta census (every made move, before any deferral). Counter-only,
-        // feature-gated, off in every default and release build.
-        #[cfg(feature = "foldcount")]
-        super::foldcount::note_make(dirty.adds().len(), dirty.subs().len());
         self.halfka.push(ply, dirty);
         self.threats.apply_at(ply, &dirty, post_move_board);
         // ONE test for all three optional tier stacks (perf study 16 §6). They
@@ -616,21 +611,6 @@ impl SotaContext {
             }
         }
 
-        // Learned-representation study Tier-0: the ACTIVE-rows census over
-        // full evaluations — piece count (= active HalfKA rows/perspective)
-        // and the enumerated active threat rows for both perspectives.
-        // Enumeration-only (`for_each_threat` reads the board, touches no
-        // accumulator state); instrument builds are not timing references.
-        #[cfg(feature = "foldcount")]
-        {
-            let mut thr_active = [0usize; 2];
-            for color in [Color::White, Color::Black] {
-                let mut n = 0usize;
-                super::sota_features::for_each_threat(board, color, |_| n += 1);
-                thr_active[color as usize] = n;
-            }
-            super::foldcount::note_active(board.all_occupancy().count(), thr_active);
-        }
         let (pst, halfka_psqt) = self.halfka.current_full(board, ply);
         let (threat, threat_psqt) = self.threats.at_full(ply);
         // T6c: total per-perspective PSQT bucket sums (HalfKA + threat rows).
@@ -665,37 +645,6 @@ impl SotaContext {
         }
         self.last_sigma = sigma;
         self.last_wdl = wdl;
-        // Perf study 65 — two candidates for the eval-elision census.
-        //
-        // `psqt_only`: `forward_into` computes
-        // `value = (l3 · network_scale) + psqtterm`, so this is exactly that
-        // value with the net output zeroed — what a fold that touched only the
-        // 32-byte PSQ1 rows (1/40th of a weight row) could produce.
-        //
-        // `hka_only`: the same head over the HalfKA channel alone, with the
-        // threat accumulator and its PSQT pair zeroed. That is the fold this
-        // engine would run if it kept a HalfKA-only cheap tier — the shape of
-        // Stockfish's small net, and the reason `smallnet_*` is already wired
-        // here. It is deliberately NOT a claim about a net trained that way;
-        // it bounds how much of the value the threat channel carries.
-        #[cfg(feature = "foldcount")]
-        {
-            let b = self.net.head.output_bucket(piece_count);
-            let s = stm as usize;
-            super::foldcount::stash_psqt_only((psqt[s][b] - psqt[s ^ 1][b]) >> 8);
-            let hka_psqt = combine_psqt(halfka_psqt, &super::sota_head::ZERO_PSQT);
-            let mut tier_l1 = [0.0f32; super::sota_head::L2];
-            let (hka_value, _, _) = self.net.head.forward_into(
-                pst,
-                &ZERO_THREAT,
-                stm,
-                piece_count,
-                &hka_psqt,
-                &mut self.head_scratch,
-                &mut tier_l1,
-            );
-            super::foldcount::stash_hka_only(hka_value);
-        }
 
         // T-shirt gate LARGE tier: on a CRITICAL position — one the medium net is
         // least sure about (its EXP-UNC-1 σ̂ ≥ largenet_sigma_gate) — escalate to

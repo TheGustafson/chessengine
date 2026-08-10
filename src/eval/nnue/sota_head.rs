@@ -890,63 +890,7 @@ impl SotaHead {
         // borrow of two DIFFERENT fields at once, and a field-by-field
         // destructuring pattern is what makes that legal without `unsafe` —
         // the same idiom `HalfkaContext::finny_refresh_into` uses on `self`.
-        #[cfg(feature = "foldcount")]
-        super::foldcount::EVAL.hit(0);
         let HeadScratch { ft, nnz } = scratch;
-        // Perf study 50: register the head's OWN streams as named address
-        // regions so an IBS data-address sample can be attributed to the array
-        // it actually landed in. Registered from here, and not from a
-        // constructor, because `SotaContext::new` returns by value through
-        // `with_tier_flag(mut self) -> Self` — the scratch is MOVED after
-        // construction, so a pointer taken there is not the live one. A
-        // `Once` keeps it to a single relaxed load per evaluation.
-        #[cfg(feature = "foldcount")]
-        {
-            static ONCE: std::sync::Once = std::sync::Once::new();
-            ONCE.call_once(|| {
-                use super::foldcount::region;
-                // `L1 * 2` until perf study 51: study 50 halved `FtScale` to
-                // `u8` but left the region byte count at the i16 width, so the
-                // registered range covered 1280 B of NEIGHBOURING heap and its
-                // post-arm miss rate was contaminated. Derive the width from
-                // the array instead of restating it, so the next requantisation
-                // cannot desynchronise it again.
-                region(
-                    "ft_scale",
-                    self.ft_scale.block(0).as_ptr().cast(),
-                    std::mem::size_of_val(self.ft_scale.block(0)),
-                );
-                region("head_ft", ft.as_ptr(), L1);
-                region("head_nnz", nnz.as_ptr().cast(), L1 / 2);
-                region(
-                    "l1_weights",
-                    self.l1_weights.as_ptr().cast(),
-                    L2 * L1 * BUCKETS,
-                );
-                region(
-                    "l2_weights",
-                    self.l2_weights.as_ptr().cast(),
-                    L2 * L3 * BUCKETS * 4,
-                );
-                region(
-                    "l3_weights",
-                    self.l3_weights.as_ptr().cast(),
-                    L3 * BUCKETS * 4,
-                );
-                region(
-                    "l1_biases",
-                    self.l1_biases.as_ptr().cast(),
-                    L2 * BUCKETS * 4,
-                );
-                if let Some(sk) = &self.skip_weights {
-                    region("skip_q", sk.q.as_ptr().cast(), L1 * BUCKETS);
-                }
-                super::foldcount::valhist(
-                    "ft_scale",
-                    self.ft_scale.block(0).iter().map(|&s| i64::from(s)),
-                );
-            });
-        }
         activate_ft(
             pst,
             threat,
@@ -1039,8 +983,6 @@ impl SotaHead {
             super::sota_simd::skip_dot_i8(&ft[..], sk.q.block(bucket)) as f32 * sk.scale[bucket]
         });
         let count = find_nnz(ft, nnz);
-        #[cfg(feature = "foldcount")]
-        super::foldcount::NNZ.hit(count);
         #[cfg(not(any(feature = "hskip60", feature = "htail60")))]
         let bucket = usize::from(self.bucket_layout[piece_count]);
         self.propagate_l1(ft, &nnz[..count], bucket, l1_out);

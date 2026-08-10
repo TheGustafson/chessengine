@@ -442,41 +442,6 @@ pub(crate) struct HalfkaContext<'a> {
 
 impl<'a> HalfkaContext<'a> {
     pub(crate) fn new(weights: &'a [i8], bias: &'a [i16], psqt_weights: &'a [i32]) -> Self {
-        #[cfg(feature = "foldcount")]
-        {
-            use super::foldcount::region;
-            // `size_of_val` reports the i8 table, so study 29's census sees
-            // the HALVED region (28.9 MB, not 57.7) — which is the point of
-            // study 32 and exactly what the census should attribute.
-            region(
-                "hka_weights",
-                weights.as_ptr().cast(),
-                std::mem::size_of_val(weights),
-            );
-            region(
-                "hka_psqt",
-                psqt_weights.as_ptr().cast(),
-                std::mem::size_of_val(psqt_weights),
-            );
-            // Perf study 51: how many BITS of each i8 weight are real? Study 50
-            // halved `ft_scale` on exactly this evidence. Offset by +128 so the
-            // signed range lands in `valhist`'s unsigned 0..1024 buckets.
-            // `Once` because a context is constructed per search, and the table
-            // is 28.8 MB — one pass is diagnostic, one per search is a stall.
-            static HKA_VH: std::sync::Once = std::sync::Once::new();
-            HKA_VH.call_once(|| {
-                super::foldcount::valhist(
-                    "hka_weights_p128",
-                    weights.iter().map(|&w| i64::from(w) + 128),
-                );
-            });
-            static HKA_WEIGHTS_RS: std::sync::Once = std::sync::Once::new();
-            HKA_WEIGHTS_RS.call_once(|| {
-                super::foldcount::rowstats("hka_weights", weights, super::sota_head::L1);
-                super::foldcount::rowwidth_init(0, weights, super::sota_head::L1);
-                super::foldcount::lanestats("hka_weights", weights, super::sota_head::L1);
-            });
-        }
         #[allow(unused_mut)]
         let mut me = Self {
             weights,
@@ -493,20 +458,6 @@ impl<'a> HalfkaContext<'a> {
             cache: boxed_array(FinnyEntry::default(), 2 * FINNY_KEYS),
             cache_valid: [0; 2],
         };
-        #[cfg(feature = "foldcount")]
-        {
-            use super::foldcount::region;
-            region(
-                "hka_stack",
-                std::ptr::from_ref(&*me.stack).cast(),
-                std::mem::size_of_val(&*me.stack),
-            );
-            region(
-                "finny_cache",
-                std::ptr::from_ref(&*me.cache).cast(),
-                std::mem::size_of_val(&*me.cache),
-            );
-        }
         me
     }
 
@@ -545,17 +496,6 @@ impl<'a> HalfkaContext<'a> {
         // region, `find_last_usable_accumulator`
         // (`eca43a97:src/nnue/nnue_accumulator.cpp:105-119`), is our `compute`
         // ancestor walk, not this one. Deleting it is convergence.
-        // Perf study 49's known-answer stall injector (diagnostic feature only,
-        // see `skidprobe.rs`): a serial cache-missing chase in its OWN leaf
-        // symbol, so the profiler's attribution of a stall with an unambiguous
-        // owner can be measured.
-        // The seed MUST vary widely per call. A first version seeded from `ply`
-        // alone, which takes ~60 distinct values, so the chase revisited the
-        // same few hundred lines and sat in L1 -- it injected no stall at all
-        // and would have "proved" attribution was fine. The zobrist key is a
-        // different address every node.
-        #[cfg(feature = "skidprobe")]
-        super::skidprobe::poke(board.key() as usize ^ ply);
         // `for perspective in Color::ALL` -- iterating the array BY VALUE --
         // is the anti-pattern `finny_refresh_into` already forbids in prose a
         // few hundred lines below, and perf study 49 found `current_full`
@@ -781,8 +721,6 @@ impl<'a> HalfkaContext<'a> {
             ..
         } = self;
         let p = perspective as usize;
-        #[cfg(feature = "foldcount")]
-        super::foldcount::note_finny_key(p, key);
         let cached = &mut cache[p * FINNY_KEYS + key];
         let valid_bit = 1u64 << key;
         if cache_valid[p] & valid_bit != 0 {

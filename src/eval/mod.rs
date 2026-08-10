@@ -472,12 +472,6 @@ pub fn evaluate(board: &Board, ctx: &mut EvalContext, optimism: Value, ply: usiz
         "evaluate must never be called in check (design/11 §3.1)"
     );
 
-    // Perf study 65: same freshness discipline as σ̂ below, for the PSQT-only
-    // elision candidate — a material-draw shortcut or a non-SOTA net must leave
-    // `last_psqt_only() == None` rather than the PREVIOUS position's value.
-    #[cfg(feature = "foldcount")]
-    crate::eval::nnue::foldcount::clear_psqt_only();
-
     // EXP-UNC-1 (D33 review, reviewers A/C): invalidate the SOTA value-uncertainty
     // σ̂ up front, so any path that does NOT run the SOTA forward this node
     // (the material-draw shortcut below, or a non-SOTA active net) leaves
@@ -562,24 +556,6 @@ pub fn evaluate(board: &Board, ctx: &mut EvalContext, optimism: Value, ply: usiz
         None => psqt::psqt_eval(board),
     };
 
-    apply_outer_shape(
-        inner,
-        optimism,
-        blend_material(board),
-        board.rule50_count() as i64,
-    )
-}
-
-/// Perf study 65 (instrument only) — put a CANDIDATE inner value through the
-/// exact outer shape [`evaluate`] applies, so a cheap predictor's number is
-/// directly comparable with the eval it is trying to replace.
-///
-/// The alternative was to re-derive the optimism/material/rule-50 blend in the
-/// analysis script, which is the "a fact in a doc gets forgotten, a constructor
-/// cannot" failure mode: this way the census and the engine share one
-/// implementation by construction.
-#[cfg(feature = "foldcount")]
-pub fn shape_inner(board: &Board, optimism: Value, inner: Value) -> Value {
     apply_outer_shape(
         inner,
         optimism,

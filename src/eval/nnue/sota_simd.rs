@@ -761,15 +761,6 @@ pub(crate) fn apply_halfka_deltas(
     adds: &[RowOffset],
     subs: &[RowOffset],
 ) {
-    #[cfg(feature = "foldcount")]
-    {
-        super::foldcount::HKA_INPLACE.hit(adds.len() + subs.len());
-        #[cfg(feature = "rowprobe")]
-        {
-            super::foldcount::note_row_reuse(0, adds);
-            super::foldcount::note_row_reuse(0, subs);
-        }
-    }
     pin_rows_hka!(adds, subs);
     kernel_dispatch!(i8_deltas(acc, weights, adds, subs))
 }
@@ -789,26 +780,6 @@ pub(crate) fn apply_halfka_deltas_into(
     adds: &[RowOffset],
     subs: &[RowOffset],
 ) {
-    #[cfg(feature = "foldcount")]
-    {
-        super::foldcount::HKA_INTO.hit(adds.len() + subs.len());
-        super::foldcount::note_hka_shape(adds.len(), subs.len());
-        #[cfg(feature = "rowprobe")]
-        {
-            let z = &super::foldcount::ZERO_ROW_HKA;
-            super::foldcount::note_zero_rows(z, weights, adds, ACC);
-            super::foldcount::note_zero_rows(z, weights, subs, ACC);
-            super::foldcount::note_row_fold(0, adds);
-            super::foldcount::note_row_fold(0, subs);
-            super::foldcount::note_row_reuse(0, adds);
-            super::foldcount::note_row_reuse(0, subs);
-            // Perf study 65 — the same census on the HalfKA side, so its
-            // 97.3 %-need-8-bits result is confirmed per FOLD and not only per
-            // row (study 51 §4.2 measured only the row distribution).
-            super::foldcount::note_fold_width(0, adds, subs);
-            super::foldcount::note_fold_redundancy(0, adds, subs, &[]);
-        }
-    }
     pin_rows_hka!(adds, subs);
     pin_src!(src);
     pin_dst!(dst);
@@ -827,17 +798,6 @@ pub(crate) fn apply_halfka_deltas_dual(
     adds: &[RowOffset],
     subs: &[RowOffset],
 ) {
-    #[cfg(feature = "foldcount")]
-    {
-        super::foldcount::HKA_DUAL.hit(adds.len() + subs.len());
-        super::foldcount::note_hka_dual_shape(adds.len() + subs.len());
-        super::foldcount::note_dual_pair(adds.len(), subs.len());
-        #[cfg(feature = "rowprobe")]
-        {
-            super::foldcount::note_row_reuse(0, adds);
-            super::foldcount::note_row_reuse(0, subs);
-        }
-    }
     // Perf study 43 arm NT stores `acc` non-temporally, which the ISA only
     // defines for a 64-byte-aligned address. The alignment is structural
     // (`FinnyEntry` is `align(64)`, `acc` at offset 128), so this asserts the
@@ -866,26 +826,6 @@ pub(crate) fn apply_threat_deltas_into(
     subs: &[RowOffset],
     row_map: &[u32],
 ) {
-    #[cfg(feature = "foldcount")]
-    {
-        super::foldcount::THR_INTO.hit(adds.len() + subs.len());
-        super::foldcount::note_thr_shape(adds.len() + subs.len());
-        super::foldcount::note_thr_pair(adds.len(), subs.len());
-        #[cfg(feature = "rowprobe")]
-        {
-            let z = &super::foldcount::ZERO_ROW_THR;
-            super::foldcount::note_zero_rows(z, weights, adds, ACC);
-            super::foldcount::note_zero_rows(z, weights, subs, ACC);
-            super::foldcount::note_row_fold(1, adds);
-            super::foldcount::note_row_fold(1, subs);
-            super::foldcount::note_row_reuse(1, adds);
-            super::foldcount::note_row_reuse(1, subs);
-            // Perf study 65 — per-FOLD width, which is what decides whether a
-            // narrow-row layout dispatches per row or per fold.
-            super::foldcount::note_fold_width(1, adds, subs);
-            super::foldcount::note_fold_redundancy(1, adds, subs, row_map);
-        }
-    }
     // Perf study 39's placement arm: the same copies, issued from the fold
     // rather than from `activate` (`P39_SITE=fold`). Inert otherwise.
     #[cfg(feature = "probe-addcopy")]
@@ -962,8 +902,6 @@ pub(crate) fn activate(
     stm: usize,
     threat_shift: u32,
 ) {
-    #[cfg(feature = "foldcount")]
-    super::foldcount::ACTIVATE.hit(0);
     // Perf study 39's ADDITIVE arm rides here — one evaluated node, one
     // redundant accumulator-pair copy, which is study 31's instrument.
     #[cfg(feature = "probe-addcopy")]

@@ -84,10 +84,6 @@ pub mod search_trace;
 pub mod threads;
 pub mod timeman;
 pub mod tt;
-/// Perf study 42's transposition-table census (instrument only; relaxed
-/// atomics on paths that make no search decision, so the tree is unmoved).
-#[cfg(feature = "ttcensus42")]
-pub mod ttcensus42;
 #[macro_use]
 mod tune;
 pub mod types;

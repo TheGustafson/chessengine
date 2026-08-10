@@ -1025,20 +1025,6 @@ pub(super) fn refresh_threat_into_at(
             ),
         }
     }
-    // Perf study 39: count the COLUMNS this from-scratch rebuild folds. Fusion
-    // makes the threat channel inherit HalfKA's refresh trigger, so this row
-    // count times the extra refresh rate IS fusion's cost side — quoted by
-    // studies 29 and 31 from an assumption, measured here.
-    #[cfg(feature = "foldcount")]
-    {
-        let mut rows = 0usize;
-        for_each_threat_at(pos, perspective, remap, |idx| {
-            rows += 1;
-            add_threat_column(dst, threat_weights, threat_rowmap, idx);
-        });
-        super::foldcount::THR_REFRESH.hit(rows);
-    }
-    #[cfg(not(feature = "foldcount"))]
     for_each_threat_at(pos, perspective, remap, |idx| {
         add_threat_column(dst, threat_weights, threat_rowmap, idx)
     });

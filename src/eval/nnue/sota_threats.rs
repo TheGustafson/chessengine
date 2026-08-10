@@ -743,18 +743,6 @@ fn king_cross(dp: &DirtyPiece) -> [bool; 2] {
             if pc2.piece_type == PieceType::King && pc2.color == pc.color {
                 // orient_threats splits on file <= 3 (a–d) vs >= 4 (e–h).
                 out[pc.color as usize] = (from.file() <= 3) != (to.file() <= 3);
-                // Tier-0 T0c census for the richer-representation study: which
-                // CANDIDATE context boundaries did this in-tree king move
-                // cross? Counter-only, feature-gated, off in every default and
-                // release build.
-                #[cfg(feature = "foldcount")]
-                {
-                    super::foldcount::note_king_move(pc.color as usize, from.index(), to.index());
-                    // Learned-representation study: the full from→to transition
-                    // matrix, so any FUTURE partition (including learned ones)
-                    // is priceable from one run.
-                    super::foldcount::note_king_trans(pc.color as usize, from.index(), to.index());
-                }
                 break;
             }
         }
@@ -1148,36 +1136,6 @@ impl<'a> ThreatContext<'a> {
     }
 
     pub fn new(weights: &'a [i8], psqt_weights: &'a [i32], remap: Option<&'a ThreatRemap>) -> Self {
-        #[cfg(feature = "foldcount")]
-        {
-            use super::foldcount::region;
-            region(
-                "thr_weights",
-                weights.as_ptr().cast(),
-                std::mem::size_of_val(weights),
-            );
-            region(
-                "thr_psqt",
-                psqt_weights.as_ptr().cast(),
-                std::mem::size_of_val(psqt_weights),
-            );
-            // Perf study 51: see the twin call in `HalfkaContext::new`. The
-            // threat table is 77.7 MB and 54.7% of all folded weight rows, so
-            // it is the one that decides whether a narrower weight is possible.
-            static THR_VH: std::sync::Once = std::sync::Once::new();
-            THR_VH.call_once(|| {
-                super::foldcount::valhist(
-                    "thr_weights_p128",
-                    weights.iter().map(|&w| i64::from(w) + 128),
-                );
-            });
-            static THR_WEIGHTS_RS: std::sync::Once = std::sync::Once::new();
-            THR_WEIGHTS_RS.call_once(|| {
-                super::foldcount::rowstats("thr_weights", weights, super::sota_head::L1);
-                super::foldcount::rowwidth_init(1, weights, super::sota_head::L1);
-                super::foldcount::lanestats("thr_weights", weights, super::sota_head::L1);
-            });
-        }
         #[allow(unused_mut)]
         let mut me = ThreatContext {
             weights,
@@ -1213,15 +1171,6 @@ impl<'a> ThreatContext<'a> {
             sub_scratch: [[RowOffset::default(); DELTA_CAP]; 2],
             top: 0,
         };
-        #[cfg(feature = "foldcount")]
-        {
-            use super::foldcount::region;
-            region(
-                "thr_stack",
-                std::ptr::from_ref(&*me.stack).cast(),
-                std::mem::size_of_val(&*me.stack),
-            );
-        }
         me
     }
 
@@ -1398,20 +1347,6 @@ impl<'a> ThreatContext<'a> {
             dp: *dp,
             position: ThreatPosition::from_board(board),
         };
-
-        // Learned-representation study Tier-0: unconditional make-time threat
-        // EVENT census. The production path defers `build_deltas` to fold time
-        // and so only ever counts the plies that survive deferral; replaying
-        // it here (instrument-only) counts what a non-deferring engine would
-        // pay on EVERY made move. `compute` clears `self.buf` before its own
-        // use, so this leaves no state behind; the search tree, node count and
-        // eval hash are untouched (verified by the neutrality gate).
-        #[cfg(feature = "foldcount")]
-        {
-            self.buf.clear();
-            build_deltas(&mut self.buf, tables(), dp, &self.push[child].position);
-            super::foldcount::note_thr_make(self.buf.len);
-        }
 
         // A perspective whose king crossed the d/e mirror cannot fold from its
         // parent — every index is re-oriented — so it must be rebuilt from
@@ -1623,21 +1558,6 @@ impl<'a> ThreatContext<'a> {
             // that neither attacks nor is attacked changes none of them.
             // Measure the surviving rate before touching it; the two spellings
             // of this copy are 45.4 i/n apart (D33 reviewer C, M6/N4).
-            #[cfg(feature = "foldcount")]
-            super::foldcount::note_thr_joint(need, lens);
-            // Perf study 48: how much of this ply's weight-row traffic is
-            // provably inert (an index in BOTH lists, or twice in one)?
-            #[cfg(feature = "foldcount")]
-            super::foldcount::note_thr_cancel(
-                [
-                    &self.add_scratch[0][..lens[0].0],
-                    &self.add_scratch[1][..lens[1].0],
-                ],
-                [
-                    &self.sub_scratch[0][..lens[0].1],
-                    &self.sub_scratch[1][..lens[1].1],
-                ],
-            );
             // The parent's VALUE HOLDER, which is the parent ply itself unless
             // the parent was a pure-copy ply the alias below elided.
             // `.min(child - 1)` for the reason `at_full`'s `.min(ply)` is
@@ -1678,10 +1598,6 @@ impl<'a> ThreatContext<'a> {
             // `get(k) == k` would point the child at ITSELF.
             const ALIAS_ENABLED: bool = !cfg!(feature = "null38") && !cfg!(feature = "noalias40");
             if ALIAS_ENABLED && need[0] && need[1] && lens[0] == (0, 0) && lens[1] == (0, 0) {
-                #[cfg(feature = "foldcount")]
-                {
-                    super::foldcount::THR_ALIAS.hit(0);
-                }
                 self.alias.set(child, src);
                 self.fold[child] = [Fold::Done; 2];
                 continue;
@@ -1733,8 +1649,6 @@ impl<'a> ThreatContext<'a> {
                     // `cfg(target_arch = "x86_64")` — this one is local and
                     // holds on every target (D33 reviewer A, m1).
                     const { assert!(ACC.is_multiple_of(32)) };
-                    #[cfg(feature = "foldcount")]
-                    super::foldcount::THR_COPY.hit(0);
                     // Perf study 29's accumulator-stream probe: same 40 loads
                     // and 40 stores, one hot source line instead of a cold
                     // parent entry 10.5 KB up the stack.
