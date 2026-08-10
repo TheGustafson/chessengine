@@ -1594,6 +1594,23 @@ reproduces an exact int64 model of its own fixed-point pipeline to **2.98e-07**,
 while that pipeline differs from the trainer's float graph by **2.4e-02** — the
 int8 substrate's own cost, ~6 % of the head's mean output, which any consumer
 calibrated on training-time residuals must account for.
+**Optional OBL1 trailer (2026-08 originality-audit item 1; authoritative
+contract: `src/eval/nnue/sota_loader.rs` `BUCKETS_MAGIC` +
+`jax/archon_jax/checkpoint.py` `bucket_section_bytes`).** The piece-count →
+output-bucket map is PER-NET data: the head's per-bucket weights are fitted
+against one specific partition of the piece-count axis, so the partition
+travels in the container. The LAST optional trailer (after PSQ1/SKP1/TRM1/DIS1,
+whichever exist): `b"OBL1" | u32 bins (= 33) | u8[33]`, entry `c` = the
+output bucket for total piece count `c`, every entry `< out_buckets`. Absent
+⇒ the loader defaults to the legacy partition (`0..=8 | 9..=12 | 13..=16 |
+17..=19 | 20..=22 | 23..=25 | 26..=28 | 29..=32` — boundaries historically
+adopted from Reckless, retained as computed ranges only for the pre-OBL1
+nets), which keeps every existing net bit-identical. ARCHON's own partition
+(`sota_head.rs` `ARCHON_BUCKET_CEILINGS` = 8, 10, 13, 15, 18, 21, 25, 32) is
+equal-mass over our corpus's piece-count distribution
+(`tools/nnue/derive_output_buckets.py`; receipt in
+`docs/audit/2026-08-originality/output-buckets-derivation.txt`) and ships
+with the first net trained under `arch_bucket_layout: "archon"`.
 
 ### 12.7 Trainer — bullet, extended
 

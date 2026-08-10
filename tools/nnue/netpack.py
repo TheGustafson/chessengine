@@ -247,13 +247,14 @@ def _split_psq1_trailer(raw: bytes, stream_end: int):
     rest = raw[stream_end + pad_len:]
     if not rest:
         return b""
-    if len(rest) < 12 or rest[:4] != b"PSQ1":
-        return None
-    nb = int.from_bytes(rest[4:8], "little")
-    rows = int.from_bytes(rest[8:12], "little")
-    psq_len = 12 + rows * nb * 4
-    if len(rest) < psq_len:
-        return None
+    tail = rest
+    if len(tail) >= 12 and tail[:4] == b"PSQ1":
+        nb = int.from_bytes(tail[4:8], "little")
+        rows = int.from_bytes(tail[8:12], "little")
+        psq_len = 12 + rows * nb * 4
+        if len(tail) < psq_len:
+            return None
+        tail = tail[psq_len:]
     # D47V: optional SKP1 section (output-skip lane, f32) after PSQ1 —
     # b"SKP1" | u32 num_buckets | u32 hl | f32[hl*num_buckets]. Passed
     # through verbatim with PSQ1; absent on pre-skip nets.
@@ -283,6 +284,16 @@ def _split_psq1_trailer(raw: bytes, stream_end: int):
         if len(tail) < dis_len:
             return None
         tail = tail[dis_len:]
+    # 2026-08 audit item 1: optional OBL1 section (per-net output-bucket
+    # layout, the LAST trailer — after DIS1 when present) —
+    # b"OBL1" | u32 bins | u8[bins]. Passed through verbatim
+    # (jax/archon_jax/checkpoint.py bucket_section_bytes; engine:
+    # sota_loader.rs BUCKETS_MAGIC).
+    if len(tail) >= 8 and tail[:4] == b"OBL1":
+        bins = int.from_bytes(tail[4:8], "little")
+        if len(tail) < 8 + bins:
+            return None
+        tail = tail[8 + bins:]
     if tail:
         return None
     return bytes(rest)
@@ -356,7 +367,7 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None,
             break
     if policy_bytes is None:
         die(f"{quantised_path}: unrecognized D40 trailing payload ({len(raw)-need_bytes} bytes)")
-    if psq1:
+    if psq1 and psq1[:4] == b"PSQ1":
         nb = int.from_bytes(psq1[4:8], "little")
         rows = int.from_bytes(psq1[8:12], "little")
         want_rows = HALFKA_DIMS + (0 if D40_HALFKA_ONLY else THREAT_DIMS)
@@ -529,7 +540,8 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None,
     with open(out_path, "wb") as f:
         f.write(header)
         f.write(payload)
-        # T6c: pass the PSQ1 section through VERBATIM, after the checksummed
+        # T6c/OBL1: pass the trailer chain (PSQ1 + SKP1 + OBL1, whichever
+        # exist) through VERBATIM, after the checksummed
         # payload (mirroring its position after the padded bullet stream).
         # Absent from the source ⇒ absent here ⇒ legacy .cenn byte-identical.
         if psq1:
@@ -538,7 +550,7 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None,
     total = want_header + len(payload) + (len(psq1) if psq1 else 0)
     print(f"netpack-d40: wrote {out_path} ({total:,} bytes, "
           f"{'CENN-v5' if v5 else 'CENN-v2'})")
-    if psq1:
+    if psq1 and psq1[:4] == b"PSQ1":
         print(f"  psqt        PSQ1 section passed through ({len(psq1):,} bytes, "
               f"{int.from_bytes(psq1[8:12], 'little')} rows x "
               f"{int.from_bytes(psq1[4:8], 'little')} buckets)")
@@ -548,6 +560,9 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None,
                   f"{int.from_bytes(psq1[d+4:d+8], 'little')} proj="
                   f"{int.from_bytes(psq1[d+8:d+12], 'little')} outs="
                   f"{int.from_bytes(psq1[d+12:d+16], 'little')}, f32)")
+    if psq1 and b"OBL1" == psq1[-41:][:4]:
+        print(f"  buckets     OBL1 output-bucket layout passed through "
+              f"({list(psq1[-33:])})")
 
     # D47: emit the .cpol companion (policy rows OUTSIDE the CENN so every
     # value-net tool — scale-check, gates, loaders — is untouched).

@@ -43,17 +43,41 @@ NUM_BUCKETS = 8              # piece-count output buckets (d40:221)
 POLICY_VOCAB = 1858          # policy_vocab.rs:40
 GEOMETRIC_CLASSES = 1792     # policy_vocab.rs:43
 
-# Piece-count -> output bucket (d40:288-298). Index = popcount(occ), min 32.
-OUTPUT_BUCKETS_LAYOUT = np.array(
-    [0, 0, 0, 0, 0, 0, 0, 0, 0,
-     1, 1, 1, 1,
-     2, 2, 2, 2,
-     3, 3, 3,
-     4, 4, 4,
-     5, 5, 5,
-     6, 6, 6,
-     7, 7, 7, 7], dtype=np.int32)
+# Piece-count -> output bucket. Index = popcount(occ), min 32.
+#
+# LEGACY (pre-2026-08): boundaries adopted from Reckless (AGPLv3) by the D40
+# bullet trainer, retained as COMPUTED RANGES only because every net trained
+# so far is fitted against this exact partition — swapping the default would
+# silently degrade them all (2026-08 originality audit item 1; engine mirror:
+# src/eval/nnue/sota_head.rs LEGACY_BUCKET_LAYOUT). Delete when the pre-OBL1
+# nets retire.
+LEGACY_BUCKET_CEILINGS = (8, 12, 16, 19, 22, 25, 28, 32)
+# ARCHON (2026-08): equal-mass boundaries derived from OUR corpus by
+# tools/nnue/derive_output_buckets.py (100M-record prefix of
+# fishpack32-sf5k.shuf.bin; receipt:
+# docs/audit/2026-08-originality/output-buckets-derivation.txt). The next big
+# run sets arch_bucket_layout="archon" and the export writes the OBL1
+# container section (engine: sota_loader.rs BUCKETS_MAGIC).
+ARCHON_BUCKET_CEILINGS = (8, 10, 13, 15, 18, 21, 25, 32)
+
+
+def bucket_layout_from_ceilings(ceilings) -> np.ndarray:
+    """Expand inclusive piece-count ceilings into the full 33-entry map:
+    a count lands in the first bucket whose ceiling covers it. The ONE
+    definition on the trainer side, mirroring sota_head.rs
+    layout_from_ceilings."""
+    ceilings = tuple(int(c) for c in ceilings)
+    assert ceilings[-1] == 32 and list(ceilings) == sorted(set(ceilings)), ceilings
+    return np.array(
+        [next(b for b, c in enumerate(ceilings) if count <= c)
+         for count in range(33)], dtype=np.int32)
+
+
+OUTPUT_BUCKETS_LAYOUT = bucket_layout_from_ceilings(LEGACY_BUCKET_CEILINGS)
+ARCHON_OUTPUT_BUCKETS_LAYOUT = bucket_layout_from_ceilings(ARCHON_BUCKET_CEILINGS)
 assert OUTPUT_BUCKETS_LAYOUT.shape == (33,)
+BUCKET_LAYOUTS = {"legacy": OUTPUT_BUCKETS_LAYOUT,
+                  "archon": ARCHON_OUTPUT_BUCKETS_LAYOUT}
 
 # ---------------------------------------------------------------------------
 # Targets / loss (d40 lines 219-220, 796-801, 877-879)
@@ -270,6 +294,20 @@ class ArchSpec:
     # needs the shape). A net is now (weights, code): the code's sha256
     # belongs in the ledger row beside the net's.
     threat_rows: int = 0
+    # 2026-08 originality-audit item 1: which piece-count -> output-bucket
+    # partition this net trains under ("legacy" | "archon", BUCKET_LAYOUTS).
+    # "legacy" keeps every existing run byte-identical; "archon" trains the
+    # derived equal-mass partition and makes the quant export append the OBL1
+    # section so the engine selects the same buckets the training did.
+    bucket_layout: str = "legacy"
+
+    def bucket_layout_array(self) -> "np.ndarray":
+        try:
+            return BUCKET_LAYOUTS[self.bucket_layout]
+        except KeyError:
+            raise ValueError(
+                f"unknown bucket_layout {self.bucket_layout!r}; "
+                f"known: {sorted(BUCKET_LAYOUTS)}") from None
 
     @classmethod
     def full(cls) -> "ArchSpec":
@@ -300,7 +338,8 @@ class ArchSpec:
             qat_act_levels=float(spec.get("qat_act_levels", 0.0)),
             qat_l1_scale=float(spec.get("qat_l1_scale", 0.0)),
             threat_rows=int(spec.get("arch_threat_rows", 0)),
-            num_buckets=int(spec.get("arch_num_buckets", NUM_BUCKETS)))
+            num_buckets=int(spec.get("arch_num_buckets", NUM_BUCKETS)),
+            bucket_layout=str(spec.get("arch_bucket_layout", "legacy")))
 
     # Parameter shapes in OUR storage convention: every affine weight is
     # (fan_in, fan_out) row-major, which is byte-identical to bullet's internal
@@ -442,6 +481,11 @@ class TrainConfig:
     # OUTPUT bucket index (each doubles the bucket space; arch.num_buckets
     # must be 8 * 2^n). "" = the plain piece-count buckets.
     bucket_regions: str = ""
+    # 2026-08 originality-audit item 1: the base piece-count -> bucket
+    # partition the LOADER labels batches with ("legacy" | "archon"). MUST
+    # match ArchSpec.bucket_layout — pump_train reads both from the ONE run
+    # key `arch_bucket_layout`, so drift requires hand-built configs.
+    bucket_layout: str = "legacy"
     # Draw-aware double-sigmoid target (2026-07-26 calibration). 0.0 = the
     # historical plain sigmoid(s/scale). a>0 gives P(win)=sig((s-a)/scale),
     # P(loss)=sig((-s-a)/scale), remainder draw, value = EXPECTED SCORE — the

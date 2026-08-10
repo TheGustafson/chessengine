@@ -141,3 +141,8 @@ bin66/
 
 # archived TensorBoard event files (derived data; live tb is under the /data/ rule)
 /old/tb-pre-d48/
+
+# 2026-08 originality audit item 5 (F6): PGO profile data derived from
+# third-party (AGPL) engine builds must never be tracked again.
+*.profraw
+*.profdata

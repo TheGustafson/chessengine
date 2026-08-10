@@ -636,6 +636,17 @@ impl AttackTables {
 /// square (SF-current 64-bit values, D20). Tuned against SF's exact PRNG
 /// consumption order, so the candidate loop below must consume the PRNG
 /// identically: prefilter rejections also advance it (doc 03 §6 pitfall 6).
+///
+/// REMEDIATION-PENDING (2026-08 originality audit, item 6a — F1 in
+/// `docs/audit/2026-08-originality/foundation-infra.md`): this row is SF's
+/// 64-bit seed row verbatim, and because the PRNG and consumption order also
+/// match SF's, the magic multipliers found at startup EQUAL SF's by
+/// construction. The seeds only affect init time (~21 ms), never play, so
+/// the fix is free: run the `find_own_magic_seeds` harness below
+/// (`cargo test --release -- --ignored find_own_magic_seeds --nocapture`),
+/// paste the printed ARCHON row here, and delete this notice. Execution-gated
+/// — a seed's quality is measured by running `init_magics`, which this box
+/// cannot compile mid-training-run; see the audit runbook.
 const MAGIC_SEEDS: [u64; 8] = [728, 10316, 55013, 32803, 12281, 15100, 16645, 255];
 
 /// Which of the two magic-backed sliders `init_magics` is building.
@@ -673,6 +684,25 @@ fn init_magics(
     table: &mut [Bitboard],
     magics: &mut [MagicPair; 64],
 ) {
+    init_magics_seeded(slider, base_offset, table, magics, &MAGIC_SEEDS);
+}
+
+/// [`init_magics`] parameterized over the per-rank seed row, returning the
+/// number of candidate ATTEMPTS spent per rank — the seed-quality metric.
+///
+/// The seed row's only effect is how fast the Las Vegas search converges:
+/// ANY seed row terminates with oracle-verified magics (the collision check
+/// runs against `attacks_naive` and the reachability assert stays on), so
+/// attempts-per-rank is the whole comparison surface. This split exists for
+/// the `find_own_magic_seeds` remediation harness (audit item 6a); the
+/// production path calls it with [`MAGIC_SEEDS`] and ignores the counts.
+fn init_magics_seeded(
+    slider: Slider,
+    base_offset: usize,
+    table: &mut [Bitboard],
+    magics: &mut [MagicPair; 64],
+    seeds: &[u64; 8],
+) -> [u32; 8] {
     // Scratch space, shared across all squares of this slider type (doc 03
     // §3.6): `occupancy`/`reference` hold the current square's Carry-Rippler
     // enumeration; `epoch` + `attempt` implement verification without
@@ -682,6 +712,7 @@ fn init_magics(
     let mut reference = [0u64; 4096];
     let mut epoch = [0u32; 4096];
     let mut attempt = 0u32;
+    let mut attempts_by_rank = [0u32; 8];
 
     let mut offset = base_offset;
     for s in Square::all() {
@@ -716,7 +747,8 @@ fn init_magics(
         // into the top byte), then an O(size) collision check. Benign
         // collisions — same attack set at the same index — are allowed, and
         // are exactly why the packed table can be this small.
-        let mut rng = Prng::new(MAGIC_SEEDS[s.rank() as usize]);
+        let mut rng = Prng::new(seeds[s.rank() as usize]);
+        let square_attempts_base = attempt;
         let magic = loop {
             let mut candidate = 0u64;
             while (candidate.wrapping_mul(mask) >> 56).count_ones() < 6 {
@@ -770,6 +802,7 @@ fn init_magics(
             Slider::Bishop => magics[s.idx()].bishop = found,
             Slider::Rook => magics[s.idx()].rook = found,
         }
+        attempts_by_rank[s.rank() as usize] += attempt - square_attempts_base;
         offset += size;
     }
 
@@ -780,6 +813,7 @@ fn init_magics(
         slider.table_entries(),
         "magic subtables must consume exactly the block reserved for them"
     );
+    attempts_by_rank
 }
 
 // ---------------------------------------------------------------------------
@@ -1890,5 +1924,113 @@ mod tests {
         let (x, y, z) = (a.rand64(), a.rand64(), a.rand64());
         assert_eq!(b.sparse_rand(), x & y & z);
         assert_eq!(a.rand64(), b.rand64(), "streams must stay in lockstep");
+    }
+
+    /// REMEDIATION-PENDING harness (2026-08 originality audit, item 6a): find
+    /// and validate ARCHON's OWN per-rank magic seeds, replacing the SF row.
+    ///
+    /// Seeds only affect init time — any row yields oracle-verified magics —
+    /// so the search is: for each candidate seed, run both sliders' inits and
+    /// read the per-rank attempt counts ([`init_magics_seeded`]); a rank's
+    /// cost under a seed is independent of every other rank (the PRNG
+    /// re-seeds per square), so the best row is the per-rank argmin over one
+    /// shared candidate sweep. `#[ignore]`d because it takes minutes; run
+    ///
+    /// ```text
+    /// cargo test --release -- --ignored find_own_magic_seeds --nocapture
+    /// ```
+    ///
+    /// then paste the printed row over `MAGIC_SEEDS`, drop that constant's
+    /// REMEDIATION-PENDING notice (updating the attribution to name this
+    /// harness + the sweep parameters), and rerun the full suite — init
+    /// re-verifies every magic against the naive oracle at startup, and this
+    /// test's final section re-checks the found row against the oracle on
+    /// random occupancies, so a bad row cannot land silently.
+    #[test]
+    #[ignore = "minutes-long seed sweep; audit item 6a — run at remediation time"]
+    fn find_own_magic_seeds() {
+        // 4096 odd candidates. Deterministic, no RNG over the RNG: candidate
+        // k is simply 2k+1 — the seed space is arbitrary (any nonzero u64
+        // seeds the xorshift), so small odd integers are as good a family as
+        // any and make the sweep reproducible by inspection.
+        const CANDIDATES: u64 = 4096;
+
+        let mut table: Box<[Bitboard]> = vec![Bitboard::EMPTY; TABLE_ALLOC].into_boxed_slice();
+        let mut magics = [MagicPair::ZEROED; 64];
+
+        let mut best_seed = [0u64; 8];
+        let mut best_cost = [u32::MAX; 8];
+        for k in 0..CANDIDATES {
+            let candidate = 2 * k + 1;
+            let row = [candidate; 8];
+            let rook = init_magics_seeded(Slider::Rook, 0, &mut table, &mut magics, &row);
+            let bishop = init_magics_seeded(
+                Slider::Bishop,
+                ROOK_TABLE_SIZE,
+                &mut table,
+                &mut magics,
+                &row,
+            );
+            for rank in 0..8 {
+                let cost = rook[rank] + bishop[rank];
+                if cost < best_cost[rank] {
+                    best_cost[rank] = cost;
+                    best_seed[rank] = candidate;
+                }
+            }
+        }
+
+        // Validate the winner row end to end and price it against the
+        // shipped row on the identical metric.
+        let rook_new = init_magics_seeded(Slider::Rook, 0, &mut table, &mut magics, &best_seed);
+        let bishop_new = init_magics_seeded(
+            Slider::Bishop,
+            ROOK_TABLE_SIZE,
+            &mut table,
+            &mut magics,
+            &best_seed,
+        );
+        // Oracle re-check on the FINAL tables while they hold the new row's
+        // magics: for every square, random full-board occupancies must read
+        // the naive attack set through the production index arithmetic.
+        let mut rng = Prng::new(0x20260809);
+        for s in Square::all() {
+            for _ in 0..64 {
+                let occ = rng.rand64();
+                let rook_idx = magics[s.idx()].rook.index(Bitboard::from_u64(occ));
+                assert_eq!(
+                    table[rook_idx].to_u64(),
+                    rook_attacks_naive(s.index(), occ),
+                    "rook oracle mismatch on {s} under the found seeds"
+                );
+                let bishop_idx = magics[s.idx()].bishop.index(Bitboard::from_u64(occ));
+                assert_eq!(
+                    table[bishop_idx].to_u64(),
+                    bishop_attacks_naive(s.index(), occ),
+                    "bishop oracle mismatch on {s} under the found seeds"
+                );
+            }
+        }
+        let rook_old = init_magics_seeded(Slider::Rook, 0, &mut table, &mut magics, &MAGIC_SEEDS);
+        let bishop_old = init_magics_seeded(
+            Slider::Bishop,
+            ROOK_TABLE_SIZE,
+            &mut table,
+            &mut magics,
+            &MAGIC_SEEDS,
+        );
+        let total = |a: &[u32; 8], b: &[u32; 8]| -> u64 {
+            a.iter().chain(b.iter()).map(|&x| u64::from(x)).sum()
+        };
+        let ours = total(&rook_new, &bishop_new);
+        let shipped = total(&rook_old, &bishop_old);
+        println!("ARCHON candidate row: const MAGIC_SEEDS: [u64; 8] = {best_seed:?};");
+        println!("per-rank attempts (rook+bishop): {best_cost:?}");
+        println!("total attempts: found {ours} vs shipped(SF) {shipped}");
+        assert!(
+            ours <= shipped.saturating_mul(2),
+            "found row converges catastrophically slower than the shipped one \
+             ({ours} vs {shipped} attempts) — widen CANDIDATES"
+        );
     }
 }

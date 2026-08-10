@@ -45,17 +45,29 @@ const DEFAULT_ROWS_PER_SIDE: usize = 50_000_000;
 // the empirically stronger 400 and retain this knob for crossed controls.
 const DEFAULT_EVAL_TARGET_SCALE: f32 = 400.0;
 
-#[rustfmt::skip]
-const OUTPUT_BUCKETS_LAYOUT: [u8; 33] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0,
-    1, 1, 1, 1,
-    2, 2, 2, 2,
-    3, 3, 3,
-    4, 4, 4,
-    5, 5, 5,
-    6, 6, 6,
-    7, 7, 7, 7,
-];
+/// Piece-count -> output bucket, expanded from inclusive ceilings.
+///
+/// LEGACY partition (pre-2026-08). ATTRIBUTION: the boundaries were adopted
+/// from Reckless (AGPLv3); kept as COMPUTED RANGES — not the copied table
+/// text — only because every net this trainer has produced is fitted against
+/// them (2026-08 originality audit item 1; engine mirror: sota_head.rs
+/// LEGACY_BUCKET_LAYOUT). New runs use the ARCHON equal-mass partition via
+/// the JAX pipeline (spec.py ARCHON_BUCKET_CEILINGS); delete this when the
+/// pre-OBL1 nets retire.
+const OUTPUT_BUCKETS_LAYOUT: [u8; 33] = {
+    let ceilings: [u8; 8] = [8, 12, 16, 19, 22, 25, 28, 32];
+    let mut map = [0u8; 33];
+    let mut count = 0;
+    while count < 33 {
+        let mut bucket = 0;
+        while (ceilings[bucket] as usize) < count {
+            bucket += 1;
+        }
+        map[count] = bucket as u8;
+        count += 1;
+    }
+    map
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PolicyHead {

@@ -25,8 +25,8 @@ import threading
 import numpy as np
 
 from .features import canonical_orient, map_batch, policy_move_id
-from .spec import (EVAL_BLEND_BASE, POLICY_MASK_ILLEGAL, POLICY_VOCAB,
-                   RECORD_DTYPE, THREAT_DIMS, TrainConfig)
+from .spec import (BUCKET_LAYOUTS, EVAL_BLEND_BASE, POLICY_MASK_ILLEGAL,
+                   POLICY_VOCAB, RECORD_DTYPE, THREAT_DIMS, TrainConfig)
 
 
 def _threat_remap_of(cfg: TrainConfig) -> np.ndarray | None:
@@ -41,6 +41,20 @@ def _threat_remap_of(cfg: TrainConfig) -> np.ndarray | None:
         raise ValueError(f"threat_remap {path}: shape {remap.shape}, "
                          f"min {remap.min()} — want ({THREAT_DIMS},) >= 0")
     return remap
+
+
+def _bucket_layout_of(cfg: TrainConfig) -> np.ndarray | None:
+    """The base piece-count -> bucket partition this run labels batches with
+    (2026-08 audit item 1). None = the legacy module default, so a config
+    predating the knob is byte-identical; an unknown name fails at stream
+    construction, not superbatches in."""
+    name = getattr(cfg, "bucket_layout", "legacy")
+    if name in ("", "legacy"):
+        return None
+    if name not in BUCKET_LAYOUTS:
+        raise ValueError(f"unknown bucket_layout {name!r}; "
+                         f"known: {sorted(BUCKET_LAYOUTS)}")
+    return BUCKET_LAYOUTS[name]
 
 
 def _region_kwargs_of(cfg: TrainConfig) -> dict:
@@ -96,13 +110,15 @@ def make_batches(bin_: BulletBin, cfg: TrainConfig, *, policy: bool,
 
     _remap = _threat_remap_of(cfg)
     _region_kw = _region_kwargs_of(cfg)
+    _layout = _bucket_layout_of(cfg)
 
     def map_one(i: int) -> dict:
         recs = bin_.slice(int(i) * cfg.batch_size, cfg.batch_size)
         out = map_batch(recs, wdl=cfg.wdl, score_multiplier=cfg.score_multiplier,
                         scale=cfg.scale, policy=policy, threats=threats,
                         target_offset=getattr(cfg, "target_offset", 0.0),
-                        threat_remap=_remap, **_region_kw)
+                        threat_remap=_remap, bucket_layout=_layout,
+                        **_region_kw)
         if policy and legal_mask:
             out["pol_mask"] = legal_move_masks(recs, out["pol_target_id"])
         return out
@@ -195,6 +211,7 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
 
     _remap = _threat_remap_of(cfg)
     _region_kw = _region_kwargs_of(cfg)
+    _layout = _bucket_layout_of(cfg)
 
     def _map_recs(recs, src=None) -> dict:
         if _pct is not None and src is not None:
@@ -205,6 +222,7 @@ def make_mixed_batches(mix, cfg: TrainConfig, *, policy: bool,
         out = map_batch(recs, wdl=cfg.wdl, score_multiplier=cfg.score_multiplier,
                         scale=t_scl, policy=policy, threats=threats,
                         target_offset=t_off, threat_remap=_remap,
+                        bucket_layout=_layout,
                         sf_bucket=_kp is not None, **_region_kw)
         if _kp is not None:
             # SF-net teacher frame, per corpus AND per position

@@ -341,11 +341,29 @@ def dis_section_len(sec: bytes) -> int:
     return DIS_HEADER_LEN + 4 * (hl * proj + proj + proj * outs + outs)
 
 
+# OBL1 section (2026-08 originality-audit item 1; engine:
+# sota_loader.rs BUCKETS_MAGIC): b"OBL1" | u32 bins (= 33) | u8[33] — the
+# net's piece-count -> output-bucket map, the LAST trailer (after DIS1 when
+# that is present). Emitted only when the arch trains under a non-legacy
+# layout; absent => the engine's implied legacy default, so every existing
+# net and byte-parity check is untouched.
+BUCKETS_MAGIC = b"OBL1"
+
+
 def skip_section_bytes(params: dict[str, np.ndarray], arch) -> bytes:
     import struct as _s
     w = np.asarray(params["skipw"], dtype=np.float32)
     return (SKIP_MAGIC + _s.pack("<II", arch.num_buckets, arch.hl)
             + w.astype("<f4").tobytes())
+
+
+def bucket_section_bytes(arch) -> bytes:
+    import struct as _s
+    layout = np.asarray(arch.bucket_layout_array())
+    assert layout.shape == (33,), layout.shape
+    assert 0 <= layout.min() and layout.max() < arch.num_buckets, layout
+    return (BUCKETS_MAGIC + _s.pack("<I", layout.size)
+            + layout.astype(np.uint8).tobytes())
 
 
 def psqt_section_bytes(params: dict[str, np.ndarray], arch) -> bytes:
@@ -421,6 +439,10 @@ def write_quant(path: str | Path, params: dict[str, np.ndarray], arch) -> int:
             sec = dis_section_bytes(params, arch)
             f.write(sec)
             total += len(sec)
+        if getattr(arch, "bucket_layout", "legacy") != "legacy":
+            sec = bucket_section_bytes(arch)
+            f.write(sec)
+            total += len(sec)
     return total
 
 
@@ -450,14 +472,14 @@ def dequantise_quant(path: str | Path, arch) -> dict[str, np.ndarray]:
         else:
             vals = vals.reshape(shape)
         out[name] = vals
-    # Pad to the next 64-byte boundary, then OPTIONAL trailers (PSQ1 then
-    # SKP1) — dequant parses the STREAM tensors only; trailer reconstruction
+    # Pad to the next 64-byte boundary, then OPTIONAL trailers (PSQ1, SKP1,
+    # OBL1) — dequant parses the STREAM tensors only; trailer reconstruction
     # is the caller's job (they carry folded/f32 encodings, not stream quant).
     pad_len = (64 - off % 64) % 64
     padding = raw[off:off + pad_len]
     if bytes(padding) != spec_pad(pad_len):
         raise ValueError(f"invalid quant padding ({len(padding)} bytes)")
     rest = bytes(raw[off + pad_len:])
-    if rest and rest[:4] not in (PSQT_MAGIC, SKIP_MAGIC, DIS_MAGIC):
+    if rest and rest[:4] not in (PSQT_MAGIC, SKIP_MAGIC, DIS_MAGIC, BUCKETS_MAGIC):
         raise ValueError(f"unrecognized quant trailer ({len(rest)} bytes)")
     return out
