@@ -137,14 +137,15 @@ shape as SF/our design (`alpha.max(mated_in(ply))`, `beta.min(mate_in(ply +
 splits the bound match explicitly by direction instead of SF's single
 `cutNode == (ttValue >= beta) || depth > 4`:
 
-```
-tt_depth > depth - (tt_score < beta) as i32
-&& is_valid(tt_score)
-&& match tt_bound {
-       Upper => tt_score <= alpha && (!cut_node || depth > 5),
-       Lower => tt_score >= beta  && ( cut_node || depth > 5),
-       _     => true,
-   }
+```text
+cutoff iff ALL of:
+  1. stored depth clears the target: tt_depth > depth - [tt_score < beta]
+     (the same one-ply rebate SF applies when the score would fail low)
+  2. the stored score is a real value (not NONE)
+  3. the BOUND admits it, split by direction:
+       UPPER bound: needs tt_score <= alpha, and (non-cut node OR depth > 5)
+       LOWER bound: needs tt_score >= beta,  and (cut node     OR depth > 5)
+       EXACT: always admits
 ```
 
 Same *shape* as our design's N6b, threshold `5` instead of SF's `4`; note
@@ -316,22 +317,23 @@ otherwise matches SF's/our N11 exactly.
 than SF's fixed two-step (qsearch verify, then one real search at
 `depth-4-improving`):
 
-```
-score = -qsearch(-probcut_beta, -probcut_beta+1)             // cheap check
-base_depth    = max(0, depth - 4 - improving)
-probcut_depth = clamp(base_depth - (score - probcut_beta)/319, 0, base_depth)
-if score >= probcut_beta && probcut_depth > 0:
-    adjusted_beta = min(INF, probcut_beta + 197·(base_depth - probcut_depth))
-    score = -search(-adjusted_beta, -adjusted_beta+1, probcut_depth, ...)
-    if score < adjusted_beta && probcut_beta < adjusted_beta:
-        // the shifted-window re-verify failed; fall back to the plain window
-        probcut_depth = base_depth
-        score = -search(-probcut_beta, -probcut_beta+1, probcut_depth, ...)
-    else:
-        probcut_beta = adjusted_beta
-if score >= probcut_beta:
-    TT.store(Lower, probcut_depth + 1, ...)
-    return is_decisive(score) ? score : lerp(score, beta, 0.2695)
+```text
+step 1  cheap check: a zero-window qsearch at probcut_beta.
+step 2  budget: the base verification depth is depth - 4 - improving
+        (floored at 0), and the ACTUAL verification depth is docked by
+        (qsearch surplus over probcut_beta) / 319 — the further above the
+        window the qsearch landed, the less real depth is spent — clamped
+        back into [0, base].
+step 3  if the qsearch cleared the window and any real depth remains:
+        RAISE the window by 197 per depth-point docked in step 2
+        (capped below infinity) and run the zero-window real search there.
+        - shifted-window search fails AND the window was actually raised:
+          fall back to one more real search at the ORIGINAL window and the
+          FULL base depth (the un-shifted re-verify).
+        - otherwise: the raised window becomes the effective probcut_beta.
+step 4  on success: store a LOWER bound at verification-depth + 1 and
+        return the score — decisive scores raw, everything else pulled
+        27% of the way toward beta (their 0.2695 lerp; SF returns raw).
 ```
 
 The dynamic `probcut_depth`/`adjusted_beta` shift (how far above
@@ -706,8 +708,9 @@ since move-ordering/history internals are a different note's territory:
   update-side bonus scales; the two systems are internally consistent but
   not on the same absolute footing.
 - **The `lerp` helper** (`search.rs:1446-1448`):
-  ```rust
-  fn lerp(a: i32, b: i32, t: f32) -> i32 { t.mul_add((b - a) as f32, a as f32) as i32 }
+  ```text
+  lerp(a, b, t) over integer scores: widen a and b to f32, take one fused
+  multiply-add of t onto the (b - a) span, truncate back to i32
   ```
   One tiny, reusable, `f32`-based helper (uses `f32::mul_add` for a fused
   multiply-add) standing in for what SF expresses as five-plus separate

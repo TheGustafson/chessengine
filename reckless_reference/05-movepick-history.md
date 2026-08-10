@@ -19,8 +19,9 @@ pipelines** — Main, Evasion, ProbCut, Qsearch — each its own run of stages
 Reckless collapses all four into **one 5-variant enum** and a single
 constructor:
 
-```rust
-enum Stage { HashMove, GenerateNoisy, GoodNoisy, Quiet, BadNoisy }
+```text
+stage machine (5 states, one enum, one pipeline):
+    hash-move -> generate-noisy -> good-noisy -> quiet -> bad-noisy
 ```
 (`movepick.rs:10-16`). There is no `EvasionTt`/`ProbcutInit`/`QcaptureInit` at
 all. The differences between "modes" are pushed into two runtime knobs
@@ -87,8 +88,9 @@ Both the `GoodNoisy` and `Quiet` stages carry a `NODE::ROOT` branch that
 re-invokes the *entire* scoring pass over the remaining buffer before
 returning a move (`movepick.rs:70-72`, `90-91`):
 
-```rust
-if NODE::ROOT { self.score_noisy(td); }   // (or score_quiet)
+```text
+at a ROOT node (compile-time node-type flag), before yielding each pick:
+    re-run the whole noisy (resp. quiet) scoring pass over the unpicked tail
 ```
 
 At first glance this looks like dead work — nothing in a single `next()` call
@@ -110,10 +112,10 @@ one iteration. Neither Stockfish nor our design/09 do this.
 The good/bad capture gate is normally a pure SEE test. Reckless adds one more
 condition that has no SF/our-design analogue (`movepick.rs:65`):
 
-```rust
-if (tt_move.is_quiet() && noisy_count > 2) || !see(entry.mv, threshold) {
-    // relegate to bad_noisy
-}
+```text
+relegate a candidate capture to bad-noisy when EITHER
+    the SEE test against the picker's threshold fails            (the usual gate)
+OR  the hash move is a quiet AND >2 noisies were already accepted (the extra gate)
 ```
 
 If the *hash move itself is quiet* (a strong signal that captures are not
@@ -263,12 +265,11 @@ unread-but-written as SF's offset 5 is). The *write* side
 from every node-result/TT-hit/refutation site above) is dramatically
 simpler than SF's/our design/09 §3.9: it applies the **same bonus, unweighted,
 to all four present offsets** —
-```rust
-for offset in [1, 2, 4, 6] {
-    if stack[ply - offset].mv.is_present() {
-        continuation_history.update(stack[ply-offset].conthist, piece, sq, bonus);
-    }
-}
+```text
+for each offset in {1, 2, 4, 6}:
+    if a move was actually played at ply - offset:
+        gravity-update that ply's conthist entry for (piece, to) by the
+        ONE shared bonus (no weight, no scaling by offset)
 ```
 — with no per-offset weight table, no growing "consistency multiplier" for
 already-agreeing entries, no in-check truncation to the first two offsets,

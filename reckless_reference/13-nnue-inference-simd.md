@@ -291,20 +291,15 @@ independent of the chess-specific numerics.
 Two separate nested-module trees inside `nnue.rs`, each following the exact
 same recipe (`nnue.rs:17-80`):
 
-```rust
-mod forward {
-    #[cfg(any(avx2, neon, wasm+simd128))] mod vectorized;
-    #[cfg(any(avx2, neon, wasm+simd128))] pub use vectorized::*;
-    #[cfg(not(any(avx2, neon, wasm+simd128)))] mod scalar;
-    #[cfg(not(any(avx2, neon, wasm+simd128)))] pub use scalar::*;
-}
-mod simd {
-    #[cfg(avx512f)] mod avx512; #[cfg(avx512f)] pub use avx512::*;
-    #[cfg(avx2 && !avx512f)] mod avx2; ... pub use avx2::*;
-    #[cfg(neon && !avx2 && !avx512f)] mod neon; ... pub use neon::*;
-    #[cfg(wasm32+simd128)] mod wasm; ... pub use wasm::*;
-    #[cfg(none of the above)] mod scalar; ... pub use scalar::*;
-}
+```text
+module `forward`:
+    if any(avx2 | neon | wasm+simd128) at compile time -> submodule
+    `vectorized`, re-exported wholesale; else -> submodule `scalar`,
+    re-exported wholesale.
+module `simd` (same recipe, five-way priority ladder):
+    avx512f -> avx512;  else avx2 -> avx2;  else neon -> neon;
+    else wasm32+simd128 -> wasm;  else -> scalar
+    (each arm: a cfg-gated `mod` + a cfg-gated glob re-export)
 ```
 
 Every backend module exports the **same set of free-function names** with
