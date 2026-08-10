@@ -96,14 +96,13 @@ The eight rules, in priority order:
 
 - `design/decisions.md` — pinned decisions D1-D44. **Decisions change here
   first; docs follow; code follows docs.**
-- `design/00-master-plan.md` — phase ordering (P0-P15), milestone gates,
-  current phase status.
 - `design/README.md` — index and process rules for the suite.
-- `design/01-*.md` … `design/19-*.md` — one contract per component (14
-  numbered + `15` NNUE datagen + `16` research data platform + `17` NNUE
-  research predecessor, D34/D40 + `18` experimental ledger, D38 + `19` ARCHON
-  learned search allocation, D41). Check code against the
-  owning doc's acceptance criteria (§8) before calling a phase done.
+- Kept contracts (release cleanup 2026-08-10 pruned the 14 completed
+  build-phase docs; recover via git history): `11-evaluation` (CENN/OBL1
+  container), `14-performance-testing` (Bench/gate), `15-nnue-datagen`,
+  `16-research-data-platform` (D46), `18-experimental-ledger` (D38),
+  `19-learned-search-allocation` (D41). Check code against the owning
+  doc's acceptance criteria before calling a phase done.
 
 ## Live research state (read before any research/training loop)
 

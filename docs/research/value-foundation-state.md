@@ -756,6 +756,28 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## pending. The corpus assets stand regardless: fishpack32-sf5k (1.567B,
 ## first-party 5k labels, ledger'd) + the growing sfdev5k-a wave.
 
+## ★ DECISION 3 (2026-08-10 ~14:56): NO relabel campaign for now (options
+## priced: full 8.58B/$360/7d, quarter 2.14B/$90/1.7d — declined). Instead
+## **d63b-full700 LAUNCHED**: the FULL 14-corpus mix (old corpora keep
+## their labels for position diversity; fishpack slot = SF-dev 5k relabel;
+## + sfdev5k-a 0.05), 700sb warm from canonical, seed 220630002 — the
+## d63-v1 configuration run properly. Directly tests position-diversity
+## vs v2's measured failure. Gates every 50sb (units d63b*).
+
+## ★ OUTCOME 2 (2026-08-10 ~14:00): d63-warm700 v2 (FIRST-PARTY-ONLY mix)
+## STOPPED at sb114. Ladder: sb50 −30.77 ± 16.89, sb100 −41.31 ± 18.80 vs
+## canonical (600g screens, both LOS ≤0.02%), monotone worsening, heldout
+## EMA climbing 0.0114→0.0119 throughout. Scale exonerated (cand/ref
+## median 0.993, slope 0.985, sign 100%). Mix was fishpack32-sf5k 0.85 +
+## oracle-uho1 0.10 + sfdev5k-a 0.05 (user-ordered replacement of the ten
+## Lc0-band corpora = 64% of v1 gradient). Leading hypothesis: POSITION
+## DIVERSITY loss, not label quality — fishpack positions at 0.85 is a
+## huge distribution narrowing vs the d53 mix. Checkpoints kept
+## (sb50/100/112/114); resumable. Next decision (owner): relabel the old
+## corpora (positions kept, SF-dev labels — the roadmap step we skipped)
+## vs resume/other. v1 (14-corpus, 64% old labels) was stopped at sb10
+## UNMEASURED — no gate point exists for it.
+
 ## ★ PRE-REGISTERED PLAN (user, 2026-08-09 ~22:30) — the d62a follow-on
 
 > **If d62a works** (fine-tune on `fishpack32-sf5k.shuf.bin`, the SF-dev
