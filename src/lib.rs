@@ -58,6 +58,7 @@ static ARCHON_S68_LAYOUT_NULL: fn(u64) -> u64 = archon_s68_layout_null;
 pub mod arm70;
 pub mod attacks;
 pub mod bench;
+pub mod bench_positions_archon;
 pub mod bitboard;
 pub mod board;
 /// Perf study 70's move-ordering QUALITY census (instrument only).
