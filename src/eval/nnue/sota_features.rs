@@ -1269,6 +1269,7 @@ mod tests {
             &threat,
             Color::White,
             piece_count,
+            2,
             &super::super::sota_head::ZERO_PSQT,
         );
         assert!(cp.abs() < 1_000_000, "finite centipawns");

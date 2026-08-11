@@ -253,14 +253,24 @@ struct FinnyEntry {
     // only, instead of two binary-search passes over sorted feature lists.
     by_piece: [[Bitboard; 6]; 2],
     psqt: [i32; BUCKETS],
+    /// Keeps `acc` 64-B aligned for ANY bucket count. With the original 8
+    /// buckets `by_piece` + `psqt` came to exactly 128 B and this is
+    /// zero-sized; a queen-split arch (18 buckets) makes `psqt` 72 B, which
+    /// would otherwise land `acc` at offset 168 and trip the alignment
+    /// assertion in the fold.
+    _pad: [u8; FINNY_PAD],
     acc: [i16; ACC],
 }
+
+/// Bytes needed after `by_piece` + `psqt` to round up to a 64-B boundary.
+const FINNY_PAD: usize = (64 - ((96 + BUCKETS * 4) % 64)) % 64;
 
 impl Default for FinnyEntry {
     fn default() -> Self {
         Self {
             by_piece: [[Bitboard::EMPTY; 6]; 2],
             psqt: [0; BUCKETS],
+            _pad: [0; FINNY_PAD],
             acc: [0; ACC],
         }
     }

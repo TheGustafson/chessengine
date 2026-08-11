@@ -562,6 +562,9 @@ impl SotaContext {
         let stm = board.side_to_move();
         // Count total pieces for the output bucket (both nets share the layout).
         let piece_count = board.all_occupancy().count() as usize;
+        // Queen class is the second bucket axis on the queen-split archs; on
+        // every other arch the layout is queen-blind and this is inert.
+        let queens = board.pieces_of_type(PieceType::Queen).count() as usize;
 
         // Smallnet gate (perf study #3 item #8) + material prefilter: on a
         // materially-decided position the cheap HalfKA-only net decides, so we
@@ -597,6 +600,7 @@ impl SotaContext {
                 &ZERO_THREAT,
                 stm,
                 piece_count,
+                queens,
                 small_psqt,
                 &mut self.head_scratch,
                 &mut tier_l1,
@@ -633,6 +637,7 @@ impl SotaContext {
             threat,
             stm,
             piece_count,
+            queens,
             &psqt,
             &mut self.head_scratch,
             &mut self.last_l2,
@@ -676,6 +681,7 @@ impl SotaContext {
                 large_threat,
                 stm,
                 piece_count,
+                queens,
                 &large_psqt,
                 &mut self.head_scratch,
                 &mut tier_l1,
@@ -954,9 +960,10 @@ mod tests {
             // (b) psqt eval == plain eval + the exact shifted difference.
             let base = without.evaluate(&board, ply + 1);
             let stm = board.side_to_move() as usize;
-            let bucket = psqt_net
-                .head
-                .output_bucket(board.all_occupancy().count() as usize);
+            let bucket = psqt_net.head.output_bucket(
+                board.all_occupancy().count() as usize,
+                board.pieces_of_type(PieceType::Queen).count() as usize,
+            );
             let mut totals = [[0i32; super::super::sota_head::BUCKETS]; 2];
             for (i, &persp) in Color::ALL.iter().enumerate() {
                 let hk = refresh_psqt_halfka(psqt_net.halfka_psqt(), &board, persp);

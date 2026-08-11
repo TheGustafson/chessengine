@@ -73,6 +73,13 @@ arch-hka2048 = []
 # at the width the fold kernels were originally written for. Mutually exclusive
 # with every other arch-* feature. Quality cost UNMEASURED; equal-time games decide.
 arch-hka768 = []
+# HalfKA-ONLY 128/8/8 (2026-08-11, owner-directed "go all in on being fast").
+# The FT working set falls to 22528 x 128 = 2.88 MB — small enough to live in
+# cache, which is the point: the fold is the measured memory wall and this is
+# the arch that removes it rather than nibbling at it. The head is bucketed on
+# piece count AND queen class (18 buckets, layout C), so it keeps per-regime
+# capacity while the trunk shrinks. Mutually exclusive with every other arch-*.
+arch-hka128 = []
 # Distribution-only: embed net-0 as the default eval so the engine plays NNUE
 # with no `EvalFile` set (for GUIs that can't set UCI string options). OFF by
 # default, so runtime [dependencies] stays empty (D15) and the default build is

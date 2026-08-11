@@ -29,6 +29,11 @@ use crate::types::Color;
     all(feature = "arch-d48w", feature = "arch-hka768"),
     all(feature = "arch-d48x", feature = "arch-hka768"),
     all(feature = "arch-hka2048", feature = "arch-hka768"),
+    all(feature = "arch-d47v", feature = "arch-hka128"),
+    all(feature = "arch-d48w", feature = "arch-hka128"),
+    all(feature = "arch-d48x", feature = "arch-hka128"),
+    all(feature = "arch-hka2048", feature = "arch-hka128"),
+    all(feature = "arch-hka768", feature = "arch-hka128"),
 ))]
 compile_error!(
     "the arch-* cargo features are mutually exclusive: each sets a different \
@@ -41,7 +46,8 @@ compile_error!(
     feature = "arch-d48w",
     feature = "arch-d48x",
     feature = "arch-hka2048",
-    feature = "arch-hka768"
+    feature = "arch-hka768",
+    feature = "arch-hka128"
 )))]
 pub const L1: usize = 1280;
 /// D47V: the distilled 768 deploy arch (768/32/32).
@@ -64,23 +70,51 @@ pub const L1: usize = 2048;
 /// the quality cost of dropping 72.9 % of the input rows is UNMEASURED.
 #[cfg(feature = "arch-hka768")]
 pub const L1: usize = 768;
+/// HalfKA-ONLY 128/8/8 — the fast arch. 22,528 x 128 i8 = 2.88 MB of FT
+/// weights, which fits in cache and takes the fold off the memory wall.
+#[cfg(feature = "arch-hka128")]
+pub const L1: usize = 128;
 /// L1→L2 output width (the D47 shared bottleneck).
 #[cfg(not(any(
     feature = "arch-d47v",
     feature = "arch-d48w",
     feature = "arch-d48x",
     feature = "arch-hka2048",
-    feature = "arch-hka768"
+    feature = "arch-hka768",
+    feature = "arch-hka128"
 )))]
 pub const L2: usize = 128;
 #[cfg(any(feature = "arch-d47v", feature = "arch-hka2048"))]
 pub const L2: usize = 32;
-#[cfg(any(feature = "arch-d48w", feature = "arch-d48x", feature = "arch-hka768"))]
+#[cfg(any(
+    feature = "arch-d48w",
+    feature = "arch-d48x",
+    feature = "arch-hka768",
+    feature = "arch-hka128"
+))]
 pub const L2: usize = 16;
 /// L2→L3 output width.
+#[cfg(not(feature = "arch-hka128"))]
 pub const L3: usize = 32;
-/// Material/output buckets.
+/// 16, not 8: the L1 sparse dot and the f32 tail write in 16-lane blocks, so
+/// on AVX-512 a width of 8 issues the SAME number of vector ops as 16 while
+/// carrying half the capacity — measured 2026-08-11. Below 16 is only a win on
+/// AVX2 (8 i32 lanes), and would need the block loop and CHAINS logic rewritten.
+#[cfg(feature = "arch-hka128")]
+pub const L3: usize = 16;
+/// Output buckets. Every arch before hka128 bucketed on PIECE COUNT alone (8);
+/// hka128 crosses piece count with queen class (layout C — Q>=2 and Q==0 get
+/// all eight piece bins, Q==1 gets two, since it is 3.7 % of positions and
+/// vanishes above 21 pieces), giving 8 + 8 + 2 = 18.
+#[cfg(not(feature = "arch-hka128"))]
 pub const BUCKETS: usize = 8;
+#[cfg(feature = "arch-hka128")]
+pub const BUCKETS: usize = 18;
+/// Queen-class bins the bucket layout is indexed by: 0 = Q>=2, 1 = Q==1,
+/// 2 = Q==0. Three, not four: total-queen counts above 2 are 0.03 % of
+/// positions (measured 2026-08-11 over 40M records of the training mix), so a
+/// promotion class would be fitting noise.
+pub const QUEEN_CLASSES: usize = 3;
 
 /// A per-perspective pair of T6c PSQT-skip bucket sums (`[White, Black]`, like
 /// the accumulators): the i32 sums of the active features' PSQ1 rows. The stored
@@ -153,24 +187,72 @@ pub(crate) const FT_DEQUANT: f32 = (1i32 << FT_SHIFT) as f32 / (FT_QUANT * FT_QU
 /// Domain of the output-bucket map: `popcount(occupancy)` ∈ `0..=32`.
 pub const PIECE_COUNT_BINS: usize = 33;
 
-/// A piece-count → output-bucket map. **Per-net data** (the OBL1 container
-/// section), because a net is trained against one specific partition of the
-/// piece-count axis. Containers without an OBL1 section imply
-/// [`LEGACY_BUCKET_LAYOUT`], keeping every existing net bit-identical.
-pub type BucketLayout = [u8; PIECE_COUNT_BINS];
+/// Piece-count bins in every layout we ship. Distinct from [`BUCKETS`]: an
+/// arch that also splits on queen class has more BUCKETS than PIECE_BUCKETS.
+pub const PIECE_BUCKETS: usize = 8;
 
-/// Expand `BUCKETS` inclusive piece-count ceilings into the full map: a piece
-/// count lands in the first bucket whose ceiling covers it. Ceilings must be
-/// strictly increasing and end at 32, or const evaluation fails below.
-const fn layout_from_ceilings(ceilings: [u8; BUCKETS]) -> BucketLayout {
-    let mut map = [0u8; PIECE_COUNT_BINS];
+/// A `(piece_count, queen_class)` → output-bucket map, flattened row-major as
+/// `pc * QUEEN_CLASSES + qclass`. **Per-net data** (the OBL1/OBL2 container
+/// sections), because a net is trained against one specific partition. A
+/// container with neither section implies [`LEGACY_BUCKET_LAYOUT`], and an
+/// OBL1 (1-D, piece count only) section expands with the same bucket for all
+/// three queen classes — both keep every existing net bit-identical.
+pub type BucketLayout = [u8; PIECE_COUNT_BINS * QUEEN_CLASSES];
+
+/// The queen class of a total queen count: 0 = Q>=2, 1 = Q==1, 2 = Q==0.
+#[inline]
+pub const fn queen_class(queens: usize) -> usize {
+    match queens {
+        0 => 2,
+        1 => 1,
+        _ => 0,
+    }
+}
+
+/// The piece-count bin of a piece count, given inclusive ceilings.
+const fn piece_bin(ceilings: [u8; PIECE_BUCKETS], count: usize) -> usize {
+    let mut bin = 0;
+    while (ceilings[bin] as usize) < count {
+        bin += 1;
+    }
+    bin
+}
+
+/// Expand piece-count ceilings into a QUEEN-BLIND map: every queen class gets
+/// the same bucket, so the layout behaves exactly as the 1-D map did.
+const fn layout_from_ceilings(ceilings: [u8; PIECE_BUCKETS]) -> BucketLayout {
+    let mut map = [0u8; PIECE_COUNT_BINS * QUEEN_CLASSES];
     let mut count = 0;
     while count < PIECE_COUNT_BINS {
-        let mut bucket = 0;
-        while (ceilings[bucket] as usize) < count {
-            bucket += 1;
+        let bin = piece_bin(ceilings, count) as u8;
+        let mut q = 0;
+        while q < QUEEN_CLASSES {
+            map[count * QUEEN_CLASSES + q] = bin;
+            q += 1;
         }
-        map[count] = bucket as u8;
+        count += 1;
+    }
+    map
+}
+
+/// **Layout C** (owner-selected 2026-08-11 from the measured cell occupancy):
+/// `Q>=2` and `Q==0` each get all eight piece bins; `Q==1` gets two, split at
+/// 15/16 pieces. Q==1 is 3.7 % of positions and falls to 0.11 % and 0.02 % in
+/// the top two piece bins, so eight bins for it would fit noise — but it is a
+/// MATERIAL IMBALANCE and the most eval-distinctive of the three classes, so
+/// it keeps its own weights rather than being folded into Q>=2.
+///
+/// Bucket ids: `0..8` = Q>=2 by piece bin, `8..16` = Q==0 by piece bin,
+/// `16` = Q==1 with <=15 pieces, `17` = Q==1 with >=16.
+#[cfg(feature = "arch-hka128")]
+const fn layout_c(ceilings: [u8; PIECE_BUCKETS]) -> BucketLayout {
+    let mut map = [0u8; PIECE_COUNT_BINS * QUEEN_CLASSES];
+    let mut count = 0;
+    while count < PIECE_COUNT_BINS {
+        let bin = piece_bin(ceilings, count);
+        map[count * QUEEN_CLASSES] = bin as u8; // Q>=2
+        map[count * QUEEN_CLASSES + 1] = if count <= 15 { 16 } else { 17 }; // Q==1
+        map[count * QUEEN_CLASSES + 2] = (PIECE_BUCKETS + bin) as u8; // Q==0
         count += 1;
     }
     map
@@ -192,11 +274,15 @@ pub const LEGACY_BUCKET_LAYOUT: BucketLayout =
 /// cumulative mass reaches k/8; receipt in
 /// `docs/audit/2026-08-originality/output-buckets-derivation.txt`). Nothing
 /// selects it at runtime until a net ships an OBL1 section naming it.
+#[cfg(not(feature = "arch-hka128"))]
 pub const ARCHON_BUCKET_LAYOUT: BucketLayout = layout_from_ceilings(ARCHON_BUCKET_CEILINGS);
+/// On the queen-split arch the derived ceilings feed [`layout_c`] instead.
+#[cfg(feature = "arch-hka128")]
+pub const ARCHON_BUCKET_LAYOUT: BucketLayout = layout_c(ARCHON_BUCKET_CEILINGS);
 
 /// The derived inclusive ceilings behind [`ARCHON_BUCKET_LAYOUT`], kept as the
 /// 8 numbers the tool produces so its output diffs against the shipped value.
-pub const ARCHON_BUCKET_CEILINGS: [u8; BUCKETS] = [8, 10, 13, 15, 18, 21, 25, 32];
+pub const ARCHON_BUCKET_CEILINGS: [u8; PIECE_BUCKETS] = [8, 10, 13, 15, 18, 21, 25, 32];
 
 // The head's weight tables as `BUCKETS` fixed-size blocks: `Blocks` states the
 // shape in the type, so the only runtime check per acquisition is
@@ -452,8 +538,8 @@ impl SotaHead {
     /// the forward pass uses, exposed so tests and the debug oracle pin the T6c
     /// skip against it. A method because the map is per-net data.
     #[inline]
-    pub fn output_bucket(&self, piece_count: usize) -> usize {
-        usize::from(self.bucket_layout[piece_count])
+    pub fn output_bucket(&self, piece_count: usize, queens: usize) -> usize {
+        usize::from(self.bucket_layout[piece_count * QUEEN_CLASSES + queen_class(queens)])
     }
 
     /// int8 sparse matmul over the nonzero groups → dequantized SCReLU f32[L2]
@@ -556,13 +642,23 @@ impl SotaHead {
         threat: &[[i16; L1]; 2],
         stm: Color,
         piece_count: usize,
+        queens: usize,
         psqt: &PsqtPair,
     ) -> (i32, Option<f32>, Option<[f32; 3]>) {
         // Convenience wrapper: builds its own scratch, so it pays the zero-init
         // `HeadScratch` exists to remove. The hot path calls `forward_into`.
         let mut l1 = [0.0f32; L2];
         let mut scratch = HeadScratch::new();
-        self.forward_into(pst, threat, stm, piece_count, psqt, &mut scratch, &mut l1)
+        self.forward_into(
+            pst,
+            threat,
+            stm,
+            piece_count,
+            queens,
+            psqt,
+            &mut scratch,
+            &mut l1,
+        )
     }
 
     /// The disagreement head's prediction for a position, `None` when the net
@@ -627,6 +723,7 @@ impl SotaHead {
         threat: &[[i16; L1]; 2],
         stm: Color,
         piece_count: usize,
+        queens: usize,
         psqt: &PsqtPair,
         scratch: &mut HeadScratch,
         l1_out: &mut [f32; L2],
@@ -646,7 +743,7 @@ impl SotaHead {
         // `bucket` is DUPLICATED under the two `cfg`s rather than hoisted, so
         // the arm-OFF build keeps its statement order byte-for-byte.
         #[cfg(any(feature = "hskip60", feature = "htail60"))]
-        let bucket = usize::from(self.bucket_layout[piece_count]);
+        let bucket = self.output_bucket(piece_count, queens);
         // Experimental arm `htail60` — prefetch the head's TAIL tables (~2.4 KB,
         // read in full every evaluation at a ~99 % L1 miss rate) at entry, ~800
         // instructions before their first use. `T0`, not `T2`: the miss being
@@ -692,7 +789,7 @@ impl SotaHead {
         });
         let count = find_nnz(ft, nnz);
         #[cfg(not(any(feature = "hskip60", feature = "htail60")))]
-        let bucket = usize::from(self.bucket_layout[piece_count]);
+        let bucket = self.output_bucket(piece_count, queens);
         self.propagate_l1(ft, &nnz[..count], bucket, l1_out);
         let l1 = l1_out;
         let l2 = self.propagate_l2(l1, bucket);
@@ -770,6 +867,7 @@ mod tests {
                     &threat,
                     stm,
                     piece_count,
+                    2,
                     &ZERO_PSQT,
                     &mut fresh,
                     &mut l1_a,
@@ -779,6 +877,7 @@ mod tests {
                     &threat,
                     stm,
                     piece_count,
+                    2,
                     &ZERO_PSQT,
                     &mut dirty,
                     &mut l1_b,
@@ -972,16 +1071,16 @@ mod tests {
     fn forward_deterministic_and_bucketed() {
         let head = synth_head();
         let (pst, threat) = synth_accs();
-        let (a, _, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
-        let (b, _, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
+        let (a, _, _) = head.forward(&pst, &threat, Color::White, 20, 2, &ZERO_PSQT);
+        let (b, _, _) = head.forward(&pst, &threat, Color::White, 20, 2, &ZERO_PSQT);
         assert_eq!(a, b, "deterministic");
         assert!(a.abs() < 100_000, "finite, sane cp");
         // 20 and 32 land in different buckets on the legacy layout.
-        assert_eq!(head.output_bucket(20), 4);
-        assert_eq!(head.output_bucket(32), 7);
+        assert_eq!(head.output_bucket(20, 2), 4);
+        assert_eq!(head.output_bucket(32, 2), 7);
         // stm flip changes which half leads → generally a different value.
-        let (w, _, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
-        let (bl, _, _) = head.forward(&pst, &threat, Color::Black, 20, &ZERO_PSQT);
+        let (w, _, _) = head.forward(&pst, &threat, Color::White, 20, 2, &ZERO_PSQT);
+        let (bl, _, _) = head.forward(&pst, &threat, Color::Black, 20, 2, &ZERO_PSQT);
         assert!(w != bl, "side-to-move relativity is wired");
     }
 
@@ -1009,7 +1108,11 @@ mod tests {
             (29, 7),
             (32, 7),
         ] {
-            assert_eq!(LEGACY_BUCKET_LAYOUT[count], bucket, "legacy count {count}");
+            assert_eq!(
+                LEGACY_BUCKET_LAYOUT[count * QUEEN_CLASSES],
+                bucket,
+                "legacy count {count}"
+            );
         }
         // ARCHON edges: 8 | 10 | 13 | 15 | 18 | 21 | 25 | 32.
         for (count, bucket) in [
@@ -1030,12 +1133,19 @@ mod tests {
             (26, 7),
             (32, 7),
         ] {
-            assert_eq!(ARCHON_BUCKET_LAYOUT[count], bucket, "archon count {count}");
+            assert_eq!(
+                ARCHON_BUCKET_LAYOUT[count * QUEEN_CLASSES],
+                bucket,
+                "archon count {count}"
+            );
         }
         // Structural sanity: monotone, no skipped bucket, covers all BUCKETS.
         for layout in [&LEGACY_BUCKET_LAYOUT, &ARCHON_BUCKET_LAYOUT] {
             assert_eq!(layout[0], 0);
-            assert_eq!(usize::from(layout[PIECE_COUNT_BINS - 1]), BUCKETS - 1);
+            assert_eq!(
+                usize::from(layout[(PIECE_COUNT_BINS - 1) * QUEEN_CLASSES]),
+                PIECE_BUCKETS - 1
+            );
             for pair in layout.windows(2) {
                 assert!(
                     pair[1] == pair[0] || pair[1] == pair[0] + 1,
@@ -1055,14 +1165,14 @@ mod tests {
         let (pst, threat) = synth_accs();
         // Count 11: legacy bucket 1, ARCHON bucket 2, and the head's per-bucket
         // tables differ, so the values must differ.
-        assert_eq!(legacy.output_bucket(11), 1);
-        assert_eq!(archon.output_bucket(11), 2);
-        let (a, _, _) = legacy.forward(&pst, &threat, Color::White, 11, &ZERO_PSQT);
-        let (b, _, _) = archon.forward(&pst, &threat, Color::White, 11, &ZERO_PSQT);
+        assert_eq!(legacy.output_bucket(11, 2), 1);
+        assert_eq!(archon.output_bucket(11, 2), 2);
+        let (a, _, _) = legacy.forward(&pst, &threat, Color::White, 11, 2, &ZERO_PSQT);
+        let (b, _, _) = archon.forward(&pst, &threat, Color::White, 11, 2, &ZERO_PSQT);
         assert_ne!(a, b, "the forward pass must read the net's own layout");
         // Piece count 8 is bucket 0 in BOTH layouts → identical output.
-        let (a0, _, _) = legacy.forward(&pst, &threat, Color::White, 8, &ZERO_PSQT);
-        let (b0, _, _) = archon.forward(&pst, &threat, Color::White, 8, &ZERO_PSQT);
+        let (a0, _, _) = legacy.forward(&pst, &threat, Color::White, 8, 2, &ZERO_PSQT);
+        let (b0, _, _) = archon.forward(&pst, &threat, Color::White, 8, 2, &ZERO_PSQT);
         assert_eq!(a0, b0, "a shared bucket evaluates bit-identically");
     }
 
@@ -1084,9 +1194,9 @@ mod tests {
 
         for stm in Color::ALL {
             for piece_count in [2usize, 9, 20, 32] {
-                let bucket = head.output_bucket(piece_count);
-                let (base, _, _) = head.forward(&pst, &threat, stm, piece_count, &ZERO_PSQT);
-                let (skip, _, _) = head.forward(&pst, &threat, stm, piece_count, &psqt);
+                let bucket = head.output_bucket(piece_count, 2);
+                let (base, _, _) = head.forward(&pst, &threat, stm, piece_count, 2, &ZERO_PSQT);
+                let (skip, _, _) = head.forward(&pst, &threat, stm, piece_count, 2, &psqt);
                 let s = stm as usize;
                 let expected = (psqt[s][bucket] - psqt[s ^ 1][bucket]) >> 8;
                 assert_eq!(
@@ -1099,9 +1209,9 @@ mod tests {
 
         // Arithmetic shift on a negative difference: −1 >> 8 == −1, never 0.
         let mut neg = ZERO_PSQT;
-        neg[0][head.output_bucket(20)] = -1;
-        let (base, _, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
-        let (skip, _, _) = head.forward(&pst, &threat, Color::White, 20, &neg);
+        neg[0][head.output_bucket(20, 2)] = -1;
+        let (base, _, _) = head.forward(&pst, &threat, Color::White, 20, 2, &ZERO_PSQT);
+        let (skip, _, _) = head.forward(&pst, &threat, Color::White, 20, 2, &neg);
         assert_eq!(skip - base, -1, "arithmetic shift floors toward −∞");
     }
 
@@ -1112,7 +1222,7 @@ mod tests {
         let (pst, threat) = synth_accs();
 
         let plain = synth_head();
-        let (v0, s0, _) = plain.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
+        let (v0, s0, _) = plain.forward(&pst, &threat, Color::White, 20, 2, &ZERO_PSQT);
         assert!(s0.is_none(), "no variance head => no sigma");
 
         let mut head = synth_head();
@@ -1122,7 +1232,7 @@ mod tests {
         let vb: Vec<f32> = (0..BUCKETS).map(|i| i as f32 * 0.01 - 0.02).collect();
         head.l3_var_weights = Some(vw.into_boxed_slice());
         head.l3_var_biases = Some(vb.into_boxed_slice());
-        let (v1, s1, _) = head.forward(&pst, &threat, Color::White, 20, &ZERO_PSQT);
+        let (v1, s1, _) = head.forward(&pst, &threat, Color::White, 20, 2, &ZERO_PSQT);
 
         assert_eq!(
             v0, v1,
@@ -1232,7 +1342,7 @@ mod tests {
         let (pst, threat) = synth_accs();
         let plain = synth_head();
         assert!(plain.disagreement(&pst, &threat, Color::White).is_none());
-        let base = plain.forward(&pst, &threat, Color::White, 24, &ZERO_PSQT);
+        let base = plain.forward(&pst, &threat, Color::White, 24, 2, &ZERO_PSQT);
 
         let mut head = synth_head();
         head.dis_head = Some(DisHead {
@@ -1242,7 +1352,7 @@ mod tests {
             out_w: (0..8).map(|i| (i as f32) * 0.11 - 0.4).collect(),
             out_b: [1.5, -1.5],
         });
-        let with = head.forward(&pst, &threat, Color::White, 24, &ZERO_PSQT);
+        let with = head.forward(&pst, &threat, Color::White, 24, 2, &ZERO_PSQT);
         assert_eq!(base.0, with.0);
         assert_eq!(base.1, with.1);
         assert_eq!(base.2, with.2);
@@ -1279,6 +1389,57 @@ mod tests {
                 head.propagate_l3(&l2, bucket),
                 "variance head must mirror the mean head exactly at bucket {bucket}"
             );
+        }
+    }
+}
+
+#[cfg(all(test, feature = "arch-hka128"))]
+mod layout_c_tests {
+    use super::*;
+
+    /// Layout C, as selected from the measured cell occupancy: Q>=2 and Q==0
+    /// each take all eight piece bins, Q==1 takes two (split at 15/16).
+    #[test]
+    fn layout_c_covers_18_buckets_and_splits_where_intended() {
+        let l = ARCHON_BUCKET_LAYOUT;
+        let at = |pc: usize, q: usize| usize::from(l[pc * QUEEN_CLASSES + queen_class(q)]);
+
+        // every bucket id is reachable, and none escapes BUCKETS
+        let mut seen = [false; BUCKETS];
+        for pc in 0..PIECE_COUNT_BINS {
+            for q in [0usize, 1, 2, 3] {
+                let b = at(pc, q);
+                assert!(b < BUCKETS, "pc {pc} q {q} -> bucket {b} >= {BUCKETS}");
+                seen[b] = true;
+            }
+        }
+        assert!(
+            seen.iter().all(|&s| s),
+            "some bucket is unreachable: {seen:?}"
+        );
+
+        // Q>=2 occupies 0..8, Q==0 occupies 8..16, Q==1 occupies {16,17}
+        assert_eq!(at(32, 2), PIECE_BUCKETS - 1);
+        assert_eq!(at(32, 0), 2 * PIECE_BUCKETS - 1);
+        assert_eq!(at(4, 1), 2 * PIECE_BUCKETS);
+        assert_eq!(at(32, 1), 2 * PIECE_BUCKETS + 1);
+        // the Q==1 split is at 15/16 pieces
+        assert_eq!(at(15, 1), 2 * PIECE_BUCKETS);
+        assert_eq!(at(16, 1), 2 * PIECE_BUCKETS + 1);
+        // three or more queens class with Q>=2 (promotions land in Q>=2)
+        assert_eq!(at(20, 3), at(20, 2));
+    }
+
+    /// A queen-blind layout must ignore the queen axis entirely — the property
+    /// that keeps every pre-2026-08 net bit-identical.
+    #[test]
+    fn queen_blind_layouts_ignore_the_queen_axis() {
+        let l = layout_from_ceilings(ARCHON_BUCKET_CEILINGS);
+        for pc in 0..PIECE_COUNT_BINS {
+            let b = l[pc * QUEEN_CLASSES];
+            for q in 1..QUEEN_CLASSES {
+                assert_eq!(l[pc * QUEEN_CLASSES + q], b, "pc {pc} class {q} diverged");
+            }
         }
     }
 }

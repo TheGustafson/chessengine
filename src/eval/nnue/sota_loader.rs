@@ -141,6 +141,12 @@ const DIS_HEADER_LEN: usize = 16;
 /// [`sota_head::LEGACY_BUCKET_LAYOUT`], keeping older nets bit-identical.
 /// Rides OUTSIDE the header checksum, like every other trailer.
 pub const BUCKETS_MAGIC: [u8; 4] = *b"OBL1";
+/// OBL2 — the 2-D `(piece_count, queen_class)` layout:
+/// `b"OBL2" | u32 bins (= 33) | u32 classes (= 3) | u8[bins*classes]`,
+/// row-major by piece count. Written only when the layout actually uses the
+/// queen axis; a queen-blind map still writes OBL1, so pre-queen-split nets
+/// serialize byte-identically.
+pub const BUCKETS2_MAGIC: [u8; 4] = *b"OBL2";
 /// PSQ1 section header length: magic + u32 num_buckets + u32 rows.
 const PSQT_HEADER_LEN: usize = 12;
 
@@ -748,6 +754,8 @@ pub fn load_v2_bytes(bytes: &[u8]) -> Result<SotaNetwork, SotaNnueError> {
     let tail4 = &tail3[dis_len.min(tail3.len())..];
     let bucket_layout = if tail4.len() >= 4 && tail4[0..4] == BUCKETS_MAGIC {
         parse_bucket_section(tail4)?
+    } else if tail4.len() >= 4 && tail4[0..4] == BUCKETS2_MAGIC {
+        parse_bucket2_section(tail4)?
     } else {
         sota_head::LEGACY_BUCKET_LAYOUT
     };
@@ -852,7 +860,52 @@ fn parse_bucket_section(sec: &[u8]) -> Result<sota_head::BucketLayout, SotaNnueE
             found: bins,
         });
     }
-    let mut layout = [0u8; sota_head::PIECE_COUNT_BINS];
+    // OBL1 is the 1-D (piece-count-only) section. Expand it across the queen
+    // classes so a pre-queen-split net keeps ONE bucket per piece count and
+    // therefore evaluates bit-identically to before the layout went 2-D.
+    let mut layout = [0u8; sota_head::PIECE_COUNT_BINS * sota_head::QUEEN_CLASSES];
+    for (bin, &entry) in sec[HDR..need].iter().enumerate() {
+        if usize::from(entry) >= BUCKETS {
+            return Err(SotaNnueError::WrongDim {
+                field: "bucket_layout_entry",
+                expected: BUCKETS as u32,
+                found: u32::from(entry),
+            });
+        }
+        for q in 0..sota_head::QUEEN_CLASSES {
+            layout[bin * sota_head::QUEEN_CLASSES + q] = entry;
+        }
+    }
+    Ok(layout)
+}
+
+/// Parse an OBL2 (2-D) bucket-layout section starting at its magic.
+fn parse_bucket2_section(sec: &[u8]) -> Result<sota_head::BucketLayout, SotaNnueError> {
+    const HDR: usize = 12;
+    let need = HDR + sota_head::PIECE_COUNT_BINS * sota_head::QUEEN_CLASSES;
+    if sec.len() < need {
+        return Err(SotaNnueError::TooShort {
+            need,
+            got: sec.len(),
+        });
+    }
+    let bins = read_u32(sec, 4);
+    if bins as usize != sota_head::PIECE_COUNT_BINS {
+        return Err(SotaNnueError::WrongDim {
+            field: "bucket_layout_bins",
+            expected: sota_head::PIECE_COUNT_BINS as u32,
+            found: bins,
+        });
+    }
+    let classes = read_u32(sec, 8);
+    if classes as usize != sota_head::QUEEN_CLASSES {
+        return Err(SotaNnueError::WrongDim {
+            field: "bucket_layout_classes",
+            expected: sota_head::QUEEN_CLASSES as u32,
+            found: classes,
+        });
+    }
+    let mut layout = [0u8; sota_head::PIECE_COUNT_BINS * sota_head::QUEEN_CLASSES];
     for (dst, &entry) in layout.iter_mut().zip(&sec[HDR..need]) {
         if usize::from(entry) >= BUCKETS {
             return Err(SotaNnueError::WrongDim {
@@ -1523,9 +1576,26 @@ pub fn serialize(net: &SotaNetwork) -> Vec<u8> {
     // Optional OBL1 trailer: only when the bucket layout differs from the
     // legacy default. LAST, after DIS1.
     if net.head.bucket_layout != sota_head::LEGACY_BUCKET_LAYOUT {
-        out.extend_from_slice(&BUCKETS_MAGIC);
-        out.extend_from_slice(&(sota_head::PIECE_COUNT_BINS as u32).to_le_bytes());
-        out.extend_from_slice(&net.head.bucket_layout);
+        // A QUEEN-BLIND layout still serializes as OBL1 (33 one-byte entries),
+        // so a net that does not use the queen axis stays byte-identical to
+        // what the 1-D era wrote. Only a genuinely 2-D layout needs OBL2.
+        let blind = (0..sota_head::PIECE_COUNT_BINS).all(|b| {
+            let first = net.head.bucket_layout[b * sota_head::QUEEN_CLASSES];
+            (1..sota_head::QUEEN_CLASSES)
+                .all(|q| net.head.bucket_layout[b * sota_head::QUEEN_CLASSES + q] == first)
+        });
+        if blind {
+            out.extend_from_slice(&BUCKETS_MAGIC);
+            out.extend_from_slice(&(sota_head::PIECE_COUNT_BINS as u32).to_le_bytes());
+            for b in 0..sota_head::PIECE_COUNT_BINS {
+                out.push(net.head.bucket_layout[b * sota_head::QUEEN_CLASSES]);
+            }
+        } else {
+            out.extend_from_slice(&BUCKETS2_MAGIC);
+            out.extend_from_slice(&(sota_head::PIECE_COUNT_BINS as u32).to_le_bytes());
+            out.extend_from_slice(&(sota_head::QUEEN_CLASSES as u32).to_le_bytes());
+            out.extend_from_slice(&net.head.bucket_layout);
+        }
     }
     out
 }
@@ -2252,7 +2322,7 @@ pub(crate) mod tests {
         let back = load_v2_bytes(&legacy_bytes).expect("legacy net loads");
         assert_eq!(back.head.bucket_layout, sota_head::LEGACY_BUCKET_LAYOUT);
         assert_eq!(
-            back.head.output_bucket(11),
+            back.head.output_bucket(11, 2),
             1,
             "legacy: count 11 → bucket 1"
         );
@@ -2260,7 +2330,7 @@ pub(crate) mod tests {
         let back = load_v2_bytes(&archon_bytes).expect("OBL1 net loads");
         assert_eq!(back.head.bucket_layout, sota_head::ARCHON_BUCKET_LAYOUT);
         assert_eq!(
-            back.head.output_bucket(11),
+            back.head.output_bucket(11, 2),
             2,
             "ARCHON: count 11 → bucket 2"
         );
