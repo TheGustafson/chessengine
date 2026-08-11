@@ -1,28 +1,18 @@
-//! Perf study 70 — the move-ordering ARM BENCH (feature `arm70`, never
-//! shipped).
+//! The move-ordering ARM BENCH (feature `arm70`, never shipped). Set with
+//! `ARCHON_A70="lva=8,qsort=1"`.
 //!
-//! The study's metric is **nodes to a fixed depth**, which is a discrete,
-//! deterministic integer: it does not care how fast the binary runs. That
-//! makes a *runtime-configurable* screening binary strictly better than one
-//! feature per arm — an `env` read costs speed the metric cannot see, and one
-//! build screens a dozen ordering hypotheses instead of one.
-//!
-//! Every knob defaults to the shipped value, so `arm70` with no environment
-//! set must reproduce the shipped node count exactly (checked before any arm
-//! is read: that is the study's null).
-//!
-//! Set with `ARCHON_A70="lva=8,qsort=1"` etc.
+//! Every knob defaults to the shipped value, so `arm70` with no environment set
+//! must reproduce the shipped node count exactly — check that null before
+//! reading any arm.
 
 use std::sync::LazyLock;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Arm {
     /// Least-valuable-attacker tiebreak on captures: subtract
-    /// `attacker_value / lva` from the capture ordering score. 0 = off
-    /// (shipped).
+    /// `attacker_value / lva` from the capture ordering score. 0 = off.
     pub lva: i32,
     /// Force a FULL quiet sort instead of the depth-scaled partial one.
-    /// The upper bound on "sorting completeness" as an ordering lever.
     pub qsort_full: bool,
     /// Override for `QUIET_SORT_DEPTH_FACTOR` (0 = keep shipped).
     pub qsort_factor: i32,
@@ -30,7 +20,7 @@ pub struct Arm {
     /// quiet score. 16 = shipped.
     pub c1_w: i32,
     /// Multiplier (in 16ths) on the butterfly history term. 16 = shipped
-    /// (which is already a weight of 2).
+    /// (already a weight of 2).
     pub main_w: i32,
     /// Add capture history to evasion captures (shipped: pure MVV).
     pub evasion_caphist: bool,
@@ -42,149 +32,102 @@ pub struct Arm {
     /// Per-16ths multiplier on the quiet offense term.
     pub offense_w: i32,
     /// **The null.** Add a deterministic pseudo-random `[-jitter, +jitter]` to
-    /// every quiet ordering score. At `jitter=1` this is an INERT
-    /// perturbation — it can only re-break exact ties among moves whose whole
-    /// history stack agrees to the unit — so whatever it moves the node count
-    /// by is the metric's own chaos floor on that position set, not an
-    /// ordering effect. Rule 1: run this before believing any arm.
+    /// every quiet ordering score. At `jitter=1` it is INERT (it can only
+    /// re-break exact ties), so whatever it moves the node count by is the
+    /// metric's own chaos floor. Run it before believing any arm.
     pub jitter: i32,
-    /// Seed for the jitter, so the null is a DISTRIBUTION rather than one
-    /// draw (one draw of a chaotic statistic proves nothing).
+    /// Seed for the jitter, so the null is a DISTRIBUTION rather than one draw.
     pub jseed: i32,
 
     // --- history UPDATE shape: what the ordering learns from a cutoff ---
     /// Override `QUIET_MALUS_START_NUM` (1024ths). 0 = shipped.
     pub malus_start: i32,
-    /// Override `QUIET_MALUS_DECAY_NUM` (1024ths). 0 = shipped. 1024 makes
-    /// the malus UNIFORM across the tried quiets instead of decaying, and
-    /// values above 1024 invert the shape (late failures punished hardest).
+    /// Override `QUIET_MALUS_DECAY_NUM` (1024ths). 0 = shipped; 1024 makes the
+    /// malus UNIFORM across the tried quiets instead of decaying, and above
+    /// 1024 inverts the shape (late failures punished hardest).
     pub malus_decay: i32,
     /// Override `QUIET_BEST_BONUS_NUM` (1024ths). 0 = shipped.
     pub best_bonus: i32,
     /// Override `STAT_BONUS_TTMOVE`. -1 = shipped.
     pub tt_bonus: i32,
-    /// **Defended-destination penalty on captures (16ths of the attacker's
-    /// value).** Shipped capture ordering is `7*victim + capture_history` with
-    /// NO attacker term at all — the good/bad SEE split is supposed to price
-    /// attacker risk, but that split does not run in QSEARCH, where 90% of
-    /// cutoffs come from the raw MVV order. One cached bitboard test
-    /// (`all_threats`, already filled for every evaluated node) says whether a
-    /// recapture is coming.
+    /// Defended-destination penalty on captures (16ths of the attacker's
+    /// value). Shipped capture ordering is `7*victim + capture_history` with no
+    /// attacker term, and the good/bad SEE split that prices attacker risk does
+    /// not run in QSEARCH.
     pub def_cap: i32,
-    /// **Override for the SHIPPED `QS_CAPTURE_DEFENDED_NUM`** (perf study 70's
-    /// landed quiescence recapture discount). `-1` keeps the shipped 56; `0`
-    /// turns it off, which is how the landed change is A/B'd against its own
-    /// predecessor inside one binary.
+    /// Override for the shipped `QS_CAPTURE_DEFENDED_NUM` (the quiescence
+    /// recapture discount). `-1` keeps the shipped 56; `0` turns it off.
     pub qs_def: i32,
-    /// Use a PAWN-ONLY recapture map instead of the full threat map. The full
-    /// map is `Board::compute_threats`, which is lazy precisely because
-    /// quiescence never needed it — arming it there costs a fill per qsearch
-    /// node. Pawn defenders are two shifts.
+    /// Use a PAWN-ONLY recapture map instead of the full threat map
+    /// (`Board::compute_threats` is lazy, so arming it in qsearch costs a fill
+    /// per node).
     pub def_pawn: bool,
-    /// Restore the pre-study evasion capture score: the raw victim value with
-    /// no capture history. The OFF switch for the other landed change.
+    /// Restore the pre-study evasion capture score: raw victim value with no
+    /// capture history.
     pub evasion_mvv: bool,
-    /// **Override for the shipped `TT_FAILLOW_MOVE`** (perf study 71): store
-    /// the argmax move at a main-search fail low. `-1` keeps the shipped
-    /// value, `0` off, `1` on.
+    /// Override for the shipped `TT_FAILLOW_MOVE`: store the argmax move at a
+    /// main-search fail low. `-1` shipped, `0` off, `1` on.
     pub fl_move: i32,
-    /// **Override for the shipped `TT_UPPER_PRUNE_BLIND`** (perf study 71):
-    /// the pruning/reduction gates that read `ttMove == NULL` as "this node is
-    /// unresolved" read NULL on an UPPER-bound entry. `-1` shipped, `0` off,
-    /// `1` on.
+    /// Override for the shipped `TT_UPPER_PRUNE_BLIND`: the pruning/reduction
+    /// gates that read `ttMove == NULL` as "this node is unresolved" read NULL
+    /// on an UPPER-bound entry. `-1` shipped, `0` off, `1` on.
     ///
-    /// This is a knob in its OWN right, not a modifier of `fl_move`, and that
-    /// is the point: study 70's standing finding is that a node win is a
-    /// pruning win until a magnitude control says otherwise, so the fail-low
-    /// store must be screened as a 2x2 — `ttup=1` alone is the pruning-only
-    /// control, and the ORDERING effect of the store is
+    /// Independent of `fl_move` on purpose: `ttup=1` alone is the pruning-only
+    /// control, so the fail-low store's ORDERING effect is
     /// `(flmove=1,ttup=1) - (ttup=1)`.
     pub tt_up_blind: i32,
-    /// **The deficit's own null (perf study 71).** Hide the TT move from the
-    /// MOVE PICKER only — every pruning, reduction and extension gate still
-    /// reads `tt_data.mv`, so the tree's shape changes for exactly one reason:
-    /// the ordering lost its best hint.
-    ///
-    /// Study 70 priced the TT-less deficit as the 14.9 pp gap between
-    /// `fhf(has TT move)` and `fhf(no TT move)` and called it the largest
-    /// recoverable block in the engine. That subtraction assumes the two
-    /// populations are otherwise comparable. They are not obviously so: a node
-    /// WITH a TT move is one the search has visited before, and re-visited
-    /// nodes may simply be easier. This arm separates the two — it measures
-    /// what the SAME nodes do without the hint.
+    /// **The TT-less deficit's own null.** Hide the TT move from the MOVE
+    /// PICKER only; every pruning, reduction and extension gate still reads
+    /// `tt_data.mv`, so the only thing that changes is the ordering's best
+    /// hint. Separates that hint's value from the fact that a node WITH a TT
+    /// move is one the search already visited, and so is intrinsically easier.
     pub hide_tt: bool,
-    /// **A real SEE term on quiet ordering (perf study 71).** Subtract `qsee`
-    /// from a quiet's ordering score when `see_ge(m, 0)` fails. Stockfish's
-    /// `score<QUIETS>` has no SEE term at all — the nearest thing is the
-    /// threat tier `PieceValue[pt] * 20 * (attacked-by-LESSER at from minus at
-    /// to)`, which is blind to an EQUAL-valued attacker and to whether the
-    /// destination is defended at all. Study 71's census says 28.5 % of the
-    /// TT-less quiet cutoffs are cases where the top-scored quiet was the
-    /// wrong one, and a quiet that simply hangs material can never be the move
-    /// that causes a beta cutoff.
-    ///
-    /// `-1` keeps the shipped [`QUIET_SEE_PENALTY`]; `0` turns the term OFF,
-    /// which is how the landed change is A/B'd against its own predecessor
-    /// inside one binary.
+    /// A real SEE term on quiet ordering: subtract `qsee` from a quiet's score
+    /// when `see_ge(m, 0)` fails. `-1` keeps the shipped [`QUIET_SEE_PENALTY`],
+    /// `0` turns the term OFF.
     ///
     /// [`QUIET_SEE_PENALTY`]: crate::search::params::QUIET_SEE_PENALTY
     pub qsee: i32,
     /// Turn OFF the shipped guard ("the destination is in the enemy attack
-    /// map"), which is not EXACT — a discovered attacker through the vacated
-    /// from-square can attack the destination only after the move — so the
-    /// screen can price what that inexactness costs.
+    /// map"), which is not EXACT: a discovered attacker through the vacated
+    /// from-square can attack the destination only after the move.
     pub qsee_guard: bool,
     /// **The size-matched null for `qsee`.** Demote a deterministic
-    /// pseudo-random `qsee_rate/1024` share of quiets by the same amount. A
-    /// quiet pushed below `GOOD_QUIET_THRESHOLD` is emitted after the bad
-    /// captures and is far likelier to be cut off by late-move pruning, so a
-    /// big demotion raises `fhf` for a PRUNING reason whatever it is applied
-    /// to. Matching the share and the magnitude and keeping only the predicate
-    /// is what separates the SEE signal from that.
+    /// pseudo-random `qsee_rate/1024` share of quiets by the same amount. Any
+    /// big demotion raises `fhf` for a PRUNING reason (it can push a quiet
+    /// below `GOOD_QUIET_THRESHOLD`, where late-move pruning can drop it), so
+    /// matching share and magnitude is what isolates the SEE signal.
     pub qsee_rand: i32,
     pub qsee_rate: i32,
-    /// Value-scaled variant: penalty = `qsee_pv * PieceValue[mover] / 16`,
-    /// the shape the neighbouring threat term already uses.
+    /// Value-scaled variant: penalty = `qsee_pv * PieceValue[mover] / 16`.
     pub qsee_pv: i32,
     /// SEE threshold: the test is `see_ge(m, qsee_thr)`. 0 = "does not lose
     /// material".
     pub qsee_thr: i32,
-    /// **The free approximation to `qsee`.** Penalise a quiet whose
-    /// destination is attacked by a piece of EQUAL-or-lesser value, using the
-    /// cumulative threat tiers `init_quiets` already builds. The shipped
-    /// threat term only knows STRICTLY lesser attackers, so "rook to a square
-    /// a rook attacks" is currently invisible to it. Costs two bitboard tests
-    /// and no `see_ge`; blind to whether the destination is defended, which is
-    /// exactly what the SEE arm buys.
+    /// The free approximation to `qsee`: penalise a quiet whose destination is
+    /// attacked by a piece of EQUAL-or-lesser value, using the threat tiers
+    /// `init_quiets` already builds (the shipped term knows only STRICTLY
+    /// lesser attackers). No `see_ge`, but blind to defenders.
     pub qeq: i32,
-    /// Additionally require the quiet to be ABOVE `GOOD_QUIET_THRESHOLD`
-    /// before paying for `see_ge`. A quiet already in the bad pile is emitted
-    /// after the bad captures whatever else happens to it, so demoting it
-    /// further reorders only the tail — and skipping those saves the
-    /// majority of the SEE calls.
+    /// Additionally require the quiet to be ABOVE `GOOD_QUIET_THRESHOLD` before
+    /// paying for `see_ge` — demoting a quiet already in the bad pile only
+    /// reorders the tail, and skipping those saves most of the SEE calls.
     pub qsee_gq: bool,
     /// Only score-penalise quiets whose mover is a pawn (`1`) or is NOT a pawn
-    /// (`2`). Splits the term's value by mover, because the shipped threat
-    /// tier is literally `Bitboard::EMPTY` for a pawn.
+    /// (`2`). The shipped threat tier is `Bitboard::EMPTY` for a pawn.
     pub qsee_pt: i32,
     /// Apply the term only at `depth >= qsee_depth`.
     pub qsee_depth: i32,
-    /// **Clamp the demotion at `GOOD_QUIET_THRESHOLD + 1`.** Without it the
-    /// penalty does two things at once: it reorders the quiet, and — when it
-    /// crosses the threshold — it moves the quiet into the BAD pile, emitted
-    /// after the bad captures and far likelier to be dropped outright by
-    /// late-move pruning. With the clamp the term is pure REORDERING inside
-    /// the good pile and cannot prune anything, which is the only form whose
-    /// `fhf` gain has no pruning component left in it at all.
+    /// **Clamp the demotion at `GOOD_QUIET_THRESHOLD + 1`.** Unclamped, the
+    /// penalty is also a PRUNING change: crossing the threshold moves the quiet
+    /// into the BAD pile, where late-move pruning can drop it. Clamped, it is
+    /// pure reordering inside the good pile.
     pub qsee_clamp: bool,
-    /// Study 71: the same store in QUIESCENCE — a qsearch fail-low knows
-    /// which capture scored highest and throws it away too (21.9 % of the
-    /// NonPV moveless population, 54.6 % of the qsearch one).
+    /// The same fail-low store in QUIESCENCE.
     pub qfl_move: i32,
-    /// Give the tried-but-not-best CAPTURES a malus even when the best move
-    /// was a QUIET, and the tried quiets a malus when the best was a capture.
-    /// Shipped: each kind is only punished when the best move shares its kind,
-    /// so half the evidence at every node is discarded.
+    /// Give the tried-but-not-best CAPTURES a malus even when the best move was
+    /// a QUIET, and vice versa. Shipped: each kind is only punished when the
+    /// best move shares its kind.
     pub cross_malus: i32,
 }
 
@@ -276,8 +219,8 @@ fn parse(spec: &str) -> Arm {
 }
 
 /// Read once. A `LazyLock` rather than a per-call `env::var` because the
-/// scoring loops run per move; the metric cannot see the difference, but a
-/// syscall per quiet would make the screen needlessly slow.
+/// scoring loops run per move and a syscall per quiet would make the screen
+/// needlessly slow.
 pub static ARM: LazyLock<Arm> = LazyLock::new(|| match std::env::var("ARCHON_A70") {
     Ok(spec) => {
         let a = parse(&spec);
@@ -292,9 +235,9 @@ pub fn arm() -> &'static Arm {
     &ARM
 }
 
-/// The jitter value for one move under the current arm. A multiplicative
-/// hash of `(raw16, seed)` — deterministic, so a jittered run is exactly
-/// reproducible, and uncorrelated with anything the ordering cares about.
+/// The jitter value for one move under the current arm. A multiplicative hash
+/// of `(raw16, seed)`: deterministic, so a jittered run is reproducible, and
+/// uncorrelated with anything the ordering cares about.
 #[inline]
 pub fn jitter_for(a: &Arm, raw16: u16) -> i32 {
     if a.jitter == 0 {

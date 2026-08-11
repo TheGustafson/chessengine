@@ -3,37 +3,28 @@
 //! transliteration.
 //!
 //! Everything here is governed by the design suite in `design/`:
-//! `design/decisions.md` pins decisions D1–D27 (decisions change there first;
-//! docs follow; code follows docs) and `design/00-master-plan.md` orders the
-//! phases P0–P15. Working conventions live in `CLAUDE.md`; test conventions
+//! `design/decisions.md` pins the decisions and `design/00-master-plan.md`
+//! orders the phases. Working conventions live in `CLAUDE.md`; test conventions
 //! in `TESTING.md`. Perft is the correctness oracle, `bench` the search
 //! regression oracle (D24).
 //!
 //! Layout: library crate + thin binary (`main.rs`, the UCI entry point).
 //! Modules below are re-exported at the crate root.
 
-// D14: unsafe is banned crate-wide for now; later phases relax this
-// per-module (`#[allow(unsafe_code)]`) only with a measured, documented
-// justification and a `// SAFETY:` comment on each block.
+// D14: unsafe is banned crate-wide; relaxing it per-module
+// (`#[allow(unsafe_code)]`) requires a measured, documented justification and a
+// `// SAFETY:` comment on each block.
 #![deny(unsafe_code)]
 
-/// Perf study 68's **layout null**: a cold, never-called function that exists
-/// only to shift `.text` by a few dozen bytes and move every downstream symbol's
-/// L1i set mapping, while changing **nothing** the search executes.
-///
-/// It exists because `ic_cache_fill_l2` is not trustworthy at the few-per-cent
-/// level in this engine and the study needed to know HOW untrustworthy. Two
-/// points were already in hand — a byte-identical rebuild (±0.5 %) and a
-/// zero-semantic basic-block relayout (+1.103 %) — and neither is a *small*
-/// shift, which is the perturbation the landed arms actually apply. This is
-/// that third point, and it is the only honest way to say whether an arm's
-/// fill number is the arm or the lottery.
+/// Instrument-only **layout null**: a cold, never-called function that shifts
+/// `.text` by a few dozen bytes and moves every downstream symbol's L1i set
+/// mapping, while changing **nothing** the search executes — so an arm's
+/// icache-fill number can be compared against a pure-relayout baseline.
 ///
 /// `#[cold]` + `#[inline(never)]` keep it out of the hot code; the `#[used]`
-/// function-pointer static below is what keeps fat LTO from deleting it
-/// (`no_mangle` would be the usual trick, but this crate is
-/// `#![deny(unsafe_code)]` and `#[unsafe(no_mangle)]` trips it — `#[used]` is
-/// safe and does the same job).
+/// function-pointer static below keeps fat LTO from deleting it (`no_mangle`
+/// would be the usual trick, but this crate is `#![deny(unsafe_code)]` and
+/// `#[unsafe(no_mangle)]` trips it).
 ///
 /// Default OFF; it must never ship.
 #[cfg(feature = "pad68")]
@@ -53,7 +44,7 @@ pub fn archon_s68_layout_null(x: u64) -> u64 {
 #[used]
 static ARCHON_S68_LAYOUT_NULL: fn(u64) -> u64 = archon_s68_layout_null;
 
-/// Perf study 70's runtime-configurable move-ordering ARM BENCH.
+/// Runtime-configurable move-ordering ARM BENCH (instrument only).
 #[cfg(feature = "arm70")]
 pub mod arm70;
 pub mod attacks;
@@ -61,7 +52,7 @@ pub mod bench;
 pub mod bench_positions_archon;
 pub mod bitboard;
 pub mod board;
-/// Perf study 70's move-ordering QUALITY census (instrument only).
+/// Move-ordering QUALITY census (instrument only).
 #[cfg(feature = "census70")]
 pub mod census70;
 pub mod cuckoo;

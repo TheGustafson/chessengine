@@ -1,19 +1,15 @@
 //! canon_filter — apply the sfbinpack QUIET filter to the SF18-canonical value
 //! corpus (`FEN | cp | wdl` lines on stdin → filtered lines on stdout).
 //!
-//! ★ SUPERSEDED for shard-based corpora (2026-07-21): `obs-tool export-value
+//! ★ SUPERSEDED for shard-based corpora: `obs-tool export-value
 //! --filter-sfbinpack` applies the FULL trainer-parity filter (ply≥16,
 //! !in-check, |raw score|≤10000 pre-clamp, best-move Normal non-capture) at
 //! export, where the `.ceobs` best_move is available. Use that whenever shards
-//! exist. This tool remains only for text-only corpora with no shards behind
-//! them — and it is a PARTIAL filter:
-//!   * side-to-move NOT in check (`checkers().is_empty()`) — the criterion it
-//!     actually enforces
-//!   * `|cp| <= 10000` — a NO-OP on export-value output: the export clamps cp
-//!     to ±2500 first, so mate-scale labels arrive pre-collapsed and pass.
-//!     (The 2026-07-21 diagnosis measured what this misses on the hard-negs:
-//!     15.7% capture-best + 4.5% clamp-hidden mate labels — the exp-0123
-//!     "filter ruled out" verdict was invalid partly because of this gap.)
+//! exist. This tool is for text-only corpora with no shards behind them, and it
+//! is a PARTIAL filter: it enforces only "side-to-move not in check", plus a
+//! `|cp| <= 10000` test that is a NO-OP on export-value output (the export
+//! clamps cp to ±2500 first, so mate-scale labels arrive pre-collapsed and
+//! pass). It misses capture-best and clamp-hidden mate labels.
 //!
 //!   canon_filter < corpus.txt > corpus.quiet.txt
 

@@ -17,57 +17,48 @@
 //! — which relations exist — is Stockfish's, pinned **bit-identical** to our
 //! from-scratch enumeration: kings are excluded as attacker and victim (a king
 //! move contributes only its blocker role), and the pawn-push relation fires
-//! only against a pawn directly in front. We may freely *over-generate* raw
-//! events that [`threat_index`](super::sota_features::threat_index) drops to
-//! `None`; the one place over-generation would be *unsafe* — a pawn push onto
-//! a knight/rook, which `threat_index` would keep but the from-scratch path
-//! never emits — is guarded at the recorder (pawn pushes emit only against
-//! pawns).
+//! only against a pawn directly in front. Raw events that `threat_index` drops
+//! to `None` may be over-generated freely; the one case where over-generation
+//! would be *unsafe* — a pawn push onto a knight/rook, which `threat_index`
+//! would keep but the from-scratch path never emits — is guarded at the
+//! recorder.
 //!
 //! # Fully-lazy folding
-//! The observer is *fully* deferred to evaluate time: event generation reads
-//! only occupancy + piece identities, and resolution reads the king square
-//! only through a 1-bit mirror ([`orient_threats`]). So
+//! Everything is deferred to evaluate time: event generation reads only
+//! occupancy + piece identities, and resolution reads the king square only
+//! through a 1-bit mirror ([`orient_threats`]). So
 //! [`ThreatContext::apply_at`] snapshots exactly those inputs (a
 //! [`ThreatPosition`]) plus the [`DirtyPiece`], and defers generation
-//! ([`build_deltas`]), per-perspective resolution, and the fold
-//! ([`apply_threat_deltas_into`]) to [`ThreatContext::compute`], which runs
-//! them against the stored snapshot only for plies that actually reach an
-//! [`evaluate`], folding forward from the nearest computed ancestor. Children
-//! that cut off (TT hits, immediate fail-lows) pay nothing; generation is
-//! shared across perspectives per folded ply. A king cross (the sole
-//! from-scratch case) is also deferred: [`apply_at`](ThreatContext::apply_at)
-//! records it as a [`Fold::Refresh`] obligation and
-//! [`compute`](ThreatContext::compute) discharges it from the ply's own
-//! snapshot (the snapshot carries every input the rebuild reads, so the live
-//! board need not survive to fold time).
+//! ([`build_deltas`]), per-perspective resolution and the fold
+//! ([`apply_threat_deltas_into`]) to [`ThreatContext::compute`], which folds
+//! forward from the nearest computed ancestor only for plies that reach an
+//! [`evaluate`]. A king cross (the sole from-scratch case) is deferred the
+//! same way: `apply_at` records a [`Fold::Refresh`] obligation and `compute`
+//! discharges it from the ply's own snapshot, which carries every input the
+//! rebuild reads — so the live board need not survive to fold time.
 //!
 //! [`orient_threats`]: super::sota_features
 //! [`evaluate`]: super::sota_context::SotaContext::evaluate
 //! [`apply_threat_deltas_into`]: super::sota_simd::apply_threat_deltas_into
 //!
 //! ## Why the replay is correct on a post-move board (the telescoping)
-//! We reconstruct the intermediate single-square board states from the
+//! The intermediate single-square board states are reconstructed from the
 //! **post-move board plus the [`DirtyPiece`]**: rebuild the pre-move
 //! occupancy, then replay the edits (remove every sub, then add every add) so
-//! each `record_square_touch` sees exactly the occupancy and piece identities
-//! of the state *after its own edit*. Each edit's touch emits exactly the raw
-//! relations that change between consecutive states; summed over the edit path
-//! the signed events telescope to `raw_edges(after) − raw_edges(before)`, and
-//! resolving through `threat_index` telescopes the feature indices to
-//! `active(after) − active(before)` — i.e. the incremental accumulator equals
-//! a from-scratch refresh. The correctness gate (`threats_replay_*`) asserts
-//! exactly this at every node of thousands of random games.
+//! each `record_square_touch` sees the state *after its own edit*. Summed over
+//! the edit path the signed events telescope to
+//! `raw_edges(after) − raw_edges(before)`, and resolving through
+//! `threat_index` telescopes the indices to `active(after) − active(before)` —
+//! i.e. the incremental accumulator equals a from-scratch refresh. The
+//! correctness gate (`threats_replay_*`) asserts exactly this at every node.
 //!
 //! # Mirror refresh
 //! A threat index depends on the perspective's king only through its **mirror
 //! half** (files a–d vs e–h; [`orient_threats`](super::sota_features)), never
-//! the exact square or a bucket. So a perspective's threat accumulator only
-//! needs a full rebuild when *its own* king crosses the d/e boundary — a
-//! strict subset of the HalfKA refresh trigger, and one Stockfish cannot
-//! exploit because it fuses HalfKA and threats into one accumulator. We record
-//! that per perspective as a [`Fold::Refresh`] obligation and rebuild only the
-//! crossing side, at fold time; everything else stays incremental.
+//! the exact square or a bucket. So a perspective's threat accumulator needs a
+//! full rebuild only when *its own* king crosses the d/e boundary — a strict
+//! subset of the HalfKA refresh trigger — and only the crossing side is
+//! rebuilt, at fold time.
 
 use super::sota_accumulator::{psqt_add, psqt_sub};
 use super::sota_features::{
@@ -87,9 +78,8 @@ use crate::types::{Color, MAX_PLY, Piece, PieceType, Square};
 /// `victim` on `to`", appearing (`add`) or disappearing (`!add`). Resolved to a
 /// feature index per perspective by [`threat_index`]; excluded pairs drop out.
 ///
-/// `align(8)` rounds the natural size-7 layout up to 8 so events never
-/// straddle cache lines and the per-event stores/address arithmetic stay
-/// aligned — a measured win on a scratch buffer that never leaves L1.
+/// `align(8)` rounds the natural size-7 layout up to 8 so events never straddle
+/// cache lines and the per-event stores/address arithmetic stay aligned.
 #[derive(Debug, Clone, Copy)]
 #[repr(align(8))]
 pub struct ThreatDelta {
@@ -101,8 +91,8 @@ pub struct ThreatDelta {
 }
 
 /// Raw-event buffer capacity. The tight per-move bound is ~80 events, but the
-/// replay driver costs extra events (up to four touches for castling, each
-/// ≤ ~36 events), so we size generously and never rely on the tight bound.
+/// replay driver costs extra (up to four touches for castling, each ≤ ~36), so
+/// this is sized generously and nothing relies on the tight bound.
 const DELTA_CAP: usize = 256;
 
 /// A fixed, heap-free scratch buffer of raw threat events (design/11 §12.9.1).
@@ -129,9 +119,9 @@ impl DeltaBuf {
     #[inline]
     fn push(&mut self, d: ThreatDelta) {
         // Drop pairs `threat_index` would fold to None at this single choke
-        // point. `threat_pair_kept` is derived from the SAME `MAP` table the
-        // fold consults, so the drop sets cannot diverge; add/sub use the same
-        // pure type predicate, so telescoping cancellation is preserved. The
+        // point. `threat_pair_kept` is derived from the SAME `MAP` the fold
+        // consults, so the drop sets cannot diverge, and add/sub share the
+        // predicate so telescoping cancellation is preserved. The
         // pawn-push-onto-N/R asymmetry stays guarded at the recorder.
         if !super::sota_features::threat_pair_kept(d.attacker.piece_type, d.victim.piece_type) {
             return;
@@ -140,13 +130,11 @@ impl DeltaBuf {
     }
 
     /// [`push`](Self::push) for a site that has **already** established the
-    /// attacker→victim type pair is one `MAP` keeps — e.g. [`record_targets`]
-    /// iterates `KEPT_VICTIMS[attacker]`, so every victim it visits is kept by
-    /// construction, and the pawn-push emitters are pawn→pawn. Sites that CAN
-    /// drop ([`ripple`], [`record_incoming_mutate`]'s fan loop) call
-    /// [`push`](Self::push) instead. There is still exactly one drop-set
-    /// definition (`MAP`); the `debug_assert` re-checks the caller's claim on
-    /// every event in every debug build.
+    /// attacker→victim type pair is one `MAP` keeps — [`record_targets`]
+    /// iterates `KEPT_VICTIMS[attacker]`, and the pawn-push emitters are
+    /// pawn→pawn. Sites that CAN drop ([`ripple`],
+    /// [`record_incoming_mutate`]'s fan loop) call [`push`](Self::push). The
+    /// `debug_assert` re-checks the claim against `MAP`.
     #[inline]
     fn push_kept(&mut self, d: ThreatDelta) {
         debug_assert!(
@@ -155,9 +143,8 @@ impl DeltaBuf {
             d.attacker.piece_type,
             d.victim.piece_type
         );
-        // The mask discharges the store's bounds check: `self.len` is a field
-        // LLVM cannot bound, `DELTA_CAP` is a power of two, and the
-        // debug_assert is the real invariant.
+        // The mask discharges the store's bounds check (`self.len` is a field
+        // LLVM cannot bound); the debug_assert is the real invariant.
         debug_assert!(self.len < DELTA_CAP, "threat delta buffer overflow");
         self.data[self.len & (DELTA_CAP - 1)] = d;
         self.len += 1;
@@ -176,22 +163,20 @@ impl DeltaBuf {
 
 /// The replay's working position: a by-value copy of a [`ThreatPosition`]
 /// mutated with [`ThreatPosition::toggle`] (one XOR per board represents "the
-/// state after edit *i*"). The struct lives in [`super::sota_features`] and
-/// the from-scratch enumeration runs off it too, so there is exactly one
-/// definition of "what the threat features see".
+/// state after edit *i*"). The from-scratch enumeration runs off the same
+/// struct, so there is exactly one definition of what the threat features see.
 type Replay = ThreatPosition;
 
 /// Emit every kept relation from `attacker` on `from` to a piece in `targets`,
 /// **iterating one victim type at a time** so the victim's type is a loop
 /// constant and the excluded pairs never materialise.
 ///
-/// This is the incremental twin of [`for_each_threat`]'s victim-mask loops.
-/// `KEPT` is the [`KEPT_VICTIMS`] mask (derived from the same `MAP` the
-/// resolver consults, so the drop sets agree by construction) as a **const
-/// parameter**: callers know the attacker's type at compile time, so the
-/// `PieceType::ALL` loop specialises down to just the victim types in the set,
-/// with no runtime test. `KEPT` is `u8` rather than `PieceType` because const
-/// generics cannot yet be user enums — same idiom as `movegen::generate::<GT>`.
+/// The incremental twin of [`for_each_threat`]'s victim-mask loops. `KEPT` is
+/// the [`KEPT_VICTIMS`] mask (same `MAP` the resolver consults, so the drop
+/// sets agree by construction) as a **const parameter**, so the
+/// `PieceType::ALL` loop specialises down to the victim types in the set with
+/// no runtime test. It is `u8` rather than `PieceType` because const generics
+/// cannot yet be user enums — same idiom as `movegen::generate::<GT>`.
 #[inline]
 fn record_targets<const KEPT: u8>(
     buf: &mut DeltaBuf,
@@ -225,9 +210,8 @@ fn record_targets<const KEPT: u8>(
 
 /// Emit every threat relation a piece `p` conceptually appearing (`add`) or
 /// disappearing (`!add`) at `s` participates in, against the replay's current
-/// occupancy (design/11 §12.9.1). Over-generates freely; [`threat_index`] drops
-/// the excluded pairs at resolution time. The one non-over-generatable case —
-/// pawn pushes onto a non-pawn — is guarded here.
+/// occupancy (design/11 §12.9.1). Over-generates freely; the one
+/// non-over-generatable case — pawn pushes onto a non-pawn — is guarded here.
 fn record_square_touch(
     buf: &mut DeltaBuf,
     tab: &AttackTables,
@@ -238,10 +222,8 @@ fn record_square_touch(
 ) {
     let occ = r.occ;
 
-    // The two ray fans from `s`, hoisted: section 2 needs them
-    // unconditionally, and section 1's outgoing set for a slider is exactly
-    // one of them (`AttackTables::attacks` IS `rook_attacks` /
-    // `bishop_attacks` / their union for R/B/Q).
+    // The two ray fans from `s`, hoisted: section 2 needs them unconditionally
+    // and section 1's outgoing set for a slider is exactly one of them.
     let ratt = tab.rook_attacks(s, occ);
     let batt = tab.bishop_attacks(s, occ);
     let qatt = ratt | batt;
@@ -296,8 +278,7 @@ fn record_square_touch(
     // --- 2. X-ray ripple: sliders whose ray reaches `s`. Each such slider `sl`
     // gains/loses its direct relation to `p@s`, and its relation to the first
     // occupant strictly beyond `s` flips the *other* way (removing p unblocks
-    // sl; adding p blocks it). The ray fans are pre-masked with the slider
-    // boards, so only real sliders are ever iterated.
+    // sl; adding p blocks it). The fans are pre-masked with the slider boards.
     let queens = r.typed(PieceType::Queen);
     for sl_sq in ratt & r.rook_movers() {
         let pt = if queens.contains(sl_sq) {
@@ -319,17 +300,14 @@ fn record_square_touch(
     }
 
     // --- 3. Incoming: short-range attackers of `s` (pawns, knights). Kings are
-    // never attackers, so no king incoming. Only meaningful when `p` can be a
-    // victim, i.e. not a king. The victim is fixed here, so the
-    // attacker-type predicate is a loop-invariant and hoists out entirely: a
-    // bishop or queen victim skips the whole pawn scan.
+    // never attackers and never victims here, so this whole section is gated on
+    // `p` not being a king; the victim is then fixed and the attacker-type
+    // predicate is loop-invariant.
     if p.piece_type != PieceType::King {
-        // The knight scan needs NO victim-type guard: a knight threatens every
-        // victim type except a king, and this block is already inside
-        // `p.piece_type != King`, so `threat_pair_kept(Knight, p)` is always
-        // true here. The pawn scan below is NOT the same case and keeps its
-        // guard: a pawn threatens only {pawn, knight, rook}, so a bishop or
-        // queen victim really does skip it.
+        // The knight scan needs NO victim-type guard — a knight threatens every
+        // victim type except a king. The pawn scan below keeps its guard: a
+        // pawn threatens only {pawn, knight, rook}, so a bishop or queen victim
+        // really does skip it.
         {
             debug_assert!(threat_pair_kept(PieceType::Knight, p.piece_type));
             for a in knight_attacks(s) & r.typed(PieceType::Knight) {
@@ -388,8 +366,7 @@ fn record_square_touch(
 /// One slider's ripple through `s`: its direct relation to `p@s` (sign `add`),
 /// and its relation to the discovered piece just beyond `s` on the `sl → s` ray
 /// (sign `!add`). At most one discovered piece — `ray_pass(sl, s) & occ & qatt`
-/// is the classic "one blocker beyond" query (design/11 §12.9.1; `ray_pass` at
-/// src/attacks.rs).
+/// is the classic "one blocker beyond" query (design/11 §12.9.1).
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 fn ripple(
@@ -423,8 +400,8 @@ fn ripple(
 
 /// Occupancy-preserving identity replacement at `square` (capture placement or
 /// promotion). Only relations whose attacker or victim is that square change;
-/// x-rays beyond it do not. This is the compact counterpart to a remove+add
-/// pair, which needlessly emits and later cancels those unchanged x-rays.
+/// x-rays beyond it do not — which is why this is not a remove+add pair, whose
+/// unchanged x-rays would be emitted and later cancelled.
 fn record_mutate(
     buf: &mut DeltaBuf,
     tab: &AttackTables,
@@ -471,9 +448,8 @@ fn record_outgoing(
             }
         }
         // The remaining four types, spelled out so each gets its own const
-        // `KEPT` mask. Knight and Queen share a row of `KEPT_VICTIMS`
-        // ({P,N,B,R,Q}) and bishop and rook share the other ({P,N,B,R}), so this
-        // is two specialisations, not four.
+        // `KEPT` mask. Knight/Queen share a `KEPT_VICTIMS` row ({P,N,B,R,Q})
+        // and Bishop/Rook the other ({P,N,B,R}) — two specialisations, not four.
         pt => {
             let targets = tab.attacks(pt, from, r.occ);
             match pt {
@@ -504,12 +480,10 @@ fn record_incoming_mutate(
     let occ = r.occ;
     let queens = r.typed(PieceType::Queen);
     let pawns = r.typed(PieceType::Pawn);
-    // Pre-masked attacker fans. They are pairwise disjoint — a square is either
+    // Pre-masked attacker fans, pairwise DISJOINT — a square is either
     // rank/file-aligned with `to` or diagonally aligned, never both, and a
-    // knight/pawn is neither a slider nor the other — so iterating them
-    // separately visits every attacker exactly once, like the old union walk,
-    // without resolving any identity or re-testing any geometry.
-    // (fan, the type its occupants have, whether a queen can also appear).
+    // knight/pawn is neither — so iterating them separately visits every
+    // attacker exactly once. (fan, occupant type, whether a queen can appear.)
     let fans = [
         (
             tab.rook_attacks(to, occ) & r.rook_movers(),
@@ -591,10 +565,9 @@ fn record_incoming_mutate(
     }
 }
 
-/// From-scratch FullThreats PSQT bucket sums for `perspective` (T6c skip):
-/// the sum of the 8-wide PSQ1 threat row of every active threat feature —
-/// the oracle the incremental fold must match. Zero when `table` is empty
-/// (legacy net, or a HalfKA-only psqt net).
+/// From-scratch FullThreats PSQT bucket sums for `perspective` (T6c skip): the
+/// sum of the 8-wide PSQ1 threat row of every active threat feature — the
+/// oracle the incremental fold must match. Zero when `table` is empty.
 pub(crate) fn refresh_psqt_threat(
     table: &[i32],
     board: &Board,
@@ -630,17 +603,11 @@ fn refresh_psqt_threat_at(
 /// Which perspectives' kings cross the d/e mirror boundary in this move? (Such
 /// a perspective's whole threat accumulator must be rebuilt from scratch —
 /// every one of its feature indices is re-oriented.)
-///
-/// One pass per LIST, not per colour: a move relocates one piece, so at most
-/// one colour's king can appear, and re-scanning per perspective bought
-/// nothing but a second walk.
 fn king_cross(dp: &DirtyPiece) -> [bool; 2] {
-    // A move relocates ONE piece, so a king can appear at most once per list
-    // and, if it appears in both, it is the same king — the pairing needs no
-    // storage, only a nested scan whose outer body is skipped outright for a
-    // non-king mover. `out[c]` is set only when colour `c`'s king is in BOTH
-    // lists, so `Fold::Refresh` is raised on exactly the same moves as the
-    // per-colour form.
+    // One pass per LIST, not per colour. A move relocates ONE piece, so a king
+    // appears at most once per list and, if in both, it is the same king — the
+    // pairing needs no storage. `out[c]` is set only when colour `c`'s king is
+    // in BOTH lists.
     let mut out = [false; 2];
     for &(pc, from) in dp.subs() {
         if pc.piece_type != PieceType::King {
@@ -670,10 +637,7 @@ const STACK_LEN: usize = MAX_PLY + 8;
 
 /// One per-ply FullThreats entry, folded **fully lazily** — the FullThreats
 /// mirror of [`super::sota_accumulator::HalfkaContext`]'s per-ply `Entry`.
-/// Generation, resolution, and the fold are all deferred to
-/// [`ThreatContext::compute`], which runs them against the stored snapshot
-/// only for the plies that are actually evaluated.
-// Cache-line aligned, like the HalfKA accumulator entries.
+/// Cache-line aligned, like the HalfKA accumulator entries.
 #[derive(Clone)]
 #[repr(align(64))]
 struct ThreatEntry {
@@ -681,14 +645,11 @@ struct ThreatEntry {
     /// [`Fold::Done`].
     acc: [[i16; ACC]; 2],
     /// T6c PSQT bucket sums over the ACTIVE THREAT features, maintained by the
-    /// same fold events as `acc` (all-zero when the net carries no threat
-    /// PSQ1 rows). Valid where `fold[p]` is [`Fold::Done`], like `acc`.
+    /// same fold events as `acc` and valid under the same condition (all-zero
+    /// when the net carries no threat PSQ1 rows).
     psqt: [[i32; BUCKETS]; 2],
-    /// Measurement-only padding: `ThreatEntry` and HalfKA's `Entry` have
-    /// byte-identical layouts and stack sizes, so their accumulators come out
-    /// 4 KB-congruent and contend for the same L1d sets at every ply; padding
-    /// the stride breaks the congruence for all but one ply in 64.
-    /// Bit-identical by construction: no code reads it.
+    /// Measurement-only padding that breaks the 4 KB congruence between this
+    /// stack and HalfKA's. Bit-identical by construction: no code reads it.
     #[cfg(feature = "cong51")]
     _cong: [u8; 64],
 }
@@ -697,42 +658,35 @@ struct ThreatEntry {
 /// post-move board state its events regenerate against — in its OWN dense
 /// array, matching the shape of `ThreatEntry`/`fold`.
 ///
-/// NOTE: the locality hypothesis this split was built to test ("the every-node
-/// snapshot write into a cold 5.3 KB-strided line is a major stall source") is
-/// REFUTED by measurement — the top of the stack is L1/L2-resident because
-/// only ~15 plies are live and `compute` walks them repeatedly. The split is
-/// kept for a small measured instruction win and for the matching entry
-/// shapes; do not re-price search-side stalls off this snapshot.
+/// The top of this stack is L1/L2-resident (only ~15 plies are live and
+/// `compute` walks them repeatedly), so do not price search-side stalls off
+/// the snapshot write.
 #[derive(Clone, Copy, Default)]
 struct Push {
     /// Read only by the [`Fold::FromParent`] path ([`build_deltas`]).
     dp: DirtyPiece,
     /// Read by BOTH deferred paths: [`Fold::FromParent`] runs [`build_deltas`]
-    /// against it, and [`Fold::Refresh`] rebuilds the whole accumulator out of
-    /// it.
+    /// against it, [`Fold::Refresh`] rebuilds the whole accumulator out of it.
     position: ThreatPosition,
 }
 
 /// The per-ply fold state, in its OWN dense array: [`ThreatContext::compute`]
 /// opens by scanning it backwards per perspective, and at 2 bytes per ply the
-/// deepest realistic walk fits in one or two cache lines instead of touching
-/// one 5 KB-strided line per ply.
+/// deepest realistic walk fits in one or two cache lines.
 type FoldState = [Fold; 2];
 
 /// How [`ThreatContext::compute`] must materialise one perspective of one
-/// [`ThreatEntry`]. Recording a king-cross as a [`Fold::Refresh`] obligation
-/// (rather than rebuilding eagerly at push) makes the rebuild obey the same
-/// laziness as everything else in this module.
+/// [`ThreatEntry`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Fold {
     /// `acc[p]`/`psqt[p]` already hold this ply's value.
     Done,
     /// Fold the parent's value forward through this ply's `dp`/`position`.
     FromParent,
-    /// The perspective's own king crossed the d/e mirror on this move, so every
-    /// one of its feature indices is re-oriented and the parent's accumulator is
-    /// worthless: rebuild from scratch out of `position`. Cannot be folded, and
-    /// terminates `compute`'s ancestor walk exactly as [`Fold::Done`] does.
+    /// The perspective's own king crossed the d/e mirror, so every one of its
+    /// feature indices is re-oriented and the parent's accumulator is
+    /// worthless: rebuild from scratch out of `position`. Terminates
+    /// `compute`'s ancestor walk exactly as [`Fold::Done`] does.
     Refresh,
 }
 
@@ -755,12 +709,9 @@ impl Default for ThreatEntry {
 /// [`apply_at`](Self::apply_at) snapshots the post-move board
 /// ([`ThreatPosition`]) + the [`DirtyPiece`]; [`compute`](Self::compute)
 /// regenerates the events, resolves the per-perspective indices, and folds
-/// forward from the nearest computed ancestor only for plies that reach an
-/// [`evaluate`]. The snapshot's x-ray geometry is the *post-move* board's,
-/// captured before a sibling can mutate it in place, so the deferred work is
-/// bit-identical to an eager fold.
-///
-/// [`evaluate`]: super::sota_context::SotaContext::evaluate
+/// forward from the nearest computed ancestor. The snapshot's x-ray geometry
+/// is the *post-move* board's, captured before a sibling can mutate it in
+/// place — that is what makes the deferred work bit-identical to an eager fold.
 pub struct ThreatContext<'a> {
     weights: &'a [i8],
     /// The loader's per-feature ROW MAP (byte offset, bit 0 = stored narrow),
@@ -777,16 +728,14 @@ pub struct ThreatContext<'a> {
     remap: Option<&'a ThreatRemap>,
     /// One lazily-folded entry per ply; `stack[0]` is the root. Indexed by
     /// absolute search ply and never truncated — a sibling simply overwrites
-    /// its ply's entry — exactly like the HalfKA stack. Heap-allocated once.
-    /// **Sized** `Box<[T; N]>`, not `Box<[T]>`: a thin pointer with a
-    /// compile-time stride and statically discharged bounds (fat-pointer
-    /// arrays measured as a regression here — length loads + dynamic bounds
-    /// checks at every index). Built through `vec![..].into_boxed_slice()` +
-    /// `try_into`, which is a pointer cast — never a 1.3 MB array on the stack.
+    /// its ply's entry — exactly like the HalfKA stack. **Sized**
+    /// `Box<[T; N]>`, not `Box<[T]>`: a fat-pointer slice is a measured
+    /// regression (length loads + dynamic bounds checks at every index). Built
+    /// through `vec![..].into_boxed_slice()` + `try_into`, which is a pointer
+    /// cast — never a 1.3 MB array on the stack.
     stack: Box<[ThreatEntry; STACK_LEN]>,
     /// Per-ply move + post-move board snapshot, in its own dense array so the
-    /// every-node WRITE is a sequential 88-byte-stride stream instead of two
-    /// cold lines 5.3 KB apart — see [`Push`].
+    /// every-node WRITE is a sequential 88-byte-stride stream — see [`Push`].
     push: Box<[Push; STACK_LEN]>,
     /// Per-ply, per-perspective fold state. Its own dense array so `compute`'s
     /// ancestor walk is a linear scan over 2 bytes per ply — see [`FoldState`].
@@ -796,36 +745,28 @@ pub struct ThreatContext<'a> {
     /// `alias[k] < k` when ply `k`'s fold was a pure parent copy for BOTH
     /// perspectives and the entry was therefore never written at all.
     ///
-    /// The invariant, and every write site maintains it:
-    /// **if `fold[k][p] == Fold::Done` then perspective `p`'s value is in
+    /// The invariant, maintained at every write site: **if
+    /// `fold[k][p] == Fold::Done` then perspective `p`'s value is in
     /// `stack[alias[k]].acc[p]`** — and `alias[alias[k]] == alias[k]`, so a
     /// read is always ONE hop (the alias case copies the parent's holder rather
     /// than pointing at the parent).
     ///
-    /// It is a whole-ENTRY alias, not a per-perspective one, because
-    /// [`at_full`](Self::at_full) hands out `&[[i16; ACC]; 2]` — both
-    /// perspectives from one entry — and ~93% of pure copies come from plies
-    /// where both perspectives resolve empty together, so the cheap form
-    /// captures almost all of it.
-    ///
-    /// INLINE, not `Box`ed (measured): 508 bytes at a fixed offset from `self`
-    /// need no base pointer of their own in the already register-starved
-    /// `compute`. Behind [`AliasTable`] so the whole mechanism can be deleted
-    /// at one site (`--features noalias40`).
+    /// A whole-ENTRY alias, not a per-perspective one, because
+    /// [`at_full`](Self::at_full) hands out both perspectives from one entry.
+    /// INLINE, not `Box`ed (measured), and behind [`AliasTable`] so the whole
+    /// mechanism has one deletion site (`--features noalias40`).
     alias: AliasTable,
     /// Scratch raw-event buffer for [`build_deltas`], reused every fold.
     buf: DeltaBuf,
-    /// Fold-time resolved-index scratch for [`apply_threat_deltas_into`], written by
-    /// [`resolve_into`] and reused every [`compute`](Self::compute) — never a
-    /// per-node allocation, and never re-zeroed (only the `..len` prefix is
-    /// read). One pair per perspective so BOTH perspectives resolve (and
-    /// prefetch their weight rows) before either folds — the perf study #4
-    /// item #3 resolve→prefetch→fold pipeline.
+    /// Fold-time resolved-index scratch for [`apply_threat_deltas_into`],
+    /// reused every [`compute`](Self::compute) and never re-zeroed (only the
+    /// `..len` prefix is read). One pair per perspective so BOTH perspectives
+    /// resolve before either folds.
     add_scratch: [[RowOffset; DELTA_CAP]; 2],
     sub_scratch: [[RowOffset; DELTA_CAP]; 2],
     /// Top-of-stack ply for the cursor form of the API
     /// ([`apply`](Self::apply)/[`current`](Self::current)/[`undo`](Self::undo),
-    /// which the standalone tests drive). The search stack uses the explicit
+    /// which the standalone tests drive). The search uses the explicit
     /// [`apply_at`](Self::apply_at)/[`at`](Self::at) ply form instead.
     top: usize,
 }
@@ -833,7 +774,7 @@ pub struct ThreatContext<'a> {
 /// The per-ply value-holder table of [`ThreatContext::alias`], behind two
 /// methods so the whole mechanism has exactly ONE definition site.
 /// `--features noalias40` swaps it for a zero-sized stand-in whose `get(k)`
-/// is `k` — the no-alias behaviour reconstructed in place for measurement.
+/// is `k`.
 ///
 /// `get`'s `.min(k)` is a range fact: a no-op on the value (the invariant is
 /// `alias[k] <= k`) and the only reason the load carries no
@@ -846,8 +787,7 @@ impl AliasTable {
     fn new() -> Self {
         const { assert!(STACK_LEN <= u16::MAX as usize) };
         // Identity: every entry starts as its own holder, which is the correct
-        // reading of a stack whose `fold` is all `FromParent`. `from_fn`
-        // because the array is inline and const-sized — no allocation.
+        // reading of a stack whose `fold` is all `FromParent`.
         Self(std::array::from_fn(|i| i as u16))
     }
 
@@ -865,14 +805,11 @@ impl AliasTable {
 
 /// The pure-copy fold's 2560-byte accumulator copy, behind a call boundary.
 ///
-/// NOTE: **`#[inline(never)]` is the point, and it is a measured choice** —
-/// expanded inline this copy is a large straight-line zmm block inside the
-/// fold loop of the module's hottest symbol, and outlining it measured a net
-/// instruction win even though the copy runs only ~0.022 times per node (the
-/// surrounding function compiles better without the block in it). Do NOT
-/// generalise this into "outline the big kernels": outlining charges a
-/// spill/reload per call, so it wins only where the block is large and the
-/// call rate is low — the same treatment on the every-eval `l2_tail` LOST.
+/// **`#[inline(never)]` is the point, and it is a measured choice**: inline,
+/// this copy is a large straight-line zmm block in the fold loop of the
+/// module's hottest symbol. Do NOT generalise it — outlining charges a
+/// spill/reload per call, so it wins only where the block is large and the call
+/// rate is low (~0.022 per node here).
 #[cfg(not(feature = "callcopy40"))]
 #[inline(never)]
 fn copy_acc_outlined(dst: &mut [i16; ACC], src: &[i16; ACC]) {
@@ -908,9 +845,8 @@ impl<'a> ThreatContext<'a> {
     /// A fresh context over `weights` (the `i8` FullThreats weight slice) plus
     /// the net's threat PSQ1 rows (`&[]` when it has none). Call
     /// [`refresh`](Self::refresh) to seed the root before any [`apply`](Self::apply).
-    /// Install the loader's threat row map (perf studies 65/66). Empty — the
-    /// default — means every row is flat 8-bit at `feature · ACC` and the fold
-    /// takes exactly the path it took before those studies.
+    /// Install the loader's threat row map. Empty — the default — means every
+    /// row is flat 8-bit at `feature · ACC`.
     pub fn with_row_map(mut self, row_map: &'a [u32]) -> Self {
         self.row_map = row_map;
         self
@@ -923,8 +859,8 @@ impl<'a> ThreatContext<'a> {
             row_map: &[],
             psqt_weights,
             remap,
-            // `try_into` rather than `expect`: `ThreatEntry` is not `Debug`
-            // (it is 5 KB of accumulator) and `Result::expect` demands it.
+            // `try_into` rather than `expect`: `ThreatEntry` is not `Debug`,
+            // and `Result::expect` demands it.
             stack: match vec![ThreatEntry::default(); STACK_LEN]
                 .into_boxed_slice()
                 .try_into()
@@ -932,9 +868,8 @@ impl<'a> ThreatContext<'a> {
                 Ok(b) => b,
                 Err(_) => unreachable!("vec! built exactly STACK_LEN entries"),
             },
-            // `try_into` + `unreachable!`, not `expect`: `Push` embeds a
-            // `ThreatPosition`, which is not `Debug`, and `Result::expect`
-            // demands it (same reason as `stack` above).
+            // `try_into` + `unreachable!`, not `expect`: same non-`Debug`
+            // reason as `stack` above (`Push` embeds a `ThreatPosition`).
             push: match vec![Push::default(); STACK_LEN]
                 .into_boxed_slice()
                 .try_into()
@@ -961,10 +896,9 @@ impl<'a> ThreatContext<'a> {
     /// definition of the feature set.
     pub fn refresh(&mut self, board: &Board) {
         self.top = 0;
-        // CENN-v2 explicitly supports HalfKA-only networks.  Their threat
-        // transformer is represented by an empty slice and contributes the
-        // all-zero accumulator; never index that empty slice through the
-        // ordinary FullThreats refresh path.
+        // CENN-v2 supports HalfKA-only networks: an empty threat transformer
+        // contributes the all-zero accumulator, and that empty slice must never
+        // be indexed through the ordinary FullThreats refresh path.
         if self.weights.is_empty() {
             self.stack[0].acc = [[0i16; ACC]; 2];
             self.stack[0].psqt = [[0i32; BUCKETS]; 2];
@@ -992,8 +926,8 @@ impl<'a> ThreatContext<'a> {
     }
 
     /// The current (cursor top) accumulator pair, `[White, Black]` — the input
-    /// [`super::sota_head::SotaHead::forward`] consumes as `threat`. Folds the
-    /// entry lazily first, so it now takes `&mut self`.
+    /// [`super::sota_head::SotaHead::forward`] consumes as `threat`. Takes
+    /// `&mut self` because it folds the entry lazily first.
     pub fn current(&mut self) -> &[[i16; ACC]; 2] {
         let top = self.top;
         self.at(top)
@@ -1008,7 +942,7 @@ impl<'a> ThreatContext<'a> {
 
     /// Accumulator at a search ply, folded lazily from the nearest computed
     /// ancestor. The search overwrites sibling plies rather than calling `undo`,
-    /// so callers use this indexed form. Now `&mut self` (it may trigger a fold).
+    /// so callers use this indexed form. `&mut self`: it may trigger a fold.
     pub fn at(&mut self, ply: usize) -> &[[i16; ACC]; 2] {
         self.at_full(ply).0
     }
@@ -1017,20 +951,16 @@ impl<'a> ThreatContext<'a> {
     /// SAME entry (all-zero for a net without threat PSQ1 rows).
     pub fn at_full(&mut self, ply: usize) -> (&[[i16; ACC]; 2], &[[i32; BUCKETS]; 2]) {
         // The search pushes nothing for a null move (`EvalContext::null_plies`,
-        // mirroring Stockfish), so no EMPTY record ever reaches this stack from
-        // a search. The cursor API (`apply`) can still be handed one by an
-        // outside caller; that entry is MATERIALISED by the fold below
-        // (`build_deltas` yields no events, so the empty-list branch copies
-        // the parent).
+        // mirroring Stockfish), so no EMPTY record reaches this stack from a
+        // search. The cursor API can still be handed one; the fold below
+        // MATERIALISES that entry as a copy of the parent.
         self.compute(ply);
         // `alias[ply]` is `ply` for a materialised entry and an ancestor for a
         // ply whose fold was a pure parent copy — see the field's doc. The
         // `.min(ply)` inside `get` is a NO-OP on the value (invariant:
-        // `alias[k] <= k`) and the range fact that keeps this load free of a
-        // `panic_bounds_check` edge; `ply` itself is already known in range
-        // because `compute(ply)` indexed `self.fold[ply]` one line above. If
-        // the invariant were ever broken this reads a stale but IN-RANGE entry
-        // instead of walking off the stack.
+        // `alias[k] <= k`) and the range fact keeping this load free of a
+        // `panic_bounds_check` edge; `ply` is in range because `compute(ply)`
+        // indexed `self.fold[ply]` one line above.
         let entry = &self.stack[self.alias.get(ply)];
         (&entry.acc, &entry.psqt)
     }
@@ -1041,9 +971,8 @@ impl<'a> ThreatContext<'a> {
     /// [`compute`](Self::compute) to (re)generate and fold later; a perspective
     /// whose own king crossed the d/e boundary is additionally marked
     /// [`Fold::Refresh`], so `compute` rebuilds it from that snapshot instead of
-    /// folding it from its parent. `board` is the
-    /// fully post-move position. This is the cursor form of
-    /// [`apply_at`](Self::apply_at).
+    /// folding it from its parent. `board` is the fully post-move position.
+    /// Cursor form of [`apply_at`](Self::apply_at).
     pub fn apply(&mut self, dp: &DirtyPiece, board: &Board) {
         let ply = self.top;
         self.apply_at(ply, dp, board);
@@ -1061,15 +990,13 @@ impl<'a> ThreatContext<'a> {
         self.top = child;
 
         // HalfKA-only net: the threat channel is a constant all-zero
-        // accumulator (and all-zero PSQT sums), so there is nothing to inherit
-        // and nothing to fold — just mark the child computed. No copy needed:
-        // every entry starts zero, `refresh` re-zeroes the root on this
-        // branch, and with empty weights no other site ever writes an
-        // accumulator.
+        // accumulator, so there is nothing to inherit and nothing to fold —
+        // just mark the child computed. No copy needed: every entry starts
+        // zero, `refresh` re-zeroes the root here, and with empty weights no
+        // other site ever writes an accumulator.
         if self.weights.is_empty() {
             self.fold[child] = [Fold::Done; 2];
-            // The entry is never written on this branch and every entry is
-            // all-zero, so the ply is its own holder by construction.
+            // Never written on this branch, so the ply is its own holder.
             self.alias.set(child, child);
             return;
         }
@@ -1077,11 +1004,8 @@ impl<'a> ThreatContext<'a> {
         // Snapshot the post-move inputs the observer needs at fold time
         // (occupancy by type/colour + king squares) plus the move itself.
         // Every fold-time (re)generation reads THIS, never the live board a
-        // sibling will overwrite.
-        //
-        // NOTE: rebuilt from `board`, NOT derived from the parent's snapshot
-        // by XOR — that derivation was measured and LOST despite favourable
-        // arithmetic. Do not re-derive it without re-measuring.
+        // sibling will overwrite. Rebuilt from `board`, NOT derived from the
+        // parent's snapshot by XOR: that derivation is a measured regression.
         self.push[child] = Push {
             dp: *dp,
             position: ThreatPosition::from_board(board),
@@ -1092,11 +1016,10 @@ impl<'a> ThreatContext<'a> {
         // scratch out of the snapshot above. RECORD that obligation; do not
         // discharge it here.
         //
-        // NOTE: laziness here is a SUBTREE property, not a node property — a
-        // crossing ply that is never evaluated itself is still refreshed if
-        // any DESCENDANT evaluates, because `compute` walks back to it. Only a
-        // crossing whose entire subtree cuts off is saved; write any future
-        // deferral argument on this stack against subtrees.
+        // Laziness here is a SUBTREE property, not a node property: a crossing
+        // ply that is never evaluated itself is still refreshed if any
+        // DESCENDANT evaluates, because `compute` walks back to it. Only a
+        // crossing whose entire subtree cuts off is saved.
         self.fold[child] = king_cross(dp).map(|crossed| {
             if crossed {
                 Fold::Refresh
@@ -1106,17 +1029,15 @@ impl<'a> ThreatContext<'a> {
         });
     }
 
-    /// Fold `stack[ply]`'s accumulator for **both** perspectives, memoizing them
-    /// — the FullThreats mirror of
-    /// [`super::sota_accumulator::HalfkaContext::compute`], but fully lazy:
-    /// generation ([`build_deltas`]) and resolution ([`resolve_into`]) happen
-    /// here too, against each folded ply's stored [`ThreatPosition`]. Walks back
-    /// to the nearest **foldable-from** ancestor per perspective — one that is
-    /// either already [`Fold::Done`] or a [`Fold::Refresh`] ply this call
-    /// discharges on the spot (the root is always `Done`, so the walk always
-    /// terminates) — then, for each child across the union span, regenerates the
-    /// perspective-agnostic events ONCE and resolves + folds each perspective
-    /// that still needs it.
+    /// Fold `stack[ply]`'s accumulator for **both** perspectives, memoizing
+    /// them. Generation ([`build_deltas`]) and resolution ([`resolve_into`])
+    /// happen here too, against each folded ply's stored [`ThreatPosition`].
+    /// Walks back to the nearest **foldable-from** ancestor per perspective —
+    /// one that is either already [`Fold::Done`] or a [`Fold::Refresh`] ply
+    /// this call discharges on the spot (the root is always `Done`, so the walk
+    /// terminates) — then, for each child across the union span, regenerates
+    /// the perspective-agnostic events ONCE and resolves + folds each
+    /// perspective that still needs it.
     fn compute(&mut self, ply: usize) {
         if self.fold[ply][0] == Fold::Done && self.fold[ply][1] == Fold::Done {
             return;
@@ -1125,10 +1046,9 @@ impl<'a> ThreatContext<'a> {
         let row_map = self.row_map;
         let psqt_weights = self.psqt_weights;
         // Nearest ancestor per perspective that is not a fold-from-parent ply.
-        // `Refresh` stops the walk exactly like `Done` does — it is a ply whose
-        // value does not come from its parent — and is then materialised here,
-        // out of its own snapshot, so the child loop below sees a `Done`
-        // ancestor either way.
+        // `Refresh` stops the walk exactly like `Done` does — its value does
+        // not come from its parent — and is materialised here out of its own
+        // snapshot, so the child loop below sees a `Done` ancestor either way.
         let mut anc = [ply; 2];
         for (p, a) in anc.iter_mut().enumerate() {
             // Carry the terminal `fold` in a local: the loop already loaded it.
@@ -1155,9 +1075,8 @@ impl<'a> ThreatContext<'a> {
                     p,
                     self.remap,
                 );
-                // `fold` no longer lives on the entry, so the discharge's last
-                // act happens here; it also keeps `discharge_refresh` at
-                // exactly six integer argument registers (see its doc).
+                // Done here, not inside the discharge: that keeps
+                // `discharge_refresh` at exactly six integer arg registers.
                 self.fold[*a][p] = Fold::Done;
                 // A rebuild WRITES this entry, so the ply is now its own value
                 // holder. (It cannot have been aliased: the alias below is only
@@ -1166,7 +1085,7 @@ impl<'a> ThreatContext<'a> {
             }
         }
         // Hoist the magic-table LazyLock deref out of the per-touch geometry
-        // queries (the documented hot-loop pattern for `attacks`).
+        // queries (the hot-loop pattern documented on `attacks`).
         let tab = tables();
         for child in (anc[0].min(anc[1]) + 1)..=ply {
             let need = [
@@ -1187,17 +1106,12 @@ impl<'a> ThreatContext<'a> {
             );
             // Phase 1 — resolve EVERY needed perspective before ANY fold runs.
             // The [`ThreatResolver`] hoists the `THREAT_TABLES` LazyLock deref
-            // + orientation/color-swap out of the per-event loop. NOTE: a
-            // software row-prefetch was tried here and MEASURED A LOSS — the
-            // OoO window + hardware stride prefetchers already cover the
-            // fold's row streams — so the pipeline keeps only the
-            // resolve/fold split and the constant-factor hoists.
+            // + orientation/color-swap out of the per-event loop. A software
+            // row-prefetch here is a measured loss.
             let mut lens = [(0usize, 0usize); 2];
             // T6c: the psqt bucket-sum DELTA (Σ add rows − Σ sub rows) is
-            // accumulated during resolve, so the row loads overlap the
-            // per-event resolution compute instead of serializing as a second
-            // walk. Phase 2 then applies `child = parent + delta`. Zero when
-            // the net has no threat PSQ1 rows.
+            // accumulated during resolve so the row loads overlap the per-event
+            // resolution compute; phase 2 then applies `child = parent + delta`.
             let mut psqt_deltas = [[0i32; BUCKETS]; 2];
             if need[0] && need[1] {
                 // Both perspectives wanted — the common case. One pass over
@@ -1233,28 +1147,25 @@ impl<'a> ThreatContext<'a> {
                 }
             }
             // Phase 2 — fused parent→child folds: read parent lanes, apply
-            // deltas, write child lanes in one pass. Paid only for evaluated
-            // plies. The T6c PSQT sums fold over the SAME resolved index
-            // lists, so the skip channel cannot drift from the accumulator.
+            // deltas, write child lanes in one pass. The T6c PSQT sums fold
+            // over the SAME resolved index lists, so the skip channel cannot
+            // drift from the accumulator.
             //
-            // The parent's VALUE HOLDER, which is the parent ply itself unless
+            // `src` is the parent's VALUE HOLDER — the parent ply itself unless
             // the parent was a pure-copy ply the alias below elided. `get`'s
-            // internal `.min()` keeps the fold's parent load free of a bounds
-            // compare and a panic edge (`src` indexes `before`, whose length
-            // is exactly `child`).
+            // internal `.min()` keeps the parent load free of a bounds compare
+            // and a panic edge.
             let src = self.alias.get(child - 1);
             // THE PURE-COPY PLY IS ALIASED, NOT COPIED: a ply whose resolved
             // threat delta is empty for BOTH perspectives has, by definition,
-            // exactly its parent's accumulator pair — point the ply at its
-            // parent's holder and write nothing. Plies where only ONE
-            // perspective is empty still copy, because the entry must be
-            // materialised for the other perspective and `at_full` hands out
-            // both perspectives from ONE entry.
+            // exactly its parent's accumulator pair — point it at the parent's
+            // holder and write nothing. Plies where only ONE perspective is
+            // empty still copy, because the entry must be materialised for the
+            // other and `at_full` hands out both from ONE entry.
             //
-            // `null38` keeps the machinery but never takes the alias
-            // (measurement null); `noalias40` deletes the table itself, so the
-            // branch must go with it — an alias into a stand-in that answers
-            // `get(k) == k` would point the child at ITSELF.
+            // `noalias40` deletes the table, so the branch must go with it — an
+            // alias into a stand-in answering `get(k) == k` would point the
+            // child at ITSELF.
             const ALIAS_ENABLED: bool = !cfg!(feature = "null38") && !cfg!(feature = "noalias40");
             if ALIAS_ENABLED && need[0] && need[1] && lens[0] == (0, 0) && lens[1] == (0, 0) {
                 self.alias.set(child, src);
@@ -1263,8 +1174,7 @@ impl<'a> ThreatContext<'a> {
             }
             // Anything below WRITES `stack[child]`, so the ply becomes its own
             // holder. Both perspectives are materialised on every path that
-            // gets here — one of them possibly by `discharge_refresh` above —
-            // which is what makes a whole-entry alias sound.
+            // gets here, which is what makes a whole-entry alias sound.
             self.alias.set(child, child);
             for (p, &needs_fold) in need.iter().enumerate() {
                 if !needs_fold {
@@ -1275,16 +1185,10 @@ impl<'a> ThreatContext<'a> {
                 let parent = &before[src];
                 let entry = &mut after[0];
                 if add_len == 0 && sub_len == 0 {
-                    // NOTE: this branch is NOT dead — what reaches it is the
-                    // rare real case of a move whose resolved threat events
-                    // cancel to nothing for THIS perspective (a mover that
-                    // neither attacks nor is attacked changes no relations).
-                    // Do not "simplify" the copy back into the kernel call
-                    // without re-measuring: the two spellings were measured
-                    // far apart, and whether LLVM emits inline zmm moves or
-                    // re-forms a libc `memcpy` call here depends on
-                    // surrounding context — check the binary, not this
-                    // comment.
+                    // NOT dead: a move whose resolved threat events cancel to
+                    // nothing for THIS perspective. Do not "simplify" the copy
+                    // back into the kernel call without re-measuring — the two
+                    // spellings measured far apart.
                     //
                     // `chunks_exact` DROPS a remainder, so a width that is not
                     // a multiple of 32 would silently leave the tail of
@@ -1302,14 +1206,12 @@ impl<'a> ThreatContext<'a> {
                     let dst_acc: &mut [i16; ACC] = super::sota_simd::probe::pin_dst();
                     // callcopy40: PIN the codegen to the library call (the
                     // opaque length stops LLVM expanding the copy inline).
-                    // Measurement only, never shipped.
                     #[cfg(feature = "callcopy40")]
                     {
                         let n = std::hint::black_box(ACC);
                         dst_acc[..n].copy_from_slice(&src_acc[..n]);
                     }
-                    // The copy is OUTLINED on purpose — see
-                    // [`copy_acc_outlined`]'s doc for why.
+                    // OUTLINED on purpose — see [`copy_acc_outlined`]'s doc.
                     #[cfg(not(feature = "callcopy40"))]
                     copy_acc_outlined(dst_acc, src_acc);
                     entry.psqt[p] = parent.psqt[p];
@@ -1338,10 +1240,9 @@ impl<'a> ThreatContext<'a> {
     }
 
     /// Return the cursor to the parent — the inverse of the matching
-    /// [`apply`](Self::apply). Cheap now: it only steps the cursor back; the
-    /// parent entry (already resolved/computed) is untouched, so this is correct
-    /// even when the child was pushed but never folded. Panics if only the root
-    /// remains.
+    /// [`apply`](Self::apply). Only steps the cursor back; the parent entry is
+    /// untouched, so this is correct even when the child was pushed but never
+    /// folded. Panics if only the root remains.
     pub fn undo(&mut self) {
         assert!(
             self.top > 0,
@@ -1360,12 +1261,11 @@ impl<'a> ThreatContext<'a> {
 /// Rebuild ONE perspective of ONE entry from its own snapshot — the discharge
 /// half of [`Fold::Refresh`], out of line.
 ///
-/// `#[cold]`/`#[inline(never)]` because it fires on ~2% of `compute` calls,
-/// and outlining it takes its call-sequence layout pressure out of `compute`
-/// (which is inlined into `at_full`, the hottest symbol in this module).
-///
-/// The slice arguments are FAT pointers, so the leading arguments fill
-/// exactly six integer argument registers with zero headroom.
+/// `#[cold]`/`#[inline(never)]` because it fires on ~2% of `compute` calls, and
+/// outlining keeps its call-sequence pressure out of `compute` (inlined into
+/// `at_full`, the hottest symbol here). The slice arguments are FAT pointers,
+/// so the leading arguments fill exactly six integer argument registers with
+/// zero headroom.
 #[cold]
 #[inline(never)]
 fn discharge_refresh(
@@ -1377,9 +1277,9 @@ fn discharge_refresh(
     p: usize,
     remap: Option<&ThreatRemap>,
 ) {
-    // The seventh integer argument register does not exist, so `p` and the
-    // `remap` pointer go on the stack at the call site — fine only because
-    // the call is cold, which is exactly why it carries `#[cold]`.
+    // There is no seventh integer argument register, so `p` and the `remap`
+    // pointer go on the stack at the call site — acceptable only because the
+    // call is cold, which is why it carries `#[cold]`.
     let persp = Color::ALL[p];
     refresh_threat_into_at(&mut entry.acc[p], weights, row_map, position, persp, remap);
     entry.psqt[p] = refresh_psqt_threat_at(psqt_weights, position, persp, remap);
@@ -1387,19 +1287,17 @@ fn discharge_refresh(
 
 /// [`resolve_into`] for BOTH perspectives in ONE pass over `events`.
 ///
-/// Everything before the perspective enters is shared: the event-field loads
-/// and the two `sf_code` decodes are perspective-independent (the perspective
-/// is only the `^ swap` colour flip inside
-/// [`ThreatResolver::index_decoded`]), so the fused loop pays them once.
-/// Bit-identical to two [`resolve_into`] calls: same arithmetic per
-/// perspective, and the index lists and PSQT accumulate still see events in
-/// buffer order, which is what fixes the i32 sum.
+/// The event-field loads and the two `sf_code` decodes are
+/// perspective-independent (the perspective is only the `^ swap` colour flip
+/// inside [`ThreatResolver::index_decoded`]), so the fused loop pays them once.
+/// Bit-identical to two [`resolve_into`] calls: same arithmetic, and the index
+/// lists and PSQT accumulate still see events in buffer order, which is what
+/// fixes the i32 sum.
 ///
 /// The replay's telescoping over-emission (a relation removed and re-added by
 /// the same move) is NOT cancelled here: the fold's wrapping i16 adds/subs
 /// cancel such ±pairs arithmetically, so keeping both sides is bit-identical
-/// at the accumulator, and cancelled pairs are rare enough that an
-/// opposite-list scan taxed everyone to save almost nothing.
+/// at the accumulator.
 ///
 /// The one-sided case — one perspective `Fold::Refresh`, the other folding —
 /// keeps calling [`resolve_into`]; folding a `need` test into this loop would
@@ -1417,9 +1315,8 @@ fn resolve_both(
 
     // `& (DELTA_CAP - 1)` below is a NO-OP on the value and a range fact for
     // the optimizer: each event pushes at most ONE index into ONE list, so a
-    // cursor can only reach `events.len() <= DELTA_CAP`, but LLVM cannot see
-    // that and the store would otherwise carry a `cmp`/`ja panic` pair per
-    // event per perspective. DELTA_CAP is a power of two, so the mask is free.
+    // cursor cannot pass `events.len() <= DELTA_CAP`. DELTA_CAP is a power of
+    // two, so the mask is free and it discharges the store's bounds check.
     const M: usize = DELTA_CAP - 1;
 
     // LEGACY (psqt-less) NET — hand-unswitched, like `resolve_into`, so the
@@ -1453,10 +1350,9 @@ fn resolve_both(
         let att = sf_code(d.attacker);
         let atd = sf_code(d.victim);
         // BOTH perspectives resolved before EITHER PSQ1 row is touched: each
-        // row is a random load out of a multi-MB table whose address depends
-        // on a deep load chain inside `index_decoded`; resolving both first
-        // makes the two long-latency loads independent and adjacent so the
-        // memory system overlaps them.
+        // row is a random load out of a multi-MB table whose address depends on
+        // a deep load chain, so resolving both first makes the two
+        // long-latency loads independent and lets the memory system overlap.
         for p in 0..2 {
             let Some(idx) = resolvers[p].index_decoded(att, atd, d.from, d.to) else {
                 continue;
@@ -1467,10 +1363,9 @@ fn resolve_both(
                 "resolve cursor overflow: {len:?} events={}",
                 events.len()
             );
-            // NOTE: a software prefetch of the weight row here (Stockfish
-            // issues one at its equivalent site) was measured and REJECTED —
-            // one hint cannot touch the many demand misses a row takes, and a
-            // whole-row hint cost more instructions than it saved.
+            // A software prefetch of the weight row here (Stockfish issues one
+            // at its equivalent site) is a measured loss: one hint cannot cover
+            // the many demand misses a row takes.
             if d.add {
                 adds[p][len[p].0 & M] = RowOffset::of(idx);
                 len[p].0 += 1;
@@ -1504,8 +1399,7 @@ fn resolve_into(
 ) -> (usize, usize) {
     // The mask that discharges the store's bounds check: a cursor cannot pass
     // `events.len() <= DELTA_CAP`, and `DELTA_CAP` is a power of two, so `& M`
-    // is the identity on every reachable value and folds into the addressing
-    // mode.
+    // is the identity on every reachable value.
     const M: usize = DELTA_CAP - 1;
     let mut add_len = 0usize;
     let mut sub_len = 0usize;
@@ -1526,7 +1420,6 @@ fn resolve_into(
         // Accumulate the T6c bucket delta in a LOCAL, written back once. The
         // local only pays because `psqt_add`/`psqt_sub` reach the row as a
         // FIXED-size chunk; neither half of that pairing works alone.
-        // Bit-identical either way: same i32 adds, same order.
         let mut acc = *psqt_delta;
         for d in events {
             if let Some(idx) = resolver.index(d.attacker, d.from, d.to, d.victim) {
@@ -1553,9 +1446,9 @@ fn resolve_into(
 /// module docs for the telescoping argument.
 fn build_deltas(buf: &mut DeltaBuf, tab: &AttackTables, dp: &DirtyPiece, post: &ThreatPosition) {
     // A non-capture (including a quiet promotion) changes occupancy only by
-    // moving the blocker from `from` to `to`. Evaluate both endpoint changes
-    // against the shared position with both endpoints empty; this is the
-    // compact move primitive and avoids intermediate endpoint interactions.
+    // moving the blocker from `from` to `to`. Evaluating both endpoint changes
+    // against the shared position with both endpoints empty avoids intermediate
+    // endpoint interactions.
     if let ([(mover, from)], [(placed, to)]) = (dp.subs(), dp.adds())
         && from != to
     {
@@ -1629,10 +1522,10 @@ mod tests {
         }
     }
 
-    /// Distinct pseudo-random `i8` weight columns per feature, so an accumulator
-    /// match is a strong proxy for an active-feature-set match: a single wrong /
-    /// missing / swapped feature index perturbs a pseudo-random 768-wide column
-    /// and the sums diverge. ~44 MiB, allocated once per test.
+    /// Distinct pseudo-random `i8` weight columns per feature, so an
+    /// accumulator match is a strong proxy for an active-feature-set match: one
+    /// wrong / missing / swapped index perturbs a pseudo-random column and the
+    /// sums diverge. ~44 MiB, allocated once per test.
     fn signature_weights() -> Vec<i8> {
         use super::super::sota_features::THREAT_DIMS;
         let mut w = vec![0i8; THREAT_DIMS * ACC];
@@ -1794,10 +1687,7 @@ mod tests {
     }
 
     /// A king-crossed ply that is **never evaluated itself**, with ordinary
-    /// plies folded on top of it — the shape perf study 18's deferred refresh
-    /// created and the eager one could not produce (the eager form marked the
-    /// crossing ply computed at push, so a fold could never reach it in the
-    /// `Refresh` state).
+    /// plies folded on top of it.
     ///
     /// `compute` must stop its ancestor walk AT the crossing ply, rebuild that
     /// ply from its own stored [`ThreatPosition`], and only then fold the
@@ -1810,8 +1700,7 @@ mod tests {
         let w = signature_weights();
         let q = signature_psqt();
         // Ke4–d4 crosses the d/e mirror for White, and the sliders (Bd5, Rc4,
-        // Qc7, Rf7) ripple through both e4 and d4, so the plies stacked on top
-        // of the crossing are not trivial either.
+        // Qc7, Rf7) ripple through both e4 and d4.
         let fen = "k7/2q2r2/8/3b4/2R1Kn2/8/8/8 w - - 0 1";
         let mut b = board(fen);
         let mut ctx = ThreatContext::new(&w, &q, None);
@@ -1828,18 +1717,10 @@ mod tests {
         ctx.apply_at(0, &dp, &b);
 
         // Stack ordinary plies on top of it, still without ever evaluating.
-        //
         // Moves that cross the mirror AGAIN for White are excluded, and that is
-        // load-bearing rather than tidy: the king on d4 can step to e3/e4/e5,
-        // each of which re-crosses. The first draft of this test did not
-        // exclude them, the seeded RNG re-crossed at ply 3, `compute`'s walk
-        // stopped THERE instead of at ply 1 — and the test still PASSED,
-        // because the value is right either way. It was asserting nothing about
-        // the multi-ply deferred-ancestor fold it exists for (D33 reviewer A,
-        // A5; caught by the shape assertions below, which is why they are
-        // here). The filter is expressed as the exact predicate `apply_at`
-        // uses, so the shape holds by construction rather than by luck and the
-        // test survives any change to `Rng` or to `generate_legal`'s ordering.
+        // load-bearing: a re-cross would stop `compute`'s walk above ply 1 and
+        // leave this test passing while exercising nothing. The filter is the
+        // exact predicate `apply_at` uses, so the shape holds by construction.
         let mut rng = Rng(0x0BAD_F00D_5EED);
         let mut ply = 1usize;
         for _ in 0..5 {
@@ -1864,14 +1745,10 @@ mod tests {
             "expected plies stacked above the cross, got {ply}"
         );
 
-        // PIN THE SHAPE, not just the value (D33 reviewer A, A5). The stacked
-        // moves are drawn from a seeded RNG, and White's king on d4 can step
-        // back to e3/e4/e5 — any of which crosses the mirror AGAIN. If the last
-        // such re-cross landed above ply 1, `compute`'s walk would stop there
-        // instead, ply 1's obligation would never be discharged, and this test
-        // would silently degrade into `king_mirror_cross_matches_refresh` while
-        // still passing. Any change to `Rng`, to `generate_legal`'s ordering, or
-        // to the fixture could do that; these two assertions say so out loud.
+        // PIN THE SHAPE, not just the value. If a re-cross landed above ply 1,
+        // `compute`'s walk would stop there, ply 1's obligation would never be
+        // discharged, and this test would silently degrade into
+        // `king_mirror_cross_matches_refresh` while still passing.
         assert_eq!(
             ctx.fold[1][Color::White as usize],
             Fold::Refresh,
@@ -1895,14 +1772,10 @@ mod tests {
             "deferred king-cross psqt diverged"
         );
 
-        // AND THE MEMOIZATION, which no value oracle in this repo can see
-        // (D33 reviewer A, A4). Deleting `entry.fold[p] = Fold::Done` from
-        // `discharge_refresh` leaves EVERY value correct — the rebuild is
-        // idempotent, and `need[p]` never re-folds the ancestor ply — so the
-        // whole suite passes, the bench node count is unchanged, the eval hash
-        // is unchanged, and a 6,240-instruction rebuild fires once per
-        // descendant instead of once. The entire −40.4 i/n of perf study 18
-        // rests on this one store. This is the only assertion that holds it.
+        // AND THE MEMOIZATION, which no value oracle in this repo can see:
+        // dropping the `Fold::Done` store after a discharge leaves every value
+        // correct (the rebuild is idempotent) while a ~6,240-instruction
+        // rebuild fires once per descendant instead of once.
         assert_eq!(
             ctx.fold[1][Color::White as usize],
             Fold::Done,
@@ -1913,10 +1786,8 @@ mod tests {
     /// A **non**-crossing ply, folded and memoized, then overwritten at the same
     /// ply by a sibling that DOES cross. The dangerous direction: if the
     /// overwrite left the stale `Fold::Done`, the read would hand back the first
-    /// sibling's accumulator. (The other direction — a stale `Fold::Refresh`
-    /// surviving onto a non-crossing sibling — is undetectable by value, since
-    /// rebuilding from the overwritten snapshot happens to give the right
-    /// answer; it only costs speed.)
+    /// sibling's accumulator. (A stale `Fold::Refresh` in the other direction is
+    /// undetectable by value and only costs speed.)
     #[test]
     fn a_crossing_sibling_overwrites_a_folded_ply() {
         let w = signature_weights();
@@ -1949,10 +1820,9 @@ mod tests {
 
     // ---- Lazy-fold path (R4) ----
 
-    /// Push a run of plies WITHOUT ever reading the accumulator, so nothing folds
-    /// until the final `at`, then assert the deep lazy fold equals a from-scratch
-    /// refresh. Exercises the deferred multi-ply fold from the root that a search
-    /// with TT cutoffs (no evaluate at the intermediate plies) produces.
+    /// Push a run of plies WITHOUT ever reading the accumulator, so nothing
+    /// folds until the final `at`, then assert the deep lazy fold equals a
+    /// from-scratch refresh — the shape a search with TT cutoffs produces.
     #[test]
     fn lazy_fold_of_unevaluated_plies_matches_refresh() {
         let w = signature_weights();
@@ -1986,8 +1856,7 @@ mod tests {
     /// Overwrite the same child ply with two different moves (the sibling-reuse
     /// pattern the search relies on) — first after the child was folded, then
     /// again while it is still unfolded — and assert each `at` reflects the LAST
-    /// move applied. Catches any failure to reset `computed` / the delta lists on
-    /// overwrite.
+    /// move applied. Catches any failure to reset the fold state on overwrite.
     #[test]
     fn sibling_overwrite_at_same_ply_matches_refresh() {
         let w = signature_weights();
@@ -2070,16 +1939,11 @@ mod tests {
         );
     }
 
-    /// The alias walk perf study 15 arm 2 deleted from [`ThreatContext::at_full`]
-    /// existed to hand back the parent for an EMPTY dirty record. The search no
-    /// longer produces one, but the CURSOR API still can, and the deletion rests
-    /// on a specific claim: such an entry is now MATERIALISED by the fold to the
-    /// same value the alias returned. That claim had nothing behind it (D33
-    /// reviewer C, T4); this is the something.
-    ///
-    /// Mutations it catches: `build_deltas` emitting an event for an empty
-    /// record; the empty-list branch copying the wrong slot; reinstating an
-    /// alias walk that returns an ANCESTOR rather than this entry.
+    /// An EMPTY dirty record — which the cursor API can still produce — must be
+    /// MATERIALISED by the fold to the parent's value, since `at_full` no
+    /// longer walks an alias to hand the parent back. Catches: `build_deltas`
+    /// emitting an event for an empty record; the empty-list branch copying the
+    /// wrong slot; an alias walk returning an ANCESTOR rather than this entry.
     #[test]
     fn an_empty_record_materialises_to_the_parent() {
         let w = signature_weights();
@@ -2092,8 +1956,7 @@ mod tests {
             (*a, *p)
         };
 
-        // A null move changes no placement, so the post-move board IS this
-        // board — exactly the shape of the search's old null-move push.
+        // A null move changes no placement, so the post-move board IS this one.
         ctx.apply(&DirtyPiece::EMPTY, &b);
         assert_eq!(ctx.depth(), 1, "the cursor advanced on an empty push");
 
@@ -2107,8 +1970,8 @@ mod tests {
         );
         assert_eq!(child_psqt, root_psqt, "and so must its PSQT bucket sums");
 
-        // ...and it agrees with a from-scratch refresh, which is what makes this
-        // a correctness statement rather than a self-consistency one.
+        // ...and agrees with a from-scratch refresh, which is what makes this a
+        // correctness statement rather than a self-consistency one.
         for (i, &persp) in Color::ALL.iter().enumerate() {
             assert_eq!(
                 child_acc[i],
@@ -2119,10 +1982,9 @@ mod tests {
     }
 
     // Play `games` random legal games of up to `max_plies`, asserting at every
-    // node that the incrementally-maintained accumulator AND its T6c PSQT
-    // bucket sums equal a from-scratch refresh for both perspectives, and that
-    // apply→undo restores the parent exactly (make→apply→unmake→undo ==
-    // identity).
+    // node that the incremental accumulator AND its T6c PSQT bucket sums equal
+    // a from-scratch refresh for both perspectives, and that
+    // make→apply→unmake→undo is the identity.
     fn replay(weights: &[i8], psqt: &[i32], games: usize, max_plies: usize, seed: u64) -> usize {
         let mut rng = Rng(seed);
         let mut nodes = 0usize;
@@ -2195,11 +2057,10 @@ mod tests {
         );
     }
 
-    /// TEMPORARY MEASUREMENT (perf-impl-1): how many weight rows does the fold
-    /// touch per perspective-ply, and how does that compare with the *minimal*
-    /// delta — the symmetric difference of the from-scratch active feature sets
-    /// before and after the move? Anything above the minimum is a row we fold
-    /// and then cancel arithmetically.
+    /// MEASUREMENT: weight rows touched per perspective-ply versus the
+    /// *minimal* delta (the symmetric difference of the from-scratch active
+    /// feature sets before and after the move). Anything above the minimum is a
+    /// row folded and then cancelled arithmetically.
     #[test]
     #[ignore = "measurement"]
     fn measure_fold_row_counts() {
@@ -2291,8 +2152,7 @@ mod tests {
         eprintln!();
     }
 
-    /// The large-corpus stress gate — thousands of games. Slow in debug (the
-    /// board's per-node `assert_consistent` oracle dominates); run in release:
+    /// The large-corpus stress gate — thousands of games. Run in release:
     /// `cargo test --release --features sota -- --ignored threats_replay_large`.
     #[test]
     #[ignore = "large corpus; run in release"]
