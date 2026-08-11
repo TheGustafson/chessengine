@@ -756,6 +756,18 @@ current evidence]; RED_* unchanged pending shapeA2.
 ## pending. The corpus assets stand regardless: fishpack32-sf5k (1.567B,
 ## first-party 5k labels, ledger'd) + the growing sfdev5k-a wave.
 
+## ★ DECISION 4 (owner, 2026-08-11 ~21:xx): **d63b CANCELLED at sb483/700**
+## and the program pivots to a SMALL, FAST net.
+## Owner's reasoning, verbatim in substance: the quality of an NNUE at this
+## SIZE needs more compute than is worth committing; a much smaller net makes
+## a different set of trade-offs and becomes more optimally trained on less
+## data. Target arch: **HalfKA_v2 ONLY (no threats), 128/128 accumulator ->
+## 8 -> 8 -> 1**, with the output head bucketed on piece count AND queen
+## class (Q>=2 / Q==1 / Q==0). d63b's ladder (nine rungs, flat vs canonical
+## through sb450) is NOT the stated reason and must not be quoted as one --
+## the anneal never ran. All d63b checkpoints (sb50..450 + sb470-482) are
+## PRESERVED and the run is resumable if that call is revisited.
+
 ## ★ DECISION 3 (2026-08-10 ~14:56): NO relabel campaign for now (options
 ## priced: full 8.58B/$360/7d, quarter 2.14B/$90/1.7d — declined). Instead
 ## **d63b-full700 LAUNCHED**: the FULL 14-corpus mix (old corpora keep
