@@ -167,6 +167,16 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   non-functional patches (refactors, speedups) must reproduce the old count
   bit-for-bit — verify by rerunning check.sh on both sides. Commits that
   cannot affect search (docs, UCI I/O, build scripts) may omit the trailer.
+  **THE SUITE ITSELF CHANGED ON 2026-08-11 and the pin is now 138848.** The
+  49 bench positions were Stockfish's `benchmark.cpp` `Defaults` verbatim
+  (originality audit item 6b); they are now 49 ARCHON-original positions —
+  47 sampled from our own sfdev5k games by
+  `tools/bench/derive_bench_suite.py`, plus two diagnosed losses from
+  `searchopt/positions/hard.json` (`src/bench_positions_archon.rs`). So
+  **every trailer recorded before that commit is on the OLD suite and is
+  not reproducible by today's check.sh** — reproduce a commit's number with
+  the suite its own era used. The NNUE gate's two pins are computed on
+  `tools/nnue/calib/wl50.fens`, not the bench suite, and did NOT move.
   Details: TESTING.md, design/14 §3.2.
 - **The NNUE behavioural gate** — `CHECK_NNUE_GATE=1 bash tools/check.sh`,
   **mandatory before merging anything under `src/eval/nnue/`.** The `Bench:`
@@ -186,7 +196,8 @@ WDL=0-with-matching-MULT. Before building or modifying ANY data pipeline, read
   2026-08-01 by **search-simplification basket A** — the ARCHON-original null
   trio out (D30 offense term, RFP threat coupling and its two-margin lazy-threat
   machinery, step-12 dither + the `child_pv_fresh` truncation): 2045128 →
-  **1865161**, and the depth-6 `Bench:` pin 300694 → **351273**. Shipped on the
+  **1865161**, and the depth-6 `Bench:` pin 300694 → 351273 (that trailer pin
+  has since moved again — see the bench-suite note below). Shipped on the
   owner's ruling ("I'm certain it is elo neutral. Ship it"); the non-inferiority
   SPRT read **−3.66 ± 11.88 over 380 games** at 2+0.1 — consistent with neutral
   but never powered to separate neutral from slightly negative, so it is
@@ -640,7 +651,7 @@ Concurrently: **stage-A SPSA** (12 params, V net + PGO tune binary,
 fn20k, 8 games × 2400 iters, exchange on DISK not tmpfs) — measured
 zero training interference.
 Engine: S0 search program COMPLETE (all six audit items; **depth-6
-bench pin now 351273**; tripwires clean); **PGO is THE
+bench pin now 138848**; tripwires clean); **PGO is THE
 standard build** (tools/build_pgo.sh WITH eval-file; pairs both-PGO;
 Bench: trailer stays portable-default); freebies landed (+~6% both
 arches); distributed-SPSA kit built+parked (D36 amended — no

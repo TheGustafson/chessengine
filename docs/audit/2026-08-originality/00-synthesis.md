@@ -80,10 +80,13 @@ steps in `REMEDIATION-RUNBOOK.md` in this directory):
    neutral as predicted: eval hash, d13 nodes and `Bench: 351273` all
    unmoved, D24 release perft tier green. Finding 5's seed half is closed
    (the bench-FEN half remains, item 6b).
-   **Bench suite: STAGED (`34af97b7`)** — 49 ARCHON-original positions from
-   our own games (`src/bench_positions_archon.rs`, tool + receipt committed),
-   compiled+tested but not activated: activation moves the D24 `Bench:` pin,
-   runbook step 5.
+   **Bench suite: DONE 2026-08-11** — activated; `BENCH_POSITIONS` now
+   re-exports the 49 ARCHON-original positions. The D24 pin moved by design
+   (351273 → **138848**, re-pinned in check.sh + CLAUDE.md in the same
+   commit); the NNUE gate's eval hash and d13 total are computed on
+   `wl50.fens` and did NOT move. Four suite-dependent tests updated, their
+   new constants cross-checked against stockfish-eca43a97 `go perft`
+   (perft-1 sum 1349, perft-2 sum 44775). Finding 5 is now fully closed.
 7. Add LICENSE (GPLv3) + Cargo.toml license field at distribution time.
    GPLv3 moots finding 4 (the selection/arrangement question) entirely — it
    is the SF-family norm. AGPLv3 is only needed if Reckless-derived

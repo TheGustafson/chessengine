@@ -1,9 +1,11 @@
-//! STAGED ARCHON-original bench suite — **NOT ACTIVE** (2026-08 originality
-//! audit, item 6b; `docs/audit/2026-08-originality/00-synthesis.md` §2).
+//! The ACTIVE ARCHON-original bench suite (2026-08 originality audit, item
+//! 6b; `docs/audit/2026-08-originality/00-synthesis.md` §2). Re-exported as
+//! [`crate::bench::BENCH_POSITIONS`], so this list IS the `Bench:` trailer's
+//! input.
 //!
-//! [`crate::bench::BENCH_POSITIONS`] is a 49/49 byte-identical subsequence of
-//! Stockfish's `benchmark.cpp` `Defaults` (foundation-infra.md F2). This is
-//! the replacement candidate, drawn entirely from ARCHON's OWN played games:
+//! It replaced a 49/49 byte-identical subsequence of Stockfish's
+//! `benchmark.cpp` `Defaults` (foundation-infra.md F2), and is drawn
+//! entirely from ARCHON's OWN played games:
 //! 47 positions sampled from the sfdev5k-a campaign PGNs (146 files, first
 //! 3000 games) by `tools/bench/derive_bench_suite.py` — deterministic
 //! phase-stratified selection (10 opening / 18 middlegame / 14 endgame /
@@ -11,20 +13,10 @@
 //! candidates ordered by sha256(fen)) — plus the first two diagnosed-loss
 //! positions of `searchopt/positions/hard.json`.
 //!
-//! ## Why it is NOT wired into `bench`
-//!
-//! The suite IS the `Bench:` trailer's input: activating it moves the pinned
-//! depth-6 fingerprint and the NNUE gate's d13 node total, and D24 requires
-//! that move to happen in a commit that re-pins both in the same change.
-//! That re-pin needs `cargo` runs this box cannot make mid-training. The
-//! activation procedure (one-line swap in `bench.rs` + pin recompute) is
-//! step 5 of `docs/audit/2026-08-originality/REMEDIATION-RUNBOOK.md`.
-//!
-//! Until then this module is compiled and TESTED (every entry must parse,
-//! be structurally consistent, and have a legal move) but nothing reads it.
+//! Activating it moved the depth-6 `Bench:` pin by design; the NNUE
+//! gate's eval hash and d13 total are computed on `tools/nnue/calib/wl50.fens`
+//! and did NOT move.
 
-/// 49 positions, phase-ordered. No `moves ...` suffixes — every entry is a
-/// plain FEN, so the existing `bench` replay path needs nothing new.
 pub const BENCH_POSITIONS_ARCHON: &[&str] = &[
     "2rqk2r/pQ2bppp/2p2n2/3p4/3P2b1/P1NnP1P1/1P2NPBP/R1B2K1R w k - 1 13", // opening
     "r2qk2r/1b1nbpp1/pp1pp1np/8/P2PP2P/3B1NP1/1P1NQP2/R1B1R1K1 b kq - 0 14", // opening
