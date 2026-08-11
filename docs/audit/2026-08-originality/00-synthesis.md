@@ -75,9 +75,11 @@ steps in `REMEDIATION-RUNBOOK.md` in this directory):
 6. Optional independence polish: pick our own magic seeds (multipliers are
    re-derived at launch; any valid seeds work, zero functional cost) and our
    own bench suite.
-   **Seeds: RUNBOOK (`823c1287`)** — `find_own_magic_seeds` harness landed
-   (#[ignore]d sweep + oracle validation); execution needs cargo, runbook
-   step 4; shipped row untouched under a REMEDIATION-PENDING notice.
+   **Seeds: DONE 2026-08-11** — sweep executed (559 s); ARCHON's own row
+   `[6723, 4627, 5863, 2501, 3959, 2821, 6327, 255]` shipped. Behaviour-
+   neutral as predicted: eval hash, d13 nodes and `Bench: 351273` all
+   unmoved, D24 release perft tier green. Finding 5's seed half is closed
+   (the bench-FEN half remains, item 6b).
    **Bench suite: STAGED (`34af97b7`)** — 49 ARCHON-original positions from
    our own games (`src/bench_positions_archon.rs`, tool + receipt committed),
    compiled+tested but not activated: activation moves the D24 `Bench:` pin,

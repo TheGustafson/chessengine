@@ -542,11 +542,13 @@ impl AttackTables {
 /// consumption order, so the candidate loop below must consume the PRNG
 /// identically: prefilter rejections also advance it.
 ///
-/// REMEDIATION-PENDING (originality audit item 6a): this row is Stockfish's
-/// verbatim, so the multipliers found at startup equal SF's by construction.
-/// Seeds only affect init time (~21 ms), never play — run the
-/// `find_own_magic_seeds` harness below and paste ARCHON's own row here.
-const MAGIC_SEEDS: [u64; 8] = [728, 10316, 55013, 32803, 12281, 15100, 16645, 255];
+/// ARCHON's own row, derived by the `find_own_magic_seeds` harness below
+/// (deterministic 4096-candidate sweep, per-rank argmin on attempt count,
+/// every winner re-validated against the attack oracle). Seeds only affect
+/// init time — the magics they find are exact, so lookups, node counts and
+/// the bench fingerprint are unchanged. Cost vs the previous row: 234,888
+/// candidate attempts against 204,846, i.e. a few ms once at startup.
+const MAGIC_SEEDS: [u64; 8] = [6723, 4627, 5863, 2501, 3959, 2821, 6327, 255];
 
 /// Which of the two magic-backed sliders `init_magics` is building.
 #[derive(Clone, Copy)]
