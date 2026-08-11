@@ -220,6 +220,10 @@ const fn piece_bin(ceilings: [u8; PIECE_BUCKETS], count: usize) -> usize {
 
 /// Expand piece-count ceilings into a QUEEN-BLIND map: every queen class gets
 /// the same bucket, so the layout behaves exactly as the 1-D map did.
+pub const fn layout_from_ceilings_pub(ceilings: [u8; PIECE_BUCKETS]) -> BucketLayout {
+    layout_from_ceilings(ceilings)
+}
+
 const fn layout_from_ceilings(ceilings: [u8; PIECE_BUCKETS]) -> BucketLayout {
     let mut map = [0u8; PIECE_COUNT_BINS * QUEEN_CLASSES];
     let mut count = 0;
@@ -1139,14 +1143,23 @@ mod tests {
                 "archon count {count}"
             );
         }
-        // Structural sanity: monotone, no skipped bucket, covers all BUCKETS.
-        for layout in [&LEGACY_BUCKET_LAYOUT, &ARCHON_BUCKET_LAYOUT] {
+        // Structural sanity for QUEEN-BLIND layouts: walking the piece-count
+        // axis is monotone and skips no bucket. A 2-D layout (layout C) jumps
+        // between queen classes by construction, so it is checked by its own
+        // test instead of this one.
+        for layout in [
+            LEGACY_BUCKET_LAYOUT,
+            layout_from_ceilings(ARCHON_BUCKET_CEILINGS),
+        ] {
             assert_eq!(layout[0], 0);
             assert_eq!(
                 usize::from(layout[(PIECE_COUNT_BINS - 1) * QUEEN_CLASSES]),
                 PIECE_BUCKETS - 1
             );
-            for pair in layout.windows(2) {
+            let by_count: Vec<u8> = (0..PIECE_COUNT_BINS)
+                .map(|c| layout[c * QUEEN_CLASSES])
+                .collect();
+            for pair in by_count.windows(2) {
                 assert!(
                     pair[1] == pair[0] || pair[1] == pair[0] + 1,
                     "monotone, no skipped bucket: {pair:?}"

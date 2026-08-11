@@ -2303,7 +2303,10 @@ pub(crate) mod tests {
     fn obl1_round_trip_and_legacy_byte_identity() {
         let legacy = test_net_with_threats();
         let mut archon = test_net_with_threats();
-        archon.head.bucket_layout = sota_head::ARCHON_BUCKET_LAYOUT;
+        // A queen-blind layout is what OBL1 encodes; on a queen-split arch
+        // ARCHON_BUCKET_LAYOUT is 2-D and takes the OBL2 path instead.
+        archon.head.bucket_layout =
+            sota_head::layout_from_ceilings_pub(sota_head::ARCHON_BUCKET_CEILINGS);
 
         let legacy_bytes = serialize(&legacy);
         let archon_bytes = serialize(&archon);
@@ -2328,7 +2331,10 @@ pub(crate) mod tests {
         );
 
         let back = load_v2_bytes(&archon_bytes).expect("OBL1 net loads");
-        assert_eq!(back.head.bucket_layout, sota_head::ARCHON_BUCKET_LAYOUT);
+        assert_eq!(
+            back.head.bucket_layout,
+            sota_head::layout_from_ceilings_pub(sota_head::ARCHON_BUCKET_CEILINGS)
+        );
         assert_eq!(
             back.head.output_bucket(11, 2),
             2,
@@ -2354,7 +2360,9 @@ pub(crate) mod tests {
     #[test]
     fn obl1_rejects_bad_sections() {
         let mut net = test_net_with_threats();
-        net.head.bucket_layout = sota_head::ARCHON_BUCKET_LAYOUT;
+        // Queen-blind: this test is about the OBL1 (1-D) section's validation.
+        net.head.bucket_layout =
+            sota_head::layout_from_ceilings_pub(sota_head::ARCHON_BUCKET_CEILINGS);
         let good = serialize(&net);
         let sec = good.len() - (8 + sota_head::PIECE_COUNT_BINS);
 

@@ -1468,17 +1468,20 @@ mod avx2 {
         // bit-identical to the scalar reference. SAFETY: all loads/stores
         // cover in-bounds 8-lane blocks of loader-validated storage.
         unsafe {
-            let mut acc0 = _mm256_loadu_ps(bias.as_ptr());
-            let mut acc1 = _mm256_loadu_ps(bias.as_ptr().add(8));
-            let mut acc2 = _mm256_loadu_ps(bias.as_ptr().add(16));
-            let mut acc3 = _mm256_loadu_ps(bias.as_ptr().add(24));
+            // `L3 / 8` 8-lane accumulators — see the avx512 twin: the fixed
+            // four assumed L3 = 32 and overran on a narrower head.
+            const BLK: usize = 8;
+            const NB: usize = L3 / BLK;
+            let mut acc = [_mm256_setzero_ps(); NB];
+            for (b, a) in acc.iter_mut().enumerate() {
+                *a = _mm256_loadu_ps(bias.as_ptr().add(b * BLK));
+            }
             for (i, &input) in l1.iter().enumerate() {
                 let li = _mm256_set1_ps(input);
                 let row = weights.as_ptr().add(i * L3);
-                acc0 = _mm256_fmadd_ps(_mm256_loadu_ps(row), li, acc0);
-                acc1 = _mm256_fmadd_ps(_mm256_loadu_ps(row.add(8)), li, acc1);
-                acc2 = _mm256_fmadd_ps(_mm256_loadu_ps(row.add(16)), li, acc2);
-                acc3 = _mm256_fmadd_ps(_mm256_loadu_ps(row.add(24)), li, acc3);
+                for (b, a) in acc.iter_mut().enumerate() {
+                    *a = _mm256_fmadd_ps(_mm256_loadu_ps(row.add(b * BLK)), li, *a);
+                }
             }
             let zero = _mm256_setzero_ps();
             let one = _mm256_set1_ps(1.0);
@@ -1486,10 +1489,9 @@ mod avx2 {
                 let clipped = _mm256_min_ps(_mm256_max_ps(acc, zero), one);
                 _mm256_mul_ps(clipped, clipped)
             };
-            _mm256_storeu_ps(out.as_mut_ptr(), screlu(acc0));
-            _mm256_storeu_ps(out.as_mut_ptr().add(8), screlu(acc1));
-            _mm256_storeu_ps(out.as_mut_ptr().add(16), screlu(acc2));
-            _mm256_storeu_ps(out.as_mut_ptr().add(24), screlu(acc3));
+            for (b, &a) in acc.iter().enumerate() {
+                _mm256_storeu_ps(out.as_mut_ptr().add(b * BLK), screlu(a));
+            }
         }
     }
 
@@ -2754,13 +2756,24 @@ mod avx512 {
         // hash and require changing the scalar reference and both SIMD
         // backends. Re-price if `L2` ever grows; the chain deepens with L2.
         unsafe {
-            let mut acc0 = _mm512_loadu_ps(bias.as_ptr());
-            let mut acc1 = _mm512_loadu_ps(bias.as_ptr().add(16));
+            // `L3 / 16` 16-lane accumulators, not two hardcoded ones: at
+            // L3 = 32 this is the identical pair in the identical order (so
+            // bit-identical), and at any other multiple of 16 it stays in
+            // bounds. The fixed pair silently wrote `out[16..32]` on an
+            // L3 = 16 build — a 64-byte store off the end of the caller's
+            // stack array.
+            const BLK: usize = 16;
+            const NB: usize = L3 / BLK;
+            let mut acc = [_mm512_setzero_ps(); NB];
+            for (b, a) in acc.iter_mut().enumerate() {
+                *a = _mm512_loadu_ps(bias.as_ptr().add(b * BLK));
+            }
             for (i, &input) in l1.iter().enumerate() {
                 let li = _mm512_set1_ps(input);
                 let row = weights.as_ptr().add(i * L3);
-                acc0 = _mm512_fmadd_ps(_mm512_loadu_ps(row), li, acc0);
-                acc1 = _mm512_fmadd_ps(_mm512_loadu_ps(row.add(16)), li, acc1);
+                for (b, a) in acc.iter_mut().enumerate() {
+                    *a = _mm512_fmadd_ps(_mm512_loadu_ps(row.add(b * BLK)), li, *a);
+                }
             }
             let zero = _mm512_setzero_ps();
             let one = _mm512_set1_ps(1.0);
@@ -2768,8 +2781,9 @@ mod avx512 {
                 let clipped = _mm512_min_ps(_mm512_max_ps(acc, zero), one);
                 _mm512_mul_ps(clipped, clipped)
             };
-            _mm512_storeu_ps(out.as_mut_ptr(), screlu(acc0));
-            _mm512_storeu_ps(out.as_mut_ptr().add(16), screlu(acc1));
+            for (b, &a) in acc.iter().enumerate() {
+                _mm512_storeu_ps(out.as_mut_ptr().add(b * BLK), screlu(a));
+            }
         }
     }
 
