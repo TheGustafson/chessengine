@@ -86,30 +86,31 @@ PIECE_BUCKETS = 8
 
 
 def bucket_layout_c(ceilings) -> np.ndarray:
-    """Layout C: the 2-D (piece_count, queen_class) map, flattened row-major
+    """Layout C16: the 2-D (piece_count, queen_class) map, flattened row-major
     as `pc * QUEEN_CLASSES + qclass`, mirroring sota_head.rs `layout_c`.
 
-    Q>=2 (class 0) and Q==0 (class 2) each take all eight piece bins; Q==1
-    (class 1) takes two, split at 15/16 pieces. Chosen 2026-08-11 from the
-    measured cell occupancy: Q==1 is 3.7 % of positions and falls to 0.02 %
-    in the top piece bin, so eight bins for it would fit noise — but it is a
-    material imbalance and keeps its own weights rather than folding into
-    Q>=2. Bucket ids: 0..8 = Q>=2 by bin, 8..16 = Q==0 by bin, 16 = Q==1 with
-    <=15 pieces, 17 = Q==1 with >=16.
+    SIXTEEN buckets, not 18: the Pallas/Triton kernels require power-of-2
+    shapes and reject `(18,)` at lowering. All three queen classes survive —
+    16 is reached by merging each class where its own data is thinnest, which
+    RAISES the minimum cell mass 0.61 % -> 0.84 %. Q>=2 merges its two
+    smallest piece bins, Q==0 merges its two smallest, Q==1 keeps both bins.
+
+    Bucket ids: 0..7 = Q>=2 (7 bins), 7..14 = Q==0 (7 bins),
+    14 = Q==1 with <=15 pieces, 15 = Q==1 with >=16.
     """
     base = bucket_layout_from_ceilings(ceilings)
     out = np.zeros(PIECE_COUNT_BINS * QUEEN_CLASSES, dtype=np.int32)
     for count in range(PIECE_COUNT_BINS):
         b = int(base[count])
-        out[count * QUEEN_CLASSES + 0] = b                     # Q>=2
-        out[count * QUEEN_CLASSES + 1] = 16 if count <= 15 else 17  # Q==1
-        out[count * QUEEN_CLASSES + 2] = PIECE_BUCKETS + b     # Q==0
+        out[count * QUEEN_CLASSES + 0] = 0 if b == 0 else b - 1     # Q>=2
+        out[count * QUEEN_CLASSES + 1] = 14 if count <= 15 else 15  # Q==1
+        out[count * QUEEN_CLASSES + 2] = 7 + min(b, 6)              # Q==0
     return out
 
 
 ARCHON_QSPLIT_BUCKETS_LAYOUT = bucket_layout_c(ARCHON_BUCKET_CEILINGS)
 assert ARCHON_QSPLIT_BUCKETS_LAYOUT.shape == (PIECE_COUNT_BINS * QUEEN_CLASSES,)
-assert int(ARCHON_QSPLIT_BUCKETS_LAYOUT.max()) == 17
+assert int(ARCHON_QSPLIT_BUCKETS_LAYOUT.max()) == 15
 
 BUCKET_LAYOUTS["archon-qsplit"] = ARCHON_QSPLIT_BUCKETS_LAYOUT
 
@@ -366,6 +367,12 @@ class ArchSpec:
             l3=int(spec.get("arch_l3", cls.full().l3)),
             out_skip=bool(spec.get("arch_out_skip", False)),
             halfka_only=bool(spec.get("arch_halfka_only", False)),
+            # `policy` was a bare dataclass default of True that from_run_spec
+            # never overrode, so EVERY net carried polmovew/polmoveb even with
+            # pol_lambda 0 — dead weight in the stream and in the quant file.
+            # Default preserved so old checkpoints still re-export; the fast
+            # archs set "arch_policy": false (speed-first charter).
+            policy=bool(spec.get("arch_policy", True)),
             pol_proj=int(spec.get("arch_pol_proj", 0)),
             dis_proj=int(spec.get("arch_dis_proj", 0)),
             qat_ft_scale=float(spec.get("qat_ft_scale", 0.0)),

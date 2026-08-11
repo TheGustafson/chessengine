@@ -109,7 +109,7 @@ pub const L3: usize = 16;
 #[cfg(not(feature = "arch-hka128"))]
 pub const BUCKETS: usize = 8;
 #[cfg(feature = "arch-hka128")]
-pub const BUCKETS: usize = 18;
+pub const BUCKETS: usize = 16;
 /// Queen-class bins the bucket layout is indexed by: 0 = Q>=2, 1 = Q==1,
 /// 2 = Q==0. Three, not four: total-queen counts above 2 are 0.03 % of
 /// positions (measured 2026-08-11 over 40M records of the training mix), so a
@@ -239,24 +239,34 @@ const fn layout_from_ceilings(ceilings: [u8; PIECE_BUCKETS]) -> BucketLayout {
     map
 }
 
-/// **Layout C** (owner-selected 2026-08-11 from the measured cell occupancy):
-/// `Q>=2` and `Q==0` each get all eight piece bins; `Q==1` gets two, split at
-/// 15/16 pieces. Q==1 is 3.7 % of positions and falls to 0.11 % and 0.02 % in
-/// the top two piece bins, so eight bins for it would fit noise — but it is a
-/// MATERIAL IMBALANCE and the most eval-distinctive of the three classes, so
-/// it keeps its own weights rather than being folded into Q>=2.
+/// **Layout C16** (owner-selected 2026-08-11 from the measured cell occupancy;
+/// trimmed 18 -> 16 because the trainer's Pallas/Triton kernels require
+/// power-of-2 shapes and reject `(18,)` at lowering).
 ///
-/// Bucket ids: `0..8` = Q>=2 by piece bin, `8..16` = Q==0 by piece bin,
-/// `16` = Q==1 with <=15 pieces, `17` = Q==1 with >=16.
+/// All THREE queen classes survive — Q==1 is a material imbalance and the most
+/// eval-distinctive of the three, so it keeps its own weights. 16 is reached by
+/// merging each class where its OWN data is thinnest, not by dropping a class:
+/// Q>=2 merges its two smallest piece bins (2-10 pieces, 1.14 % + 0.83 %) and
+/// Q==0 merges its two smallest (22-32 pieces, 2.78 % + 0.61 %). Q==1 keeps
+/// both of its bins. The floor RISES 0.61 % -> 0.84 % versus the 18-bucket form.
+///
+/// Bucket ids: `0..7` = Q>=2 (7 bins), `7..14` = Q==0 (7 bins),
+/// `14` = Q==1 with <=15 pieces, `15` = Q==1 with >=16.
 #[cfg(feature = "arch-hka128")]
 const fn layout_c(ceilings: [u8; PIECE_BUCKETS]) -> BucketLayout {
     let mut map = [0u8; PIECE_COUNT_BINS * QUEEN_CLASSES];
     let mut count = 0;
     while count < PIECE_COUNT_BINS {
         let bin = piece_bin(ceilings, count);
-        map[count * QUEEN_CLASSES] = bin as u8; // Q>=2
-        map[count * QUEEN_CLASSES + 1] = if count <= 15 { 16 } else { 17 }; // Q==1
-        map[count * QUEEN_CLASSES + 2] = (PIECE_BUCKETS + bin) as u8; // Q==0
+        // Q>=2: bins 0 and 1 share a bucket -> ids 0..7
+        let q2 = if bin == 0 { 0 } else { bin - 1 };
+        // Q==0: bins 6 and 7 share a bucket -> ids 7..14
+        let q0 = 7 + if bin > 6 { 6 } else { bin };
+        // Q==1: two bins, split at 15/16 pieces -> ids 14, 15
+        let q1 = if count <= 15 { 14 } else { 15 };
+        map[count * QUEEN_CLASSES] = q2 as u8;
+        map[count * QUEEN_CLASSES + 1] = q1 as u8;
+        map[count * QUEEN_CLASSES + 2] = q0 as u8;
         count += 1;
     }
     map
@@ -1432,13 +1442,16 @@ mod layout_c_tests {
         );
 
         // Q>=2 occupies 0..8, Q==0 occupies 8..16, Q==1 occupies {16,17}
-        assert_eq!(at(32, 2), PIECE_BUCKETS - 1);
-        assert_eq!(at(32, 0), 2 * PIECE_BUCKETS - 1);
-        assert_eq!(at(4, 1), 2 * PIECE_BUCKETS);
-        assert_eq!(at(32, 1), 2 * PIECE_BUCKETS + 1);
+        assert_eq!(at(32, 2), 6, "Q>=2 tops out at id 6 (7 bins)");
+        assert_eq!(at(32, 0), 13, "Q==0 tops out at id 13 (7 bins)");
+        assert_eq!(at(4, 1), 14);
+        assert_eq!(at(32, 1), 15);
         // the Q==1 split is at 15/16 pieces
-        assert_eq!(at(15, 1), 2 * PIECE_BUCKETS);
-        assert_eq!(at(16, 1), 2 * PIECE_BUCKETS + 1);
+        assert_eq!(at(15, 1), 14);
+        assert_eq!(at(16, 1), 15);
+        // the two merges: Q>=2 shares its thinnest pair, Q==0 shares its own
+        assert_eq!(at(4, 2), at(9, 2), "Q>=2 bins 0,1 merged");
+        assert_eq!(at(24, 0), at(30, 0), "Q==0 bins 6,7 merged");
         // three or more queens class with Q>=2 (promotions land in Q>=2)
         assert_eq!(at(20, 3), at(20, 2));
     }
