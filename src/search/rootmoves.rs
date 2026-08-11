@@ -16,11 +16,8 @@ use crate::types::{VALUE_INFINITE, Value, is_loss};
 const SCORE_UNSET: Value = -VALUE_INFINITE;
 
 /// Init sentinel for [`RootMove::mean_squared_score`]: `-VALUE_INFINITE²`.
-///
-/// `i64`, deviating from Stockfish's `int` deliberately (design/07 §3.4,
-/// Open Question 3): the EMA's intermediate `value·|value| + prev` reaches
-/// ~2.05e9 — inside `i32` but within 5% of overflow; we take the free
-/// headroom at this cold, root-only site.
+/// `i64` deliberately: the EMA's intermediate `value·|value| + prev` comes
+/// within 5% of `i32` overflow, and this root-only site can afford headroom.
 const MSS_UNSET: i64 = -(VALUE_INFINITE as i64 * VALUE_INFINITE as i64);
 
 /// One root move's search state, persisted across iterations
@@ -108,17 +105,13 @@ impl RootMove {
     }
 }
 
-/// Build the root move list for a `go` (design/07 §3.4, design/12 §3.6):
-/// every legal move in `board`, filtered by the `searchmoves` whitelist when
-/// it is non-empty. Initial order is generation order; iterative deepening's
-/// stable sort takes over from iteration 2 on.
+/// Build the root move list for a `go`: every legal move in `board`,
+/// filtered by the `searchmoves` whitelist when it is non-empty.
 ///
 /// A filter that would leave *zero* root moves in a position that has legal
 /// moves is ignored entirely — bad GUI input must never turn a playable
-/// position into `bestmove (none)` (design/12 §3.6). The UCI layer detects
-/// that case (non-empty `searchmoves`, result spanning all legal moves) to
-/// print its `info string` warning; an empty return therefore always means
-/// "no legal moves at all" (mate or stalemate).
+/// position into `bestmove (none)` (design/12 §3.6). An empty return
+/// therefore always means "no legal moves at all" (mate or stalemate).
 pub fn build_root_moves(board: &Board, searchmoves: &[Move]) -> RootMoves {
     let mut legal = MoveList::new();
     generate_legal(board, &mut legal);
@@ -135,14 +128,11 @@ pub fn build_root_moves(board: &Board, searchmoves: &[Move]) -> RootMoves {
 
 /// Stable descending sort by [`RootMove::sort_key`].
 ///
-/// Stability is load-bearing (design/07 §3.4): after an aspiration attempt
-/// only the searched PV move carries a fresh score — everything else sits
-/// at `-VALUE_INFINITE` — so a stable sort floats the new best to the front
-/// while preserving last iteration's order for the rest, and that order IS
+/// Stability is load-bearing: after an aspiration attempt only the searched
+/// PV move carries a fresh score, so a stable sort floats it to the front
+/// while preserving last iteration's order for the rest — and that order IS
 /// the next iteration's move ordering. An unstable sort here would be a
-/// silent Elo-losing bug (§6), hence this named seam instead of ad-hoc
-/// sort calls. `slice::sort_by_key` is guaranteed stable; descending comes
-/// from the [`std::cmp::Reverse`] key.
+/// silent strength bug, hence this named seam instead of ad-hoc sort calls.
 pub fn sort_descending(root_moves: &mut [RootMove]) {
     root_moves.sort_by_key(|rm| std::cmp::Reverse(rm.sort_key()));
 }

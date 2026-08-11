@@ -1,48 +1,26 @@
 //! Transposition table — the engine's shared, lock-free cache of search
-//! results, keyed by the 64-bit Zobrist key (design/08-transposition-table.md,
-//! D19, D23).
+//! results, keyed by the 64-bit Zobrist key (design/08, D19, D23).
 //!
 //! Layout and policy are SF-current (D20): a 10-byte [`TtEntry`] of relaxed
-//! atomics (`key16`, `depth8`, `gen_bound8`, `move16`, `value16`, `eval16`),
-//! 3-entry 32-byte clusters that never straddle a cache line, multiply-high
-//! indexing (any table size, no power-of-two rounding), 5-bit generation
-//! aging, and Stockfish's replacement rules in [`TtEntry::save`]. Everything
-//! is deliberately racy: individual field accesses are atomic (no UB), but an
-//! entry read concurrently with a write may mix two writers. That is the
-//! doc's §3.5 validation contract — consumers MUST validate what they read
-//! (`pseudo_legal` + `legal` on the move, `is_valid` on values, bound
-//! inclusion before use) instead of paying for synchronization on every
-//! probe.
-//!
-//! Landed here (doc 08 §4 steps 3–6): entry/cluster layout with const
-//! size asserts, [`Bound`], probe/save/penalize, replacement + aging,
-//! [`TranspositionTable`] with portable `Vec` storage, fallible
-//! [`TranspositionTable::resize`], [`TranspositionTable::clear`],
-//! [`TranspositionTable::new_search`] (interior-mutable generation, D23),
-//! [`TranspositionTable::hashfull`], and the
-//! [`TranspositionTable::prefetch`] wrapper (§3.15). Deliberately NOT here
-//! yet, per the doc's staging: search integration (step 7, doc 07), the
-//! multithreaded clear (step 9), and the Linux huge-page allocator (§3.13
-//! phase 2, step 10).
-//!
-//! Relaxed atomics are the sanctioned safe equivalent of SF's
-//! `RelaxedAtomic<T>` fields (D14); the ONE `unsafe` block in this module
-//! is the prefetch intrinsic below.
+//! atomics, 3-entry 32-byte clusters that never straddle a cache line,
+//! multiply-high indexing (any table size, no power-of-two rounding), 5-bit
+//! generation aging, and Stockfish's replacement rules in [`TtEntry::save`].
+//! Everything is deliberately racy: individual field accesses are atomic (no
+//! UB), but an entry read concurrently with a write may mix two writers.
+//! That is the doc 08 §3.5 validation contract — consumers MUST validate
+//! what they read (`pseudo_legal` + `legal` on the move, `is_valid` on
+//! values, bound inclusion before use) instead of paying for synchronization
+//! on every probe.
 //!
 //! Validation (doc 08 §5): `cargo +nightly miri test --lib tt::` must stay
-//! clean on this portable path (the wall-clock concurrency smoke and the
-//! MiB-scale/1e6-iteration tests are `#[ignore]`d under miri for
-//! interpreter time — their atomics surface runs at small scale in
-//! `small_table_lifecycle_exercises_all_paths`; run the full set natively),
-//! and the non-x86_64 no-op prefetch builds via
-//! `cargo check --target aarch64-unknown-linux-gnu`.
+//! clean (the wall-clock and MiB-scale tests are `#[ignore]`d under miri;
+//! their atomics surface runs at small scale in
+//! `small_table_lifecycle_exercises_all_paths`), and the non-x86_64 no-op
+//! prefetch builds via `cargo check --target aarch64-unknown-linux-gnu`.
 
 // D14(a): module-scoped relaxation of the crate-wide `#![deny(unsafe_code)]`
 // for exactly one sanctioned use — the `_mm_prefetch` cache hint in
-// [`TranspositionTable::prefetch`] (doc 08 §3.15, acceptance criterion 8:
-// "the only unsafe in the module is the prefetch intrinsic"). Each block
-// carries its `// SAFETY:` comment; the measured justification lives on the
-// method's doc comment (and `prefetch_microbenchmark` reproduces it).
+// [`TranspositionTable::prefetch`]. Each block carries its `// SAFETY:`.
 #![allow(unsafe_code)]
 
 use std::sync::atomic::{AtomicI16, AtomicU8, AtomicU16, Ordering::Relaxed};
@@ -65,38 +43,22 @@ const PV_SHIFT: u8 = BOUND_SHIFT + 2; // 7
 const PV_MASK: u8 = 1 << PV_SHIFT; // 0x80
 
 crate::tunables! {
-    /// **The transposition table's replacement policy, made tunable
-    /// (2026-07-27).**
-    ///
-    /// The TT decides what the entire search is allowed to reuse, and until
-    /// now every number in that decision was a plain `const` — no SPSA
-    /// campaign could reach any of it. Two of the five were also *implicit*:
-    /// a coefficient of 1 that nobody wrote down, invisible to design/01
-    /// §3.8's "bare numeric literal" rule because they are not literals.
-    ///
-    /// All default to exact identity with the previous consts.
-
     /// Weight on stored depth when choosing a replacement victim:
     /// `TT_REPLACE_DEPTH_WEIGHT * depth - TT_REPLACE_AGE_WEIGHT * age`.
-    /// Was an implicit 1 — the depth term had no coefficient at all, so the
-    /// depth-vs-age exchange rate could only ever be moved from one side.
     pub TT_REPLACE_DEPTH_WEIGHT: i32 = 1;
     /// Plies of stored depth one generation of age is worth when choosing a
-    /// replacement victim. Was `REPLACEMENT_AGE_WEIGHT`.
+    /// replacement victim.
     pub TT_REPLACE_AGE_WEIGHT: i32 = 8;
     /// How much shallower a re-write of the SAME position may be and still
-    /// overwrite. Was `REFRESH_DEPTH_MARGIN`.
+    /// overwrite.
     pub TT_REFRESH_DEPTH_MARGIN: i32 = 4;
-    /// Depth credit a PV result carries into the refresh test. Was
-    /// `REFRESH_PV_CREDIT`.
+    /// Depth credit a PV result carries into the refresh test.
     pub TT_REFRESH_PV_CREDIT: i32 = 2;
     /// Minimum stored depth for secondary aging to erode a stale decisive
-    /// entry. Was `SECONDARY_AGING_MIN_DEPTH`.
+    /// entry.
     pub TT_SECONDARY_AGING_MIN_DEPTH: i32 = 5;
     /// Plies of stored depth a rejected write erodes from a stale decisive
-    /// entry. Another implicit 1 (`old_d - 1`): it sets how fast a wrong mate
-    /// claim ages out, which is exactly what elementary-mate regressions turn
-    /// on, and it was never adjustable.
+    /// entry (how fast a wrong mate claim ages out).
     pub TT_SECONDARY_AGING_STEP: i32 = 1;
 }
 
@@ -108,8 +70,7 @@ const HASHFULL_SAMPLE_CLUSTERS: usize = 1000;
 /// 1000-cluster sample valid (1 MiB = 32768 clusters).
 pub const MIN_HASH_MB: usize = 1;
 /// Largest `Hash` size in MiB — SF's 64-bit cap (32 TiB). A sanity bound on
-/// the UCI option range, not a promise the allocation succeeds ([`
-/// TranspositionTable::resize`] is fallible).
+/// the UCI option range ([`TranspositionTable::resize`] is fallible).
 pub const MAX_HASH_MB: usize = 33_554_432;
 
 /// 5-bit clock arithmetic on the packed `gen_bound8` byte (doc 08 §3.2):
@@ -171,11 +132,9 @@ impl Bound {
 // ---------------------------------------------------------------------------
 
 /// One TT slot. Field order matches probe's read order and save's store
-/// order (memory is fastest sequentially; SF orders it this way
-/// deliberately). Every access is `Ordering::Relaxed`: individual loads and
-/// stores cannot tear, so there is no UB — but there is no entry-wide
-/// atomicity either (no lock, no seqlock, no checksum). See the module docs
-/// for the consumer validation contract that makes this acceptable.
+/// order (SF parity). Every access is `Ordering::Relaxed`: individual loads
+/// and stores cannot tear (no UB), but there is no entry-wide atomicity —
+/// see the module docs for the consumer validation contract.
 #[repr(C)]
 struct TtEntry {
     /// Low 16 bits of the Zobrist key: the in-cluster tag. The high bits
@@ -241,10 +200,8 @@ impl TtEntry {
     }
 
     /// The write policy, rule by rule (doc 08 §3.7). All accesses relaxed;
-    /// each field is loaded at most once into a local (a benign
-    /// simplification of SF's repeated loads). Plain stores, not
-    /// compare-exchange loops: a lost race merely produces one
-    /// slightly-wrong replacement decision, never UB.
+    /// plain stores, not compare-exchange loops: a lost race merely produces
+    /// one slightly-wrong replacement decision, never UB.
     // The 8-parameter shape is the doc 08 §3.7 contract (mirrors SF's save).
     #[allow(clippy::too_many_arguments)]
     fn save(
@@ -259,8 +216,6 @@ impl TtEntry {
         generation: u8,
     ) {
         let tag = key as u16;
-        #[cfg(feature = "ttcensus42")]
-        crate::ttcensus42::bump(&crate::ttcensus42::SAVES);
         let same_key = tag == self.key16.load(Relaxed);
 
         // Rule 1 — ttMove preservation: keep the old move only when the
@@ -288,8 +243,6 @@ impl TtEntry {
             debug_assert!(d > DEPTH_NONE && new_d < 256);
             debug_assert!(generation <= GENERATION_MASK);
             debug_assert!(i16::try_from(v).is_ok() && i16::try_from(ev).is_ok());
-            #[cfg(feature = "ttcensus42")]
-            crate::ttcensus42::bump(&crate::ttcensus42::SAVE_ACCEPT);
             self.key16.store(tag, Relaxed);
             self.depth8.store(new_d as u8, Relaxed);
             self.gen_bound8.store(
@@ -395,16 +348,10 @@ impl TtWriter<'_> {
     /// `generation` is the caller's cached `tt.generation()`.
     // The 8-parameter shape is the doc 08 §3.7 contract (mirrors SF's save).
     #[allow(clippy::too_many_arguments)]
-    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
-    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
-    // every helper the search body calls has at least two machine call sites and
-    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
-    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
-    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
-    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
-    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
-    // costs +25.7 i/n in spills. Do not extend this to a big function without
-    // measuring — study 55 §0.1 has the size curve.
+    // NOTE: `inline(always)` is deliberate; a plain `#[inline]` was measured
+    // and declined (search::<NT>'s two monomorphizations deny LLVM's
+    // single-call-site inline bonus). The lever inverts on large bodies —
+    // measure before extending it.
     #[inline(always)]
     pub fn write(
         &self,
@@ -427,8 +374,6 @@ impl TtWriter<'_> {
     /// (doc 07) uses `penalize(1)`.
     pub fn penalize(&self, penalty: i32) {
         debug_assert!(penalty >= 0);
-        #[cfg(feature = "ttcensus42")]
-        crate::ttcensus42::bump(&crate::ttcensus42::PENALIZE);
         let d = i32::from(self.entry.depth8.load(Relaxed));
         self.entry.depth8.store((d - penalty).max(0) as u8, Relaxed);
     }
@@ -512,48 +457,15 @@ impl TranspositionTable {
     /// `depth8 − 8·relative_age`, first strict minimum wins (§3.6) — one
     /// generation of staleness outweighs 8 plies of stored depth, and
     /// empties (score 0) are consumed before current-generation entries.
-    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
-    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
-    // every helper the search body calls has at least two machine call sites and
-    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
-    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
-    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
-    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
-    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
-    // costs +25.7 i/n in spills. Do not extend this to a big function without
-    // measuring — study 55 §0.1 has the size curve.
+    // NOTE: `inline(always)` is deliberate; a plain `#[inline]` was measured
+    // and declined (see the note on `TtWriter::write`).
     #[inline(always)]
     pub fn probe(&self, key: Key) -> Probe<'_> {
         let cluster = self.cluster_for(key);
         let tag = key as u16;
 
-        #[cfg(feature = "ttcensus42")]
-        {
-            use crate::ttcensus42 as c;
-            c::bump(&c::PROBES);
-            c::note_cluster(std::ptr::from_ref(cluster) as usize);
-        }
-
         for entry in &cluster.entries {
             if entry.key16.load(Relaxed) == tag {
-                #[cfg(feature = "ttcensus42")]
-                {
-                    use crate::ttcensus42 as c;
-                    c::bump(&c::TAG_MATCH);
-                    // Which slot matched, derived from the address rather than
-                    // from an `enumerate()` index: the loop above is the hot
-                    // path and the default build must keep exactly the shape it
-                    // had before this census existed. Entries are `size_of::
-                    // <TtEntry>()` apart inside the cluster, so the division is
-                    // exact.
-                    let slot = (std::ptr::from_ref(entry) as usize
-                        - std::ptr::from_ref(cluster) as usize)
-                        / size_of::<TtEntry>();
-                    c::bump([&c::SLOT0, &c::SLOT1, &c::SLOT2][slot]);
-                    if entry.is_occupied() {
-                        c::bump(&c::HITS);
-                    }
-                }
                 return Probe {
                     hit: entry.is_occupied(),
                     data: entry.read(),
@@ -668,44 +580,16 @@ impl TranspositionTable {
     /// via the cheap predicted key — a wrong key just prefetches a useless
     /// line, harmlessly.
     ///
-    /// D14(a) measurement (2026-07-10, WSL2 x86-64, release, 256 MB table,
-    /// 1M uniform-random probes, `prefetch_microbenchmark`): cold probes
-    /// stream at ~23 ns/probe (throughput — out-of-order overlap already
-    /// hides part of each DRAM miss); with `prefetch` issued 8 keys ahead
-    /// the same loop runs at ~11 ns/probe, a 2x gain, matching doc 14
-    /// §3.4's "mostly hidden by prefetch" target.
-    ///
-    /// **The search-integrated delta doc 08 §4 step 7 asked for, finally
-    /// measured (perf study 42, 2026-07-31).** The `ttnopf42` arm makes this
-    /// function a no-op and changes nothing else; it is node-identical at both
-    /// gate frames, so the counters are the only free variable. Over 18 paired
-    /// shuffled rounds at Hash = 16 MB, against a byte-identical null that came
-    /// back a coin flip (10/18, p = 0.81):
-    ///
-    /// | | median | sign count | per node |
-    /// |---|---:|---:|---:|
-    /// | `instructions:u` | −0.363% | 18/18 | −21.50 |
-    /// | `cycles:u` | **+3.504%** | 18/18 | **+153.8** |
-    /// | `ex_no_retire.load_not_complete` | +5.571% | 17/18 | +129.4 |
-    ///
-    /// i.e. removing the hint costs 3.5% of engine cycles while *saving* 21.5
-    /// instructions per node. Divided by the exactly-counted 1.0667 probes per
-    /// node, **an unprefetched probe costs ~121 stall cycles** — memory-latency
-    /// scale, so a TT probe misses essentially every time and this one
-    /// instruction is worth roughly 6 Elo. Do not remove it, and do not price a
-    /// TT line with a stall-per-line rate calibrated on accumulator streaming:
-    /// study 39's 1.119 stall/line would value the whole table at 1.19 stall
-    /// cycles per node against a measured 129.4.
+    /// NOTE: do not remove the hint. A TT probe misses essentially every
+    /// time, an unprefetched probe stalls for memory-latency-scale cycles,
+    /// and removing this one instruction was measured to cost ~3.5% of
+    /// engine cycles.
     #[inline]
     pub fn prefetch(&self, key: Key) {
-        #[cfg(feature = "ttcensus42")]
-        crate::ttcensus42::bump(&crate::ttcensus42::PREFETCH);
         #[cfg(all(target_arch = "x86_64", not(feature = "ttnopf42")))]
         {
-            // Perf study 42 arms. `ttnopf42` removes the hint entirely (the
-            // subtractive arm that prices it); `ttpft242` demotes it from L1
-            // to L2/L3. Both are node-identical: a cache hint changes no
-            // search result, so the `Bench:` fingerprint is unmoved.
+            // `ttnopf42` removes the hint (the arm that prices it);
+            // `ttpft242` demotes it from L1 to L2/L3. Both node-identical.
             #[cfg(not(feature = "ttpft242"))]
             use std::arch::x86_64::_MM_HINT_T0 as HINT;
             #[cfg(feature = "ttpft242")]
@@ -827,10 +711,8 @@ mod tests {
     #[test]
     fn zero_tag_matches_empty_slot_and_writes_back_into_it() {
         // A key whose low 16 bits are 0 tag-matches the zeroed entry 0:
-        // hit == false (unoccupied), and the writer targets that slot —
-        // the same position writes back instead of evicting a neighbor.
-        // Note the tag-match decode is depth DEPTH_NONE / value 0 (NOT
-        // VALUE_NONE); the hit flag is what protects consumers.
+        // hit == false, and the writer targets that slot — the same position
+        // writes back instead of evicting a neighbor.
         let tt = TranspositionTable::with_cluster_count(1);
         let key: Key = 0x7_0000;
         let probe = tt.probe(key);
@@ -856,11 +738,9 @@ mod tests {
 
     #[test]
     fn tag_collision_returns_foreign_payload() {
-        // Documents the ACCEPTED defect (doc 08 §3.5): two distinct keys
-        // with equal low-16 bits in the same cluster alias each other, so
-        // probing B after writing A reports a hit with A's payload. This is
-        // the contract that forces consumers to validate everything they
-        // read (pseudo_legal + legal on the move, is_valid on values).
+        // Documents the ACCEPTED defect (doc 08 §3.5): equal low-16 tags in
+        // one cluster alias, so probing B after writing A hits with A's
+        // payload — the contract that forces consumers to validate.
         let tt = TranspositionTable::with_cluster_count(1);
         let a: Key = 0x0001_0000_0000_1234;
         let b: Key = 0x0002_0000_0000_1234;
@@ -955,9 +835,7 @@ mod tests {
     #[test]
     fn refresh_boundary_non_pv() {
         // Same key/generation, non-exact: new_d + 2·pv > old_d − 4 strict.
-        // Stored external depth 12 → old_d 15. new_d == 11 (d == 8) is
-        // rejected; new_d == 12 (d == 9) is accepted. Value 100 is
-        // non-decisive so rule 3 leaves rejected depth untouched.
+        // Stored external depth 12 → old_d 15: d == 8 rejected, d == 9 in.
         let tt = TranspositionTable::with_cluster_count(1);
         let k: Key = 0x3333;
         store(&tt, k, 100, false, Bound::Lower, 12, Move::NULL);
@@ -1056,15 +934,13 @@ mod tests {
 
     #[test]
     fn secondary_aging_erodes_decisive_non_exact_entries() {
-        // A rejected write against a deep, non-EXACT, decisive entry
-        // erodes exactly 1 ply of stored depth per rejection; the payload
-        // stays. Erosion stops once external depth drops below 5 (rule 3's
-        // threshold), leaving the stale mate claim easy to replace.
+        // A rejected write against a deep, non-EXACT, decisive entry erodes
+        // 1 ply of stored depth per rejection; the payload stays. Erosion
+        // stops below external depth 5 (rule 3's threshold).
         let tt = TranspositionTable::with_cluster_count(1);
         let k: Key = 0x8888;
         store(&tt, k, VALUE_MATE - 10, false, Bound::Lower, 10, Move::NULL);
-        // Eval-only-shaped rejected write: new_d == 1, never accepted while
-        // old_d − 4 >= 1.
+        // Eval-only-shaped rejected write (new_d == 1).
         store(
             &tt,
             k,
@@ -1171,18 +1047,11 @@ mod tests {
 
     // --- §5 indexing -----------------------------------------------------------
 
-    /// Perf study 42: the "a cluster never straddles a cache line" claim in
-    /// this module's docs is TWO claims, and only one of them was checked.
-    /// `align_of::<Cluster>() == 32` is a *type* fact the const assert above
-    /// covers; that the running `Vec<Cluster>` buffer starts on a 32-byte
-    /// boundary is an *allocator* fact, and nothing tested it. If the base
-    /// ever slipped, every probe would silently cost two lines instead of
-    /// one and no existing test would notice.
-    ///
-    /// (The study also confirmed it from the outside, on the shipped binary:
-    /// `tools/perf42/align42.py` histograms the low 6 bits of every observed
-    /// TT data address and finds zero traffic at the pad offsets — but a test
-    /// is what keeps it true.)
+    /// The "never straddles a cache line" claim is TWO claims:
+    /// `align_of::<Cluster>() == 32` is a *type* fact (const-asserted above);
+    /// the `Vec<Cluster>` base being 32-aligned is an *allocator* fact that
+    /// only this test checks — if it slipped, every probe would silently
+    /// cost two lines.
     #[test]
     fn no_cluster_straddles_a_64_byte_cache_line() {
         let tt = TranspositionTable::new(MIN_HASH_MB);
@@ -1247,8 +1116,7 @@ mod tests {
     // --- §5 hashfull, resize, clear ---------------------------------------------
 
     /// A key that lands in cluster `i` of an `n`-cluster table, with its
-    /// low 16 bits (the tag) forced to `tag`. Verified against `mul_hi64`
-    /// by the caller's writes hitting the intended clusters.
+    /// low 16 bits (the tag) forced to `tag`.
     fn key_for_cluster(i: u64, n: u64, tag: u16) -> Key {
         let base = ((u128::from(i) << 64) / u128::from(n)) as u64 + (1 << 32);
         let key = (base & !0xFFFF) | u64::from(tag);
@@ -1257,10 +1125,8 @@ mod tests {
     }
 
     /// Every atomics/`get_mut` path at a miri-tractable scale (1000
-    /// clusters — `hashfull`'s minimum sample). The MiB-scale siblings
-    /// below are `cfg_attr(miri, ignore)`d: constructing 32768+ clusters
-    /// takes minutes under the interpreter's borrow tracking, and the
-    /// aliasing/atomics surface it would check is identical here.
+    /// clusters — `hashfull`'s minimum sample); the MiB-scale siblings are
+    /// `cfg_attr(miri, ignore)`d and their atomics surface is identical.
     #[test]
     fn small_table_lifecycle_exercises_all_paths() {
         let mut tt = TranspositionTable::with_cluster_count(1000);
@@ -1352,9 +1218,8 @@ mod tests {
     #[ignore = "allocates 1 GiB; run manually in release: \
                 cargo test --release -- --ignored resize_1024_mb"]
     fn resize_1024_mb_uses_all_requested_memory() {
-        // Doc 08 §8 criterion 5: resize honors sizes up to at least
-        // 1024 MB, cluster count exactly MB*2^20/32 (no power-of-two
-        // rounding), and the far end of the table is usable.
+        // Doc 08 §8 criterion 5: resize honors sizes up to at least 1024 MB
+        // and the far end of the table is usable.
         let mut tt = TranspositionTable::new(MIN_HASH_MB);
         let got = tt.resize(1024);
         assert_eq!(got, 1024);
@@ -1373,10 +1238,8 @@ mod tests {
                 cargo test --release --no-run, then \
                 bash -c 'ulimit -v 2097152; <test-binary> --ignored resize_absurd'"]
     fn resize_absurd_request_falls_back_without_abort() {
-        // Doc 08 §5 allocation-failure contract / §8 criterion 5: an
-        // unsatisfiable mid-session resize NEVER aborts the process — it
-        // falls back through halved sizes, reports the achieved size, and
-        // leaves a usable table.
+        // Doc 08 §5: an unsatisfiable mid-session resize NEVER aborts — it
+        // falls back through halved sizes and leaves a usable table.
         let mut tt = TranspositionTable::new(MIN_HASH_MB);
         let request = 8 * 1024 * 1024; // 8 TiB in MB, well under MAX_HASH_MB
         let got = tt.resize(request);
@@ -1424,8 +1287,7 @@ mod tests {
 
     #[test]
     fn prefetch_is_callable_for_any_key() {
-        // The hint must be harmless for every key (including keys computed
-        // speculatively from wrong predictions) and on tiny tables. Also
+        // The hint must be harmless for every key and on tiny tables; also
         // the one path miri walks through the module's single unsafe block.
         let tt = TranspositionTable::with_cluster_count(1);
         for key in [0u64, 1, u64::MAX, 0xDEAD_BEEF] {
@@ -1446,10 +1308,8 @@ mod tests {
     )]
     fn concurrency_smoke_probe_write_penalize() {
         // Doc 08 §5 / §8 criterion 4: 4 threads hammer probe/write/penalize
-        // on a 1 MB table with overlapping keys for ~1 s. Passes if nothing
-        // panics and every decoded TtData is structurally sane. Asserts
-        // crash-freedom, NOT consistency — mixed-writer reads are the
-        // documented §3.5 contract, absorbed by consumer validation.
+        // with overlapping keys for ~1 s. Asserts crash-freedom and
+        // structural sanity, NOT consistency (the §3.5 contract).
         use std::time::{Duration, Instant};
         let tt = TranspositionTable::new(MIN_HASH_MB);
         tt.new_search();
@@ -1471,10 +1331,7 @@ mod tests {
                             let key = keys[(r & 511) as usize];
                             tt.prefetch(key);
                             let probe = tt.probe(key);
-                            // Structural sanity: depth decodes into
-                            // DEPTH_NONE..=DEPTH_NONE+255 and the bound
-                            // byte into a real Bound no matter how many
-                            // writers the fields mix.
+                            // Structural sanity, whatever the fields mix.
                             assert!(probe.data.depth >= DEPTH_NONE);
                             assert!(probe.data.depth <= DEPTH_NONE + 255);
                             let _: Bound = probe.data.bound;
@@ -1519,11 +1376,8 @@ mod tests {
     #[ignore = "timing microbenchmark (D14a measurement); run manually: \
                 cargo test --release -- --ignored prefetch_microbenchmark --nocapture"]
     fn prefetch_microbenchmark() {
-        // The doc 14 §3.4 cold-probe shape: uniform-random probes over a
-        // table far beyond LLC, without vs with `prefetch` issued DIST
-        // keys ahead. Records the D14(a) measured justification quoted on
-        // the `prefetch` doc comment; the search-integrated bench-nps
-        // delta is re-measured at doc 08 §4 step 7.
+        // Uniform-random probes over a table far beyond LLC, without vs with
+        // `prefetch` issued DIST keys ahead.
         use std::hint::black_box;
         use std::time::Instant;
         let tt = TranspositionTable::new(256);

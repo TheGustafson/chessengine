@@ -1,38 +1,23 @@
-//! NNUE inference (design/11 §3.4) — the Phase C evaluation path.
+//! NNUE inference (design/11 §3.4): the CENN network container ([`loader`]),
+//! the perspective feature transformer and its incremental accumulator
+//! ([`accumulator`]), and the quantized SCReLU/CReLU forward pass ([`simd`]).
 //!
-//! **Scope (P13 step 1).** This is the *inference skeleton*: the quantized
-//! network container (CENN, [`loader`]), the perspective feature transformer
-//! and its incremental accumulator ([`accumulator`]), and a SCALAR quantized
-//! SCReLU/CReLU forward pass ([`simd`]). It is purely additive — the active
-//! evaluation (`eval::evaluate`) still returns the PSQT value; the NNUE
-//! forward pass is exercised only by tests and the `nnue-eval` dev
-//! subcommand. Wiring NNUE in as the eval, the AVX2 backend, and a trained
-//! net all land in later steps (design/11 §11).
+//! **Architecture** (`768 → 2×L1 → 1`, single perspective pair): 768 sparse
+//! binary inputs (`2 colors × 6 piece types × 64 squares`) feed a shared
+//! feature transformer producing two [`L1`]-wide accumulators. The output
+//! layer concatenates the two activated accumulators — **side-to-move half
+//! first** — and dots with the output weights (§3.4.1).
 //!
-//! **Architecture** (`768 → 2×256 → 1`, single perspective pair, SCReLU):
-//! 768 sparse binary inputs (`2 colors × 6 piece types × 64 squares`) feed a
-//! shared feature transformer producing two [`L1`]-wide accumulators (one per
-//! perspective). The output layer concatenates the two activated
-//! accumulators — **side-to-move half first** — and dots with the output
-//! weights (design/11 §3.4.1).
-//!
-//! **Quantization** (bullet-standard, design/11 §3.4.3): feature-transformer
-//! weights and bias scaled by [`QA`], output weights by [`QB`], centipawn
-//! output by [`SCALE`]. The scalar forward accumulates in `i64` and is the
-//! bit-exact reference the future AVX2 path (step 2) must match.
+//! **Quantization** (bullet-standard, §3.4.3): FT weights/bias scaled by
+//! [`QA`], output weights by [`QB`], centipawn output by [`SCALE`].
 
 pub mod accumulator;
-/// Cache-line-aligned heap slices for the weight tables (perf study 20 §5).
+/// Cache-line-aligned heap slices for the weight tables.
 #[cfg(feature = "sota")]
 pub mod aligned;
-/// Perf study 29's exact accumulator load census — instrumentation only,
-/// compiled out unless `--features foldcount`.
-#[cfg(feature = "foldcount")]
-pub mod foldcount;
 pub mod loader;
 pub mod network;
-/// D47 deployed policy head (CPL1 sidecar + selected-row scorer) — needs the
-/// sota trunk for its activation type.
+/// D47 deployed policy head (CPL1 sidecar + selected-row scorer).
 #[cfg(feature = "sota")]
 pub mod policy_head;
 pub mod policy_vocab;
@@ -43,32 +28,25 @@ pub mod simd;
 /// Exact HalfKAv2_hm plus the protected classic SCReLU head (CENN-v3).
 #[cfg(feature = "sota")]
 pub mod simple_halfka;
-/// Perf study 49's known-answer stall injector — DIAGNOSTIC ONLY.
-#[cfg(feature = "skidprobe")]
-mod skidprobe;
 /// Incremental HalfKA stack and Finny cache for the SOTA net.
 #[cfg(feature = "sota")]
 mod sota_accumulator;
-/// Per-thread SOTA eval context: accumulators + head forward (design/11 §12) —
-/// behind `sota`.
+/// Per-thread SOTA eval context: accumulators + head forward (design/11 §12).
 #[cfg(feature = "sota")]
 pub mod sota_context;
-/// The SOTA net's SF feature front-end (HalfKAv2_hm + FullThreats index math +
-/// from-scratch accumulator refresh, D40, design/11 §12.1-12.2) — behind `sota`.
+/// The SOTA net's SF feature front-end (HalfKAv2_hm + FullThreats, D40).
 #[cfg(feature = "sota")]
 pub mod sota_features;
-/// The SOTA net's head forward (D40, design/11 §12) — behind the `sota` feature.
+/// The SOTA net's head forward (D40, design/11 §12).
 #[cfg(feature = "sota")]
 pub mod sota_head;
-/// The CENN-v2 container loader for D40 SOTA nets (design/11 §12.6) — behind
-/// `sota`.
+/// The CENN-v2 container loader for D40 SOTA nets (design/11 §12.6).
 #[cfg(feature = "sota")]
 pub mod sota_loader;
 /// Runtime-dispatched fused accumulator kernels for the SOTA transformers.
 #[cfg(feature = "sota")]
 mod sota_simd;
-/// The SOTA net's incremental FullThreats accumulator (the ≤80/move dirty-diff
-/// observer, D40, design/11 §12.9.1) — behind `sota`.
+/// The SOTA net's incremental FullThreats accumulator (D40, design/11 §12.9.1).
 #[cfg(feature = "sota")]
 pub mod sota_threats;
 
@@ -77,13 +55,10 @@ pub mod sota_threats;
 /// Number of sparse input features: `2 colors × 6 piece types × 64 squares`.
 pub const INPUT: usize = 768;
 
-/// Feature-transformer / accumulator width (the "L1" hidden size). 256 by
-/// default (design/11 §11 locked choice); the `nnue-l1-512` feature widens it to
-/// 512 for the arch-scale experiment (task #19). A build loads only nets of its
-/// own width — the loader checks the CENN header `l1` (`WrongL1`). Everything
-/// downstream (accumulator arrays, AVX2 kernel strides, `PAYLOAD_LEN`) derives
-/// from this const, so 512 is a one-line widening (512 % 16 == 0, so the AVX2
-/// lane assert still holds).
+/// Feature-transformer / accumulator width (the "L1" hidden size), 256 by
+/// default. A build loads only nets of its own width (the loader checks the
+/// CENN header `l1`); everything downstream derives from this const, so the
+/// `nnue-l1-*` features are one-line widenings.
 #[cfg(not(any(
     feature = "nnue-l1-512",
     feature = "nnue-l1-1024",
@@ -156,10 +131,8 @@ pub use loader::{NnueError, load, load_bytes, serialize};
 pub use network::{Activation, Network, feature_index};
 pub use simd::{Aligned64, KERNELS, Kernels};
 
-// `DirtyPiece` is defined in `board` (its data is a board-mutation fact and
-// its constructor reads `Board`'s private castling geometry — design/11
-// §3.4.4 layering note). Re-exported here so the design-doc-facing path
-// `eval::nnue::DirtyPiece` still resolves.
+// `DirtyPiece` is defined in `board` (its constructor reads `Board`'s
+// private castling geometry); re-exported so `eval::nnue::DirtyPiece` resolves.
 pub use crate::board::DirtyPiece;
 
 // --- Active-net registry (design/11 §3.4.5: EvalFile, opt-in) ----------------
@@ -168,14 +141,10 @@ use std::path::PathBuf;
 use std::sync::{Mutex, RwLock};
 use std::time::SystemTime;
 
-/// The process-wide active NNUE net (design/11 §3.4.5). `None` ⇒ NNUE is OFF
-/// and evaluation is PSQT — the default, so the depth-6 bench fingerprint stays
-/// bit-identical. Set via the UCI `EvalFile` option or the `bench` net argument
-/// ([`set_eval_file`]); read once per search at the eval boundary
-/// (`Worker::refresh_eval_net`), never on the hot per-node path. `RwLock` (not
-/// an `AtomicPtr`) keeps the crate `unsafe`-free (D14): a `&'static Network` is
-/// `Send + Sync`, so concurrent worker threads read the same net lock-free
-/// enough (uncontended reader lock, once per `go`).
+/// The process-wide active NNUE net (design/11 §3.4.5). `None` ⇒ NNUE OFF ⇒
+/// PSQT (the default). Set via UCI `EvalFile` or the `bench` net argument;
+/// read once per search at the eval boundary, never on the hot per-node
+/// path. `RwLock` (not `AtomicPtr`) keeps the crate `unsafe`-free (D14).
 static ACTIVE_NET: RwLock<Option<&'static Network>> = RwLock::new(None);
 
 /// Process-wide active SOTA (D40) net. Mirrors [`ACTIVE_NET`] for CENN-v2 files.
@@ -213,15 +182,12 @@ static ACTIVE_PROTECTED_HALFKA_NET: RwLock<
     Option<&'static protected_halfka::ProtectedHalfkaNetwork>,
 > = RwLock::new(None);
 
-/// Identity of the file behind the currently-installed net: canonical path,
-/// size, and mtime. Match runners (fastchess) re-send every configured option
-/// — `EvalFile` included — before EVERY game of a match, and each install
-/// leaks its parsed net to `'static`; without this guard a 300-game match
-/// leaked one full net per game (~78MB for D40) until the OOM killer fired.
-/// A same-file re-send is a no-op; a changed file at the same path (new
-/// size/mtime, e.g. netpack overwrote it) still reloads. `None` mtime means
-/// the filesystem can't report one — such files are never treated as
-/// already-loaded, trading redundant loads for correctness.
+/// Identity (canonical path, size, mtime) of the file behind the installed
+/// net. NOTE: match runners re-send `EvalFile` before EVERY game and each
+/// install leaks its parsed net to `'static` — without this guard a long
+/// match leaks one full net per game until the OOM killer fires. A same-file
+/// re-send is a no-op; a changed file at the same path still reloads. `None`
+/// mtime ⇒ never treated as already-loaded (redundant loads over staleness).
 static LOADED_FILE: Mutex<Option<(PathBuf, u64, Option<SystemTime>)>> = Mutex::new(None);
 
 /// The (canonical path, size, mtime) identity of `path` right now.
@@ -232,16 +198,10 @@ fn file_identity(path: &str) -> Result<(PathBuf, u64, Option<SystemTime>), NnueE
 }
 
 /// Install (or clear) the `EvalFile` net. An empty/blank path turns NNUE OFF
-/// (back to PSQT). Otherwise the file is loaded and fully validated —
-/// unless the exact same file is already the active net, in which case this
-/// is a no-op (see [`LOADED_FILE`]).
-///
-/// With the `sota` feature: the first 4 bytes are peeked — if `b"CEN2"` or
-/// `b"CEN5"` the file is loaded as a D40 SOTA net (clearing any v1 net),
-/// otherwise as a v1
-/// CENN net (clearing any SOTA net). Without the `sota` feature: only v1 CENN
-/// is accepted. Loader errors are returned for a clean UCI `info string`; this
-/// never panics on a user-supplied file (CLAUDE.md).
+/// (back to PSQT); a file already active is a no-op (see [`LOADED_FILE`]).
+/// With `sota`, the peeked magic bytes route to the right loader (installing
+/// a SOTA net clears the v1 slot and vice versa). Loader errors are returned
+/// for a clean UCI `info string`; never panics on a user-supplied file.
 pub fn set_eval_file(path: &str) -> Result<(), NnueError> {
     if path.trim().is_empty() {
         *ACTIVE_NET.write().unwrap_or_else(|e| e.into_inner()) = None;
@@ -271,9 +231,8 @@ pub fn set_eval_file(path: &str) -> Result<(), NnueError> {
     }
 
     let result = install_eval_file(path);
-    // A failed install may leave the slots partially cleared (pre-existing
-    // contract: the error is reported and play continues) — drop the cached
-    // identity so the next call always does a real load.
+    // A failed install may leave the slots partially cleared — drop the
+    // cached identity so the next call always does a real load.
     *LOADED_FILE.lock().unwrap_or_else(|e| e.into_inner()) = match &result {
         Ok(()) if identity.2.is_some() => Some(identity),
         _ => None,
@@ -297,16 +256,14 @@ fn install_eval_file(path: &str) -> Result<(), NnueError> {
                     e.to_string(),
                 ))
             })?;
-            // EXP-UNC-1: attach the optional value-uncertainty head (D40_UNC_HEAD
-            // sidecar) before leaking. No-op when the env is unset → bit-identical.
+            // Attach the optional sidecar heads (uncertainty, WDL) before
+            // leaking; no-op when unset → bit-identical.
             sota_loader::load_uncertainty_sidecar(&mut net.head);
-            // D41 rich-net: attach the optional co-trained WDL head (D40_WDL_HEAD
-            // sidecar). No-op when unset → bit-identical; not in the CENN.
             sota_loader::load_wdl_sidecar(&mut net.head);
             let leaked: &'static sota_loader::SotaNetwork = Box::leak(Box::new(net));
             *ACTIVE_SOTA_NET.write().unwrap_or_else(|e| e.into_inner()) = Some(leaked);
-            // D47: auto-load the CPL1 policy sidecar sitting beside the CENN
-            // (`x.cenn` -> `x.cpol`). Absent => None => classical ordering.
+            // Auto-load the CPL1 policy sidecar beside the CENN; absent =>
+            // None => classical ordering.
             *ACTIVE_POLICY_HEAD
                 .write()
                 .unwrap_or_else(|e| e.into_inner()) =
@@ -382,26 +339,10 @@ fn install_eval_file(path: &str) -> Result<(), NnueError> {
     }
 }
 
-/// The active v1 net, or `None` when NNUE is off (⇒ PSQT). Read at each search's
-/// eval boundary and handed to the per-thread [`NnueContext`].
-///
-/// With the `embed-net` feature (distribution builds), an explicit `EvalFile`
-/// still wins, but when none is set the compile-time-embedded default net is
-/// used instead of falling back to PSQT — so the engine plays NNUE out of the
-/// box for GUIs that can't set UCI string options. The default build (no
-/// `embed-net`) ignores this entirely and stays PSQT/bench-neutral (548978).
 /// Which evaluator a `go` will actually use, as a short human-readable tag.
-///
-/// Exists because a net that fails to load is INVISIBLE. `setoption name
-/// EvalFile` can leave the engine on PSQT with no error -- a build without
-/// `sota,arch-d47v` cannot read a CEN2 net at all -- and a PSQT search
-/// produces entirely plausible numbers. That silence invalidated two full
-/// days of measurement on 2026-07-27 before anyone noticed, because nothing
-/// in the output distinguishes "NNUE" from "PSQT".
-///
-/// The UCI layer reports this on every `EvalFile` set and at the start of
-/// every search, so no harness has to infer it and no result can be
-/// attributed to the wrong evaluator.
+/// Exists because a failed net load is INVISIBLE — a PSQT search produces
+/// entirely plausible numbers — so the UCI layer reports this on every
+/// `EvalFile` set and at the start of every search.
 pub fn active_eval_kind() -> &'static str {
     #[cfg(feature = "sota")]
     {
@@ -421,13 +362,14 @@ pub fn active_eval_kind() -> &'static str {
     "PSQT"
 }
 
+/// The active v1 net, or `None` when NNUE is off (⇒ PSQT). With `embed-net`,
+/// an explicit `EvalFile` still wins, but when none is set the embedded
+/// default net is used instead of falling back to PSQT.
 pub fn active_net() -> Option<&'static Network> {
     let from_eval_file = *ACTIVE_NET.read().unwrap_or_else(|e| e.into_inner());
-    // ONE `ARCHON_EMBED_NET`, resolved by the build's features. On a `sota`
-    // build those bytes are a CENN v5 sota net, and handing them to the v1
-    // loader panics — which is exactly what a `sota,embed-net` build did before
-    // this guard: `embedded_net()` ran first and killed the search thread. The
-    // sota fallback lives in `active_sota_net()`; this one is for v1-only builds.
+    // On a `sota` build the embedded bytes are a sota net and the v1 loader
+    // would panic on them; the sota fallback lives in `active_sota_net()` —
+    // this one is for v1-only builds.
     #[cfg(all(feature = "embed-net", not(feature = "sota")))]
     {
         return from_eval_file.or_else(|| Some(embedded_net()));
@@ -437,12 +379,8 @@ pub fn active_net() -> Option<&'static Network> {
 }
 
 /// The active D40 SOTA net, or `None`. Read at each search's eval boundary.
-///
-/// With `embed-net`, an explicit `EvalFile` still wins, but when none is set the
-/// compile-time-embedded net is used instead of silently falling back to PSQT.
-/// `embed-net` previously covered only the v1 path (`active_net`), so a
-/// `sota` + `embed-net` build embedded bytes it then never consulted and played
-/// PSQT — the exact silent-PSQT failure `active_eval_kind` exists to catch.
+/// With `embed-net`, an explicit `EvalFile` still wins, but when none is set
+/// the embedded net is used instead of silently falling back to PSQT.
 #[cfg(feature = "sota")]
 pub fn active_sota_net() -> Option<&'static sota_loader::SotaNetwork> {
     let from_eval_file = *ACTIVE_SOTA_NET.read().unwrap_or_else(|e| e.into_inner());
@@ -454,14 +392,10 @@ pub fn active_sota_net() -> Option<&'static sota_loader::SotaNetwork> {
     from_eval_file
 }
 
-/// The compile-time-embedded SOTA net. Mirrors `embedded_net`, reading the same
-/// `ARCHON_EMBED_NET` path, so one env var serves both formats and the build
-/// cannot end up with a v1 net embedded and a sota net expected.
-///
-/// Panics on a net whose architecture does not match the build's cargo
-/// features. That is deliberate: the alternative is a binary that silently
-/// evaluates with PSQT, which is indistinguishable from a working engine in
-/// every output it produces.
+/// The compile-time-embedded SOTA net; reads the same `ARCHON_EMBED_NET`
+/// path as `embedded_net`, so one env var serves both formats. Panics on an
+/// arch mismatch — deliberate: the alternative is a binary that silently
+/// evaluates with PSQT.
 #[cfg(all(feature = "sota", feature = "embed-net"))]
 fn embedded_sota_net() -> &'static sota_loader::SotaNetwork {
     use std::sync::OnceLock;
@@ -497,19 +431,12 @@ pub fn active_protected_halfka_net() -> Option<&'static protected_halfka::Protec
         .unwrap_or_else(|e| e.into_inner())
 }
 
-/// The smallnet-gate cheap net (perf study #3 item #8), or `None` when the gate
-/// is off. Env-driven — `ARCHON_SMALLNET` is a CENN-v2 path, typically a
-/// HalfKA-only net — and loaded once, lazily, into a leaked `'static` (a single
-/// load, not the per-game leak [`set_eval_file`] guards against, because the
-/// `OnceLock` loads exactly once). `None` (env unset, blank, or an unreadable /
-/// invalid file) ⇒ the gate is inert and the D40 eval is bit-identical to today
-/// (sota bench 147691). Read once per search when a [`sota_context::SotaContext`]
-/// is built (the eval boundary), never on the hot per-node path.
-///
-/// Only the cheap net's HalfKA channel is consumed — its FullThreats channel is
-/// never built, which IS the speed win — so ANY CENN-v2 net works here (a
-/// HalfKA-only net is simply the cheapest, and a full net doubles as a stand-in
-/// for smoke-testing the gate plumbing before a dedicated cheap net is trained).
+/// The smallnet-gate cheap net, or `None` when the gate is off. Env-driven
+/// (`ARCHON_SMALLNET`, a CENN-v2 path) and loaded once, lazily, into a
+/// leaked `'static`. `None` (unset/blank/bad file) ⇒ the gate is inert and
+/// the D40 eval is bit-identical. Read once per search, never per node.
+/// Only the cheap net's HalfKA channel is consumed — its FullThreats channel
+/// is never built, which IS the speed win — so ANY CENN-v2 net works here.
 #[cfg(feature = "sota")]
 pub fn active_smallnet() -> Option<&'static sota_loader::SotaNetwork> {
     use std::sync::OnceLock;
@@ -525,18 +452,11 @@ pub fn active_smallnet() -> Option<&'static sota_loader::SotaNetwork> {
     })
 }
 
-/// The t-shirt gate's LARGE-tier net (S/M/L adaptive eval routing). A full-feature
-/// CENN-v2 net run ONLY on CRITICAL positions — the ones the MEDIUM net is least
-/// sure about (its EXP-UNC-1 σ̂ ≥ `ARCHON_LARGENET_SIGMA`) — spending extra eval
-/// accuracy where it matters most. Env-driven (`ARCHON_LARGENET`), loaded once,
-/// lazily, leaked. `None` (unset/blank/bad file) ⇒ no large tier ⇒ bit-identical.
-///
-/// NOTE (honest): a large tier only pays off if this net is genuinely MORE
-/// ACCURATE than the medium net. Our one-box results say width is saturated and
-/// eval is data-limited (`training-methods-study` / `sf16-gap-diagnosis`), so a
-/// same-data wider net will NOT help — the tier's real value is as the deployment
-/// vehicle for a beyond-SF16 fleet net or an ensemble. This is the routing
-/// mechanism; the accuracy must come from the net itself.
+/// The t-shirt gate's LARGE-tier net (S/M/L adaptive eval routing): a
+/// full-feature CENN-v2 net run ONLY on positions the MEDIUM net is least
+/// sure about (σ̂ ≥ `ARCHON_LARGENET_SIGMA`). Env-driven (`ARCHON_LARGENET`),
+/// loaded once, lazily, leaked; `None` ⇒ no large tier ⇒ bit-identical.
+/// This is the routing mechanism only — the accuracy must come from the net.
 #[cfg(feature = "sota")]
 pub fn active_largenet() -> Option<&'static sota_loader::SotaNetwork> {
     use std::sync::OnceLock;
@@ -552,16 +472,11 @@ pub fn active_largenet() -> Option<&'static sota_loader::SotaNetwork> {
     })
 }
 
-/// The compile-time-embedded default net (distribution builds only, `embed-net`
-/// feature). Loaded and leaked once. The bytes are a build asset validated at
-/// build time, so a load failure is a broken build — not user input — hence the
-/// `expect`. Read once per search (never on the hot path), same as [`active_net`].
-///
-/// The net to embed is chosen at BUILD time: set `ARCHON_EMBED_NET` to a
-/// v1 CENN path relative to the crate root (its width must match the
-/// build's `nnue-l1-*` feature, or the expect fires on first use). The
-/// variable is required whenever `embed-net` is on — an explicit choice
-/// beats a stale hardcoded default now that multiple widths ship.
+/// The compile-time-embedded default net (`embed-net` builds), loaded and
+/// leaked once. The bytes are a build asset, so a load failure is a broken
+/// build — hence the `expect`. `ARCHON_EMBED_NET` (crate-root-relative path,
+/// width matching the build's `nnue-l1-*` feature) picks the net at BUILD
+/// time and is required whenever `embed-net` is on.
 #[cfg(all(feature = "embed-net", not(feature = "sota")))]
 fn embedded_net() -> &'static Network {
     use std::sync::OnceLock;

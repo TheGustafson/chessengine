@@ -48,8 +48,7 @@ impl PieceType {
         }
     }
 
-    /// Exchange (SEE) value of this piece type; see [`PIECE_VALUES`]
-    /// (design/02-core-types.md §3.9, D11).
+    /// Exchange (SEE) value of this piece type; see [`PIECE_VALUES`].
     pub const fn value(self) -> Value {
         PIECE_VALUES[self as usize]
     }
@@ -73,8 +72,7 @@ impl Color {
         }
     }
 
-    /// The forward pawn-push direction for this color
-    /// (design/02-core-types.md §3.4).
+    /// The forward pawn-push direction for this color.
     pub const fn pawn_push(self) -> Direction {
         match self {
             Color::White => Direction::North,
@@ -97,12 +95,8 @@ impl Piece {
         Piece { color, piece_type }
     }
 
-    /// Flat table index: White P,N,B,R,Q,K = 0..6, Black P..K = 6..12.
-    ///
-    /// Storage stays `[[Bitboard; 6]; 2]` (D4); this projection exists for
-    /// piece-indexed tables (capture/continuation history, NNUE features
-    /// later). We deliberately do NOT adopt Stockfish's 16-slot packed
-    /// piece — `[T; 12]` tables are denser (design/02-core-types.md §3.6).
+    /// Flat table index: White P..K = 0..6, Black P..K = 6..12. Deliberately
+    /// NOT Stockfish's 16-slot packed piece: `[T; 12]` tables are denser.
     pub const fn index(self) -> usize {
         self.color as usize * PieceType::COUNT + self.piece_type as usize
     }
@@ -238,31 +232,10 @@ impl Square {
         self.index
     }
 
-    /// The square as a **table subscript** — the same number as
-    /// `index() as usize`, but carrying the `< 64` range proof that a `u8`
-    /// does not.
-    ///
-    /// # Why this exists (perf study 56, mechanism B)
-    ///
-    /// [`Self::index`] returns a `u8`, so `sq.index() as usize` is provably
-    /// `< 256` and nothing more. Every `[T; 64]` in the engine subscripted by
-    /// it — the mailbox, `ZOBRIST.psq`'s inner axis, every leaper and geometry
-    /// table, the castling-rights mask, the magic table — therefore compiled to
-    /// a `cmp $0x40` / `jae panic_bounds_check` pair on the hot path that can
-    /// never be taken, because [`Square::new`] asserts `index < 64` in release
-    /// too. A census of the shipped binary (`tools/perf56/sites56.py`) found
-    /// this one spelling responsible for the largest family of unfoldable
-    /// bounds checks in ARCHON.
-    ///
-    /// `& 63` states the invariant where the optimizer can use it. **It is the
-    /// identity on every value a `Square` can hold**, so this is a no-op
-    /// semantically and a bounds-check deletion in codegen — the same trick
-    /// `movepick.rs` carries as `BUF_MASK` (perf study 55) and `attacks.rs` as
-    /// `TABLE_MASK` (perf study 53), applied at the type that feeds them all.
-    ///
-    /// Use this at subscript positions; keep [`Self::index`] for arithmetic,
-    /// comparisons and anything that is not an array index, where the mask
-    /// would be pure cost.
+    /// The square as a **table subscript**: `& 63` states the `< 64` range
+    /// proof where the optimizer can use it, deleting the bounds check on
+    /// every `[T; 64]` lookup (the mask is the identity on every `Square`).
+    /// Use at subscripts; keep [`Self::index`] for arithmetic.
     #[inline]
     pub const fn idx(self) -> usize {
         self.index as usize & (Self::COUNT - 1)
@@ -323,15 +296,11 @@ impl FromStr for Square {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Direction and Square arithmetic (design/02-core-types.md §3.4)
-// ---------------------------------------------------------------------------
+// --- Direction and Square arithmetic ---------------------------------------
 
-/// A one-square step, encoded as the board-index delta (a1 = 0 mapping, D3).
-///
-/// Knight steps (±17, ±15, ±10, ±6) are deliberately NOT `Direction`s — they
-/// are raw `i8` step values used only by table builders, which is why
-/// [`Square::try_offset`] takes an `i8`, not a `Direction`.
+/// A one-square step, encoded as the board-index delta. Knight steps are
+/// deliberately NOT `Direction`s — they are raw `i8` step values used only
+/// by table builders, which is why [`Square::try_offset`] takes an `i8`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i8)]
 pub enum Direction {
@@ -375,25 +344,17 @@ impl Square {
         self.rank().abs_diff(other.rank())
     }
 
-    /// Chebyshev distance: king moves between the squares.
-    ///
-    /// The attack-tables doc may later back this with a 64×64 table; this
-    /// `const fn` stays as the reference implementation (design/02 §9.3,
-    /// design/03 §3.4).
+    /// Chebyshev distance: king moves between the squares. The reference
+    /// implementation behind the `attacks::distance` table.
     pub const fn distance(self, other: Square) -> u8 {
         let f = self.file_distance(other);
         let r = self.rank_distance(other);
         if f > r { f } else { r }
     }
 
-    /// Step by a raw index delta. `None` if the destination is off-board OR
-    /// the step wrapped around a board edge (Chebyshev distance > 2).
-    ///
-    /// The single safe primitive for table building (leaper tables, rays,
-    /// between/line). The wrap test is a Chebyshev-distance bound: every
-    /// legitimate single step (queen direction: distance 1; knight or double
-    /// pawn push: distance 2) moves at most 2 files/ranks, while any wrap
-    /// jumps at least 6 files (design/02 §3.4).
+    /// Step by a raw index delta; `None` if off-board or wrapped around an
+    /// edge. The single safe primitive for table building. The wrap test is
+    /// a Chebyshev bound: legitimate steps move <= 2 files/ranks, wraps >= 6.
     pub const fn try_offset(self, step: i8) -> Option<Square> {
         let to = self.index() as i8 + step;
         if to < 0 || to >= 64 {
@@ -407,23 +368,16 @@ impl Square {
         }
     }
 
-    /// Step by a [`Direction`]. `None` if off-board or wrapped.
-    ///
-    /// Callers that iterate a slider ray apply this one step at a time, so
-    /// distance per call is always 1 and the wrap bound is never a false
-    /// negative.
+    /// Step by a [`Direction`]. `None` if off-board or wrapped. Slider-ray
+    /// walkers apply this one step at a time, so the wrap bound is never a
+    /// false negative.
     pub const fn shifted(self, d: Direction) -> Option<Square> {
         self.try_offset(d.offset())
     }
 
     /// `self + d` where the CALLER guarantees the destination exists and
-    /// does not wrap (e.g. derived from an already-masked bitboard shift).
-    ///
-    /// Safe Rust, no `unsafe` variant (D14): a range escape still panics via
-    /// `Square::new`'s assert; a file wrap is NOT detected here — that
-    /// caller bug is what the perft suite catches (D24). The relaxation
-    /// policy, should this assert ever show up in a profile, is fixed in
-    /// design/02 §3.4: a `debug_assert!`-only constructor, never `unsafe`.
+    /// does not wrap. Safe Rust (D14): a range escape still panics via
+    /// `Square::new`; a file wrap is a caller bug the perft suite catches.
     pub const fn offset(self, d: Direction) -> Square {
         Square::new((self.index() as i8 + d.offset()) as u8)
     }
@@ -439,38 +393,28 @@ impl Square {
     }
 
     /// The square from `color`'s point of view: identity for White, vertical
-    /// mirror for Black. `E2.relative_to(Black) == E7`.
-    ///
-    /// Exploits `Color::White as u8 == 0`, `Color::Black as u8 == 1`
-    /// (guaranteed by the `#[repr(u8)]` enum) — no branches
-    /// (design/02 §3.4).
+    /// mirror for Black (`E2.relative_to(Black) == E7`). Branchless via the
+    /// `#[repr(u8)]` discriminants.
     pub const fn relative_to(self, color: Color) -> Square {
         Square::new(self.index() ^ (color as u8 * 56))
     }
 
-    /// Rank from `color`'s point of view (0 = own back rank). PSQT lookup,
-    /// promotion-rank tests, and pawn-structure code all key off this.
+    /// Rank from `color`'s point of view (0 = own back rank).
     pub const fn relative_rank(self, color: Color) -> u8 {
         self.rank() ^ (color as u8 * 7)
     }
 }
 
-// ---------------------------------------------------------------------------
-// Value: search/eval scores (design/02-core-types.md §3.2, D5)
-// ---------------------------------------------------------------------------
+// --- Value: search/eval scores (design/02 §3.2) -----------------------------
 
-/// A search/eval score. Positive is good for the side to move.
-///
-/// A plain alias, not a newtype (D5): search formulas are dense arithmetic
-/// and newtype ceremony buys little here. All in-search values lie in
-/// `(-VALUE_NONE, VALUE_NONE]` and MUST fit an `i16` — the transposition
-/// table stores `value16`/`eval16` (D19).
+/// A search/eval score; positive is good for the side to move. A plain
+/// alias, not a newtype (D5). All in-search values lie in
+/// `(-VALUE_NONE, VALUE_NONE]` and MUST fit an `i16` (the TT stores i16s).
 pub type Value = i32;
 
 /// The zero score.
 pub const VALUE_ZERO: Value = 0;
-/// The draw score. (The search's ±1 draw dither is applied at the use site
-/// and owned by the search doc, not here.)
+/// The draw score.
 pub const VALUE_DRAW: Value = 0;
 /// Mate at the root: `mate_in(0)`. Every real score is `<=` this.
 pub const VALUE_MATE: Value = 32000;
@@ -482,9 +426,8 @@ pub const VALUE_NONE: Value = 32002;
 // The TT stores values in i16 fields (D19); the sentinels must fit.
 const _: () = assert!(VALUE_NONE <= i16::MAX as i32);
 
-/// Maximum search ply. `usize` because its primary job is sizing arrays
-/// (search stack, ply-indexed tables); cast to `i32` in score arithmetic
-/// (D6). Must stay `<= 252` so the TT's `u8` depth packing holds.
+/// Maximum search ply. `usize` because its primary job is sizing arrays.
+/// Must stay `<= 252` so the TT's `u8` depth packing holds.
 pub const MAX_PLY: usize = 246;
 
 // The number line, positive side (negatives mirror):
@@ -492,26 +435,20 @@ pub const MAX_PLY: usize = 246;
 // 0 ...(normal evals)... 31506 | 31507 ..(TB band).. 31753 | 31754 ..(mate band).. 32000 | 32001 INF | 32002 NONE
 //                VALUE_TB_WIN_IN_MAX_PLY      VALUE_TB      VALUE_MATE_IN_MAX_PLY    VALUE_MATE
 //
-// Nearly every search heuristic gates on "is this score decisive?" —
-// decisive scores must never be pruned, softened, averaged, or corrected.
-// Encoding the bands as ranges makes those gates single comparisons. The TB
-// band exists from day one even with no tablebase probing: it fixes the
-// is_win/is_loss thresholds and the value_from_tt downgrade target, and
-// retrofitting it would shift every threshold (design/02 §3.2).
+// Decisive scores must never be pruned, softened, averaged, or corrected;
+// the bands make those gates single comparisons. The TB band exists from
+// day one (even with no probing) so no threshold ever has to shift.
 
-/// Lower edge of the mate band: `mate_in(MAX_PLY)`, the most distant
-/// representable mate (31754).
+/// Lower edge of the mate band: `mate_in(MAX_PLY)` (31754).
 pub const VALUE_MATE_IN_MAX_PLY: Value = VALUE_MATE - MAX_PLY as Value;
 /// Upper edge of the mated band, mirror of [`VALUE_MATE_IN_MAX_PLY`] (-31754).
 pub const VALUE_MATED_IN_MAX_PLY: Value = -VALUE_MATE_IN_MAX_PLY;
 
-/// Tablebase win at the current node; the TB band sits directly below the
-/// mate band (31753).
+/// Tablebase win at the current node, directly below the mate band (31753).
 pub const VALUE_TB: Value = VALUE_MATE_IN_MAX_PLY - 1;
 /// Lower edge of the TB-win band (31507).
 pub const VALUE_TB_WIN_IN_MAX_PLY: Value = VALUE_TB - MAX_PLY as Value;
-/// Upper edge of the TB-loss band, mirror of [`VALUE_TB_WIN_IN_MAX_PLY`]
-/// (-31507).
+/// Upper edge of the TB-loss band (-31507).
 pub const VALUE_TB_LOSS_IN_MAX_PLY: Value = -VALUE_TB_WIN_IN_MAX_PLY;
 
 /// True iff `v` is a real value and not the [`VALUE_NONE`] sentinel.
@@ -519,11 +456,8 @@ pub const fn is_valid(v: Value) -> bool {
     v != VALUE_NONE
 }
 
-/// TB win or better (includes mates).
-///
-/// Gate semantics: this is "TB-win or better", NOT "mate only" — the narrow
-/// mate-band test is [`is_mate`]. Misreading this corrupts every pruning
-/// gate written later (design/02 §3.2, §8.8).
+/// TB win or better (includes mates) — NOT "mate only"; the narrow
+/// mate-band test is [`is_mate`]. Misreading this corrupts pruning gates.
 pub const fn is_win(v: Value) -> bool {
     debug_assert!(is_valid(v));
     v >= VALUE_TB_WIN_IN_MAX_PLY
@@ -536,8 +470,7 @@ pub const fn is_loss(v: Value) -> bool {
     v <= VALUE_TB_LOSS_IN_MAX_PLY
 }
 
-/// Any decisive score: TB win/loss or better/worse. Callers that mean "any
-/// score search must never soften" use this, not [`is_win`]/[`is_loss`].
+/// Any decisive score — "anything search must never soften".
 pub const fn is_decisive(v: Value) -> bool {
     is_win(v) || is_loss(v)
 }
@@ -554,26 +487,20 @@ pub const fn is_mated(v: Value) -> bool {
     v <= VALUE_MATED_IN_MAX_PLY
 }
 
-/// Score for delivering mate at `ply` plies from the root.
-///
-/// Mate scores are ply-relative from day one (D5): inside the search they
-/// mean "plies from the ROOT". `mate_in(0) == VALUE_MATE`;
-/// `mate_in(MAX_PLY as i32)` is the band edge `VALUE_MATE_IN_MAX_PLY`.
+/// Score for delivering mate at `ply` plies from the ROOT (ply-relative,
+/// D5). `mate_in(0) == VALUE_MATE`; `mate_in(MAX_PLY)` is the band edge.
 pub const fn mate_in(ply: i32) -> Value {
     VALUE_MATE - ply
 }
 
-/// Score for being mated at `ply` plies from the root.
-/// `mated_in(p) == -mate_in(p)`.
+/// Score for being mated at `ply`: `mated_in(p) == -mate_in(p)`.
 pub const fn mated_in(ply: i32) -> Value {
     -VALUE_MATE + ply
 }
 
-/// Root-relative -> node-relative, applied before a TT store.
-///
-/// The TT stores mate/TB scores relative to the CURRENT node, not the root —
-/// otherwise the same position reached at different plies would disagree
-/// (design/02 §3.2; formula per SF `search.cpp`, D20).
+/// Root-relative -> node-relative, applied before a TT store: the TT stores
+/// mate/TB scores relative to the CURRENT node, otherwise the same position
+/// reached at different plies would disagree.
 pub const fn value_to_tt(v: Value, ply: i32) -> Value {
     debug_assert!(is_valid(v));
     if is_win(v) {
@@ -585,15 +512,10 @@ pub const fn value_to_tt(v: Value, ply: i32) -> Value {
     }
 }
 
-/// Node-relative -> root-relative, applied after a TT probe.
-///
-/// Additionally downgrades decisive scores that the 50-move clock has made
-/// unreachable (graph-history interaction): if the mate/TB conversion needs
-/// more plies than remain on the clock, collapse to just below/above the TB
-/// band — `VALUE_TB_WIN_IN_MAX_PLY - 1` (31506) is the highest possible
-/// NON-decisive score, so the stale score still dominates normal evals but
-/// no longer trips the "never prune decisive scores" gates
-/// (design/02 §3.2; formula per SF `search.cpp`, D20).
+/// Node-relative -> root-relative, applied after a TT probe. Downgrades
+/// decisive scores the 50-move clock has made unreachable: collapse to just
+/// outside the TB band — still dominating normal evals, no longer tripping
+/// the "never prune decisive scores" gates.
 pub const fn value_from_tt(v: Value, ply: i32, rule50: i32) -> Value {
     if !is_valid(v) {
         return VALUE_NONE;
@@ -620,47 +542,33 @@ pub const fn value_from_tt(v: Value, ply: i32, rule50: i32) -> Value {
     v
 }
 
-// ---------------------------------------------------------------------------
-// Depth (design/02-core-types.md §3.3, D6)
-// ---------------------------------------------------------------------------
+// --- Depth ------------------------------------------------------------------
 
-/// Remaining search depth in plies. `i32` because sentinels are negative and
-/// depth arithmetic (reductions, extensions) freely goes through zero.
-///
-/// Conventions (design/02 §3.3): a real search never recurses with
-/// depth < 0 (qsearch is entered instead); ply is `usize` when indexing
-/// arrays, `i32` inside value arithmetic, cast at the use site.
+/// Remaining search depth in plies. `i32`: sentinels are negative and depth
+/// arithmetic freely goes through zero. A real search never recurses with
+/// depth < 0 — qsearch is entered instead.
 pub type Depth = i32;
 
 /// Depth of a quiescence-search TT entry.
 pub const DEPTH_QS: Depth = 0;
-/// TT entries written without any search (standalone eval save).
-/// Must compare below every real search depth including `DEPTH_QS`.
+/// TT entries written without any search; below every real depth.
 pub const DEPTH_UNSEARCHED: Depth = -2;
 /// "No depth" marker for empty/invalid TT entries; below `DEPTH_UNSEARCHED`.
 pub const DEPTH_NONE: Depth = -3;
 
-// ---------------------------------------------------------------------------
-// Key: Zobrist hash keys (design/04-position-state.md §3.1, D9)
-// ---------------------------------------------------------------------------
+// --- Key: Zobrist hash keys -------------------------------------------------
 
-/// A Zobrist hash key. The main position hash and the four specialized keys
-/// (pawn/material/minor/non-pawn) are all this alias.
-///
-/// A plain alias, not a newtype — the D5 rationale for [`Value`] applies:
-/// `make_move` is dense XOR arithmetic and newtype ceremony buys nothing.
-/// The tables and folding helpers live in [`crate::zobrist`].
+/// A Zobrist hash key: the main position hash and the four specialized keys
+/// (pawn/material/minor/non-pawn). A plain alias, not a newtype —
+/// `make_move` is dense XOR arithmetic. Tables live in [`crate::zobrist`].
 pub type Key = u64;
 
-// ---------------------------------------------------------------------------
-// SEE piece values (design/02-core-types.md §3.9, D11, D20)
-// ---------------------------------------------------------------------------
+// --- SEE piece values -------------------------------------------------------
 
-// SF-current starting points (D20). Tuning constraint inherited from SF:
-// the values are chosen such that summed non-pawn material uniquely
-// identifies material configurations — `non_pawn_material` doubles as a
-// material signature for eval/time-management heuristics. Any retuning must
-// preserve that property.
+// SF-current starting points (D20). Tuning constraint: summed non-pawn
+// material must uniquely identify material configurations
+// (`non_pawn_material` doubles as a material signature); retuning must
+// preserve that.
 
 /// Exchange (SEE) value of a pawn.
 pub const PAWN_VALUE: Value = 208;
@@ -754,8 +662,7 @@ mod tests {
         assert_eq!(Color::Black.flip(), Color::White);
     }
 
-    /// The (file delta, rank delta) a direction means in coordinate space —
-    /// the reference model the encoded index deltas are checked against.
+    /// The (file delta, rank delta) a direction means in coordinate space.
     fn direction_deltas(d: Direction) -> (i8, i8) {
         match d {
             Direction::North => (0, 1),
@@ -769,10 +676,7 @@ mod tests {
         }
     }
 
-    // Doc 02 §5 item 6: exhaustive 64-square × 8-direction stepping against
-    // the coordinate-space model — catches both wrap and range bugs. Also
-    // pins each Direction discriminant to its coordinate meaning, and checks
-    // the unchecked `offset` agrees with `shifted` wherever a step is valid.
+    // Exhaustive 64×8 stepping vs the coordinate model.
     #[test]
     fn square_shifted_exhaustive_vs_coordinate_model() {
         for d in Direction::ALL {
@@ -792,30 +696,25 @@ mod tests {
                 }
             }
         }
-        // Spot checks pinned by the doc.
         assert_eq!(Square::H4.shifted(Direction::East), None);
         assert_eq!(Square::H4.shifted(Direction::NorthEast), None);
         assert_eq!(Square::A1.shifted(Direction::SouthWest), None);
         assert_eq!(Square::E4.shifted(Direction::North), Some(Square::E5));
-        // Pawn pushes point the right way for each color.
         assert_eq!(Color::White.pawn_push(), Direction::North);
         assert_eq!(Color::Black.pawn_push(), Direction::South);
     }
 
-    // Doc 02 §5 item 7: raw-delta stepping (knight steps, double push, wraps).
     #[test]
     fn square_try_offset_knight_steps_and_wraps() {
         assert_eq!(Square::G1.try_offset(17), Some(Square::H3));
         assert_eq!(Square::H1.try_offset(10), None); // wraps to b3, distance 6
         assert_eq!(Square::A8.try_offset(15), None); // off-board
         assert_eq!(Square::E2.try_offset(16), Some(Square::E4)); // double push
-        // Distance helpers backing the wrap test.
         assert_eq!(Square::A1.distance(Square::H8), 7);
         assert_eq!(Square::H1.file_distance(Square::B3), 6);
         assert_eq!(Square::H1.rank_distance(Square::B3), 2);
     }
 
-    // Doc 02 §5 item 8: XOR coordinate transforms.
     #[test]
     fn square_xor_transforms() {
         assert_eq!(Square::A1.flip_rank(), Square::A8);
@@ -825,21 +724,17 @@ mod tests {
         assert_eq!(Square::E2.relative_rank(Color::White), 1);
         assert_eq!(Square::E2.relative_rank(Color::Black), 6);
         for sq in Square::all() {
-            // Involutions: flipping twice is the identity.
+            // Involutions; White's view is the identity; Black's relative
+            // rank agrees with the vertical mirror.
             assert_eq!(sq.flip_rank().flip_rank(), sq);
             assert_eq!(sq.flip_file().flip_file(), sq);
             assert_eq!(sq.relative_to(Color::Black).relative_to(Color::Black), sq);
-            // White's point of view is the identity everywhere.
             assert_eq!(sq.relative_to(Color::White), sq);
             assert_eq!(sq.relative_rank(Color::White), sq.rank());
-            // Black's relative rank agrees with the vertical mirror.
             assert_eq!(sq.relative_rank(Color::Black), sq.flip_rank().rank());
         }
     }
 
-    // Doc 02 §5 item 1: every derived constant against its literal, plus the
-    // band ordering chain. A transcription error anywhere in the constant
-    // definitions fails here.
     #[test]
     fn value_constant_table() {
         assert_eq!(VALUE_ZERO, 0);
@@ -856,21 +751,17 @@ mod tests {
         assert_eq!(DEPTH_QS, 0);
         assert_eq!(DEPTH_UNSEARCHED, -2);
         assert_eq!(DEPTH_NONE, -3);
-        // Ordering chain: bands nest strictly. Inline `const` blocks are
-        // evaluated at compile time, so these can never even build wrong.
         const {
             assert!(VALUE_TB_WIN_IN_MAX_PLY < VALUE_TB);
             assert!(VALUE_TB < VALUE_MATE_IN_MAX_PLY);
             assert!(VALUE_MATE_IN_MAX_PLY < VALUE_MATE);
             assert!(VALUE_MATE < VALUE_INFINITE);
             assert!(VALUE_INFINITE < VALUE_NONE);
-            // Depth sentinels order below every real depth.
             assert!(DEPTH_NONE < DEPTH_UNSEARCHED);
             assert!(DEPTH_UNSEARCHED < DEPTH_QS);
         }
     }
 
-    // Doc 02 §5 item 2: predicates at the exact band boundaries.
     #[test]
     fn value_predicates_band_edges() {
         assert!(is_valid(VALUE_ZERO));
@@ -884,7 +775,7 @@ mod tests {
         assert!(is_loss(VALUE_TB_LOSS_IN_MAX_PLY));
         assert!(!is_loss(VALUE_TB_LOSS_IN_MAX_PLY + 1));
 
-        // is_mate is the NARROW mate-band test; a TB win is not a mate.
+        // is_mate is the NARROW band: a TB win is a win but not a mate.
         assert!(is_mate(mate_in(MAX_PLY as i32)));
         assert!(!is_mate(VALUE_TB));
         assert!(is_win(VALUE_TB)); // ...but it IS a win.
@@ -892,7 +783,6 @@ mod tests {
         assert!(!is_mated(-VALUE_TB));
         assert!(is_loss(-VALUE_TB));
 
-        // is_decisive is symmetric on +/- values.
         for v in [VALUE_TB_WIN_IN_MAX_PLY, VALUE_TB, VALUE_MATE] {
             assert!(is_decisive(v));
             assert!(is_decisive(-v));
@@ -902,7 +792,6 @@ mod tests {
         assert!(!is_decisive(-1000));
         assert!(!is_decisive(VALUE_TB_WIN_IN_MAX_PLY - 1));
 
-        // Mate arithmetic: band edges and mirror identity.
         assert_eq!(mate_in(0), VALUE_MATE);
         assert_eq!(mate_in(MAX_PLY as i32), VALUE_MATE_IN_MAX_PLY);
         assert_eq!(mated_in(0), -VALUE_MATE);
@@ -912,12 +801,8 @@ mod tests {
         }
     }
 
-    // Doc 02 §5 item 3: TT store/probe round-trips with an unexpired clock.
-    // The decisive test values all have distance-from-root >= 40 so every
-    // ply in the matrix is realistic: a root-relative decisive score with
-    // distance k is only ever stored at plies <= k — value_to_tt ADDS ply,
-    // so storing deeper overshoots the value's own band (see
-    // tt_value_downgrade_rule50 for what happens then).
+    // Round-trips with an unexpired clock; decisive values keep distance
+    // >= 40 so every ply in the matrix is realistic.
     #[test]
     fn tt_value_roundtrip() {
         let values = [
@@ -940,24 +825,19 @@ mod tests {
         }
     }
 
-    // Doc 02 §5 item 4: the 50-move downgrade rule.
     #[test]
     fn tt_value_downgrade_rule50() {
-        // mate_in(10) stored at ply 4 needs 6 more plies of clock than the
-        // 5 remaining (rule50 = 95): collapse to the highest non-decisive
-        // score so it still dominates normal evals without tripping the
-        // decisive-score gates.
+        // mate_in(10) stored at ply 4 needs more clock than the 5 plies
+        // remaining: collapse to the highest non-decisive score.
         assert_eq!(
             value_from_tt(value_to_tt(mate_in(10), 4), 4, 95),
             VALUE_TB_WIN_IN_MAX_PLY - 1
         );
-        // Mirrored loss case.
         assert_eq!(
             value_from_tt(value_to_tt(mated_in(10), 4), 4, 95),
             VALUE_TB_LOSS_IN_MAX_PLY + 1
         );
-        // Stale TB scores (band intact, clock expired) downgrade the same
-        // way: a TB win 5 plies away with only 2 plies of clock left.
+        // Stale TB scores (band intact, clock expired) downgrade the same way.
         assert_eq!(
             value_from_tt(VALUE_TB - 5, 0, 98),
             VALUE_TB_WIN_IN_MAX_PLY - 1
@@ -966,18 +846,14 @@ mod tests {
             value_from_tt(-(VALUE_TB - 5), 0, 98),
             VALUE_TB_LOSS_IN_MAX_PLY + 1
         );
-        // A TB score stored deeper than its own distance escapes into the
-        // mate band and reads back stale via the mate guard (the impossible
-        // combination excluded from tt_value_roundtrip).
+        // A TB score stored deeper than its own distance reads back stale.
         assert_eq!(
             value_from_tt(value_to_tt(VALUE_TB - 5, 40), 40, 0),
             VALUE_TB_WIN_IN_MAX_PLY - 1
         );
-        // The none-sentinel passes through untouched.
         assert_eq!(value_from_tt(VALUE_NONE, 12, 30), VALUE_NONE);
     }
 
-    // Doc 02 §5 item 5: piece values (D11).
     #[test]
     fn piece_values() {
         assert_eq!(PAWN_VALUE, 208);
@@ -985,7 +861,6 @@ mod tests {
         assert_eq!(BISHOP_VALUE, 825);
         assert_eq!(ROOK_VALUE, 1276);
         assert_eq!(QUEEN_VALUE, 2538);
-        // Array, accessor, and individual constants cross-check.
         assert_eq!(PieceType::Pawn.value(), PAWN_VALUE);
         assert_eq!(PieceType::Knight.value(), KNIGHT_VALUE);
         assert_eq!(PieceType::Bishop.value(), BISHOP_VALUE);
@@ -995,7 +870,6 @@ mod tests {
         for pt in PieceType::ALL {
             assert_eq!(pt.value(), PIECE_VALUES[pt as usize]);
         }
-        // Values strictly increase P < N < B < R < Q (compile-time).
         const {
             assert!(PAWN_VALUE < KNIGHT_VALUE);
             assert!(KNIGHT_VALUE < BISHOP_VALUE);
@@ -1004,7 +878,6 @@ mod tests {
         }
     }
 
-    // Doc 02 §5 item 12: flat piece indexing (D4).
     #[test]
     fn piece_index_flat() {
         let mut seen = [false; Piece::COUNT];
@@ -1021,8 +894,7 @@ mod tests {
         assert_eq!(Piece::new(Color::Black, PieceType::King).index(), 11);
     }
 
-    // Doc 02 §8 criterion 6 (the part owned by this step): downstream docs
-    // build const tables and fixed arrays on these primitives.
+    // Downstream code builds const tables and fixed arrays on these.
     #[test]
     fn value_layer_is_const_evaluable() {
         const MATE_AT_ROOT: Value = mate_in(0);

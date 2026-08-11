@@ -1,9 +1,5 @@
-//! Unit tests for [`super`] — the search core.
-//!
-//! Moved out of `mod.rs` on 2026-07-28: they were 4,203 of its 9,380 lines (45%),
-//! which made the actual search unreadable and buried the parts a reader needs.
-//! Nothing here changed — this is the same `mod tests` body, now a file module, so
-//! `use super::*` still resolves to the search module exactly as before.
+//! Unit tests for [`super`] — the search core. A file module, so `use super::*`
+//! resolves to the search module.
 
 use super::*;
 use crate::fen::START_FEN;
@@ -140,13 +136,11 @@ fn voting_infinite_helper_never_wins() {
 fn voting_trusts_a_proven_loss_over_a_fuzzy_incumbent() {
     // A *trusted* (exact, non-bound) proven-loss candidate DOES displace a
     // non-decisive incumbent — SF `get_best_thread`'s `newThreadDecisive`
-    // short-circuit fires for a proven LOSS as well as a proven win. An
-    // exact mated_in(n) is ground truth (its PV is the longest defence),
-    // more reliable than another thread's fuzzy +50 that has not yet seen
-    // the refutation. This is the deliberate reference behaviour, NOT the
-    // (never-finished) `-VALUE_INFINITE` sentinel of `voting_infinite_*`:
-    // that one is blocked by both `is_trusted_decisive`'s `!= -INFINITE`
-    // guard and the vote arm's `!is_loss` guard.
+    // short-circuit fires for a proven LOSS as well as a proven win, since
+    // an exact mated_in(n) is ground truth. Distinct from the
+    // never-finished `-VALUE_INFINITE` sentinel of `voting_infinite_*`,
+    // which is blocked by `is_trusted_decisive`'s `!= -INFINITE` guard AND
+    // the vote arm's `!is_loss` guard.
     let a = mv(Square::E2, Square::E4);
     let b = mv(Square::D2, Square::D4);
     let reports = [
@@ -500,13 +494,12 @@ fn rfp_never_fires_when_beta_is_decisive() {
 #[test]
 fn razoring_drops_a_hopeless_nonpv_node_straight_to_qsearch() {
     // Black is a full queen up; White to move, quiet, not in check, no
-    // captures on the board. With alpha set to the SMALLEST value that
-    // satisfies `eval < alpha - margin` at depth 1 (one cp above the
-    // boundary), a non-PV node skips the full-width search and returns the
-    // qsearch value directly. Because qsearch of a quiet, not-in-check node
-    // with no captures makes ZERO moves and stands pat, `w.nodes == 0`
-    // proves the move loop was never entered and the return is exactly the
-    // stand-pat eval.
+    // captures on the board. With alpha at the SMALLEST value satisfying
+    // `eval < alpha - margin` at depth 1, a non-PV node skips the
+    // full-width search and returns the qsearch value directly. Qsearch of
+    // a quiet, not-in-check node with no captures makes ZERO moves and
+    // stands pat, so `w.nodes == 0` proves the move loop was never entered
+    // and the return is exactly the stand-pat eval.
     let fen = "7k/8/8/3q4/8/8/8/K7 w - - 0 1";
     let mut w = Worker::new(board(fen));
     let tt = test_tt();
@@ -529,10 +522,9 @@ fn razoring_drops_a_hopeless_nonpv_node_straight_to_qsearch() {
 fn razoring_holds_off_one_centipawn_below_its_threshold() {
     // The trigger is exact. With alpha set so `alpha - margin == eval`
     // (one cp below the firing point above), the strict `<` fails and the
-    // node does NOT razor — it enters the move loop and makes real moves
-    // (`w.nodes > 0`). This pins the boundary: a single centipawn on alpha
-    // is the difference between razoring and a full search, proving the
-    // heuristic fires ONLY under its exact condition.
+    // node does NOT razor — it enters the move loop and makes real moves.
+    // A single centipawn on alpha is the difference between razoring and
+    // a full search.
     let fen = "7k/8/8/3q4/8/8/8/K7 w - - 0 1";
     let mut w = Worker::new(board(fen));
     let tt = test_tt();
@@ -555,8 +547,7 @@ fn razoring_never_fires_on_a_pv_node() {
     // The `!PV` guard (SF's "guard against mates being returned"): the
     // same hopeless position, in a window that WOULD razor at a non-PV
     // node, must still be searched at a PV node — dropping a PV line to
-    // qsearch could mask a mate the full search would find. The PV node
-    // enters its move loop (`w.nodes > 0`).
+    // qsearch could mask a mate the full search would find.
     let fen = "7k/8/8/3q4/8/8/8/K7 w - - 0 1";
     let mut w = Worker::new(board(fen));
     let tt = test_tt();
@@ -579,8 +570,7 @@ fn razoring_condition_never_fires_on_a_winning_eval() {
     // Razoring only ever drops a node whose eval is far BELOW alpha. A
     // winning static eval fails the strict `<` test for every alpha at or
     // below it, so the dangerous direction — throwing away a win by
-    // dropping to a shallow qsearch — is structurally impossible. Pure
-    // boundary check over a real (winning, non-mate) eval across depths.
+    // dropping to a shallow qsearch — is structurally impossible.
     let eval = static_eval(&board("7k/8/8/3Q4/8/8/8/K7 w - - 0 1"));
     assert!(!is_decisive(eval), "a queen edge is not a decisive score");
     for depth in 1..=6 {
@@ -595,9 +585,8 @@ fn razoring_condition_never_fires_on_a_winning_eval() {
 fn razoring_active_search_still_finds_the_forced_mate() {
     // Mate-safety with razoring live in the tree (the "decisive nodes"
     // guarantee): KRK mates in mate_in(3). Razoring fires in the losing
-    // side's deeply-negative nodes — dropping them to qsearch — yet the
-    // exact ply-relative mate must still come back along the PV, which the
-    // `!PV` guard keeps off razoring entirely. Mirrors the NMP twin.
+    // side's deeply-negative nodes, yet the exact ply-relative mate must
+    // still come back along the PV, which the `!PV` guard protects.
     let fen = "k7/8/2K5/8/8/8/8/7R w - - 0 1";
     let w = go_depth(fen, 8);
     assert_eq!(
@@ -634,10 +623,10 @@ fn lmp_move_count_matches_the_hand_computed_threshold() {
 
 #[test]
 fn lmp_threshold_grows_with_depth_and_prunes_sooner_when_not_improving() {
-    // Monotone non-decreasing in depth (the quadratic numerator only
-    // grows), and a not-improving node always prunes at or before an
-    // improving one (the divisor is 2 vs 1). The numerator is >= 4, so
-    // the not-improving threshold is STRICTLY smaller at every depth.
+    // Monotone non-decreasing in depth, and a not-improving node always
+    // prunes at or before an improving one (divisor 2 vs 1). The numerator
+    // is >= 4, so the not-improving threshold is STRICTLY smaller at every
+    // depth.
     let mut prev_imp = 0;
     let mut prev_not = 0;
     for d in 1..=32 {
@@ -659,14 +648,12 @@ fn lmp_threshold_grows_with_depth_and_prunes_sooner_when_not_improving() {
 
 #[test]
 fn lmp_caps_a_wide_quiet_nonpv_node_at_the_threshold() {
-    // White is up a knight; there are no captures anywhere, the node is
-    // not in check, and no legal move gives check or lands beside the
-    // black king — so every child is a captureless qsearch that makes
-    // zero moves. `self.nodes` is bumped once per do_move, so it counts
-    // exactly the moves the top node searched. All quiets are SEE-safe
-    // (nothing to lose material to), so item-7 quiet SEE never fires; the
-    // window is pitched to isolate LMP from item-7 PARENT FUTILITY as
-    // well — see below.
+    // White is up a knight; no captures anywhere, not in check, and no
+    // legal move gives check or lands beside the black king — so every
+    // child is a captureless qsearch that makes zero moves and
+    // `self.nodes` counts exactly the moves the top node searched. All
+    // quiets are SEE-safe, so item-7 quiet SEE never fires, and the window
+    // below isolates LMP from item-7 PARENT FUTILITY too.
     let fen = "7k/8/8/8/8/2N5/8/K7 w - - 0 1";
     let mut w = Worker::new(board(fen));
     let tt = test_tt();
@@ -686,10 +673,8 @@ fn lmp_caps_a_wide_quiet_nonpv_node_at_the_threshold() {
     // parent-futility bound `parent_futility_value(eval, no_bestmove=true,
     // lmr_depth=-1, eval>alpha=false) = eval + 61` at this depth, so
     // parent futility stays dormant and LMP alone caps the node. `eval +
-    // 40` is comfortably inside that band; below the depth-1 razoring
-    // margin (765) too. (Pre-item-7 this test used `eval + 400`; parent
-    // futility now prunes there, so the window tightened — the LMP cap
-    // itself is unchanged.)
+    // 40` is comfortably inside that band, and below the depth-1 razoring
+    // margin (765) too.
     let fut = parent_futility_value(eval, true, -1, false);
     let alpha = eval + 40;
     assert!(alpha < fut, "window must keep parent futility dormant");
@@ -729,19 +714,17 @@ fn parent_futility_value_matches_the_hand_computed_bound() {
 
 #[test]
 fn parent_futility_prunes_a_quiet_only_at_or_below_its_margin() {
-    // Same wide-quiet KN-vs-K node as the LMP test: at depth 1 the loop
-    // searches move 1 (fails low, no best move raised), then reaches the
-    // second quiet. Its parent-futility bound is
-    // `parent_futility_value(eval, no_bestmove=true, lmr_depth=-1,
-    // eval>alpha=false) = eval + 61`. The move is pruned iff that bound
-    // `<= alpha`, so the boundary is sharp:
-    //   - alpha = bound - 1: NOT pruned → the second quiet is searched,
-    //     move 3+ are LMP-skipped → exactly 2 nodes.
-    //   - alpha = bound:     pruned, and `best_value` is first lifted to
-    //     the bound → exactly 1 node, and the node returns that bound.
+    // Same wide-quiet KN-vs-K node as the LMP test: at depth 1 move 1 is
+    // searched (fails low, no best move raised), then the second quiet
+    // reaches its parent-futility bound `parent_futility_value(eval,
+    // no_bestmove=true, lmr_depth=-1, eval>alpha=false) = eval + 61`. It
+    // is pruned iff that bound `<= alpha`, so the boundary is sharp:
+    //   - alpha = bound - 1: NOT pruned → second quiet searched, move 3+
+    //     LMP-skipped → exactly 2 nodes.
+    //   - alpha = bound:     pruned, `best_value` first lifted to the
+    //     bound → exactly 1 node, and the node returns that bound.
     // The pruned move is SEE-safe, so this isolates parent futility from
-    // quiet SEE; `!in_check` and the non-decisive eval keep every guard
-    // satisfied.
+    // quiet SEE.
     let fen = "7k/8/8/8/8/2N5/8/K7 w - - 0 1";
     let eval = corrected_eval(&board(fen), None);
     assert!(!is_decisive(eval), "a knight edge is not a decisive score");
@@ -767,16 +750,15 @@ fn parent_futility_prunes_a_quiet_only_at_or_below_its_margin() {
 
 #[test]
 fn quiet_see_pruning_drops_a_hanging_quiet() {
-    // White is boxed by two black rooks (down a rook-plus) with a knight
-    // on a1 whose only two moves are quiets: Nc2 (SEE-safe — the white
-    // king on c1 defends c2, so the black king cannot recapture) and Nb3
-    // (SEE < 0 — it walks into the black king's grasp on c3, undefended).
-    // Nc2 has the higher quiet score (Nb3 carries a threat penalty), so
-    // Nc2 is searched first, fails low, and leaves best_value non-loss
-    // with no best move. Nb3 then reaches the pruning block, where the
-    // window is chosen so parent futility is PROVABLY dormant — leaving
-    // quiet SEE (`-25·max(0,lmr_depth)² = 0` at depth 1) as the only rule
-    // that can drop it. It is SEE < 0, so it is pruned: one node.
+    // White is boxed by two black rooks with a knight on a1 whose only two
+    // moves are quiets: Nc2 (SEE-safe — the white king on c1 defends c2)
+    // and Nb3 (SEE < 0 — undefended in the black king's grasp on c3). Nc2
+    // scores higher (Nb3 carries a threat penalty), so it is searched
+    // first, fails low, and leaves best_value non-loss with no best move.
+    // Nb3 then reaches the pruning block with the window chosen so parent
+    // futility is PROVABLY dormant, leaving quiet SEE
+    // (`-25·max(0,lmr_depth)² = 0` at depth 1) as the only rule that can
+    // drop it: one node.
     let fen = "1r1r4/8/8/8/8/2k5/8/N1K5 w - - 0 1";
     let b = board(fen);
     let legal = all_legal(&b);
@@ -875,13 +857,12 @@ fn continuation_history_pruning_drops_a_distrusted_quiet() {
     // depth 1 move 1 is searched (the `is_loss` fence skips pruning on the
     // first move), then a second quiet reaches the quiet arm. With FRESH
     // histories the combined `cont_history` is −2366, above the bar, so the
-    // gate is dormant and the second quiet is searched — the exact 2-node
-    // parent-futility "below the margin" result. Poking the offset-1/
-    // offset-2 continuation slab (the SENTINEL predecessor frames below the
-    // root, which the ply-1 node reads for both offsets) to a large
-    // negative drives every quiet's
+    // gate is dormant and the second quiet is searched (2 nodes). Poking
+    // the offset-1/offset-2 continuation slab — the SENTINEL predecessor
+    // frames below the root, which the ply-1 node reads for both offsets —
+    // to a large negative drives every quiet's
     // `cont_history = 2·(−8000) + pawnHistory(−1262) = −17262 < −4313·1`,
-    // so the gate fires and the second quiet is pruned outright — 1 node.
+    // so the gate fires and the second quiet is pruned outright (1 node).
     let fen = "7k/8/8/8/8/2N5/8/K7 w - - 0 1";
     let eval = corrected_eval(&board(fen), None);
     assert!(!is_decisive(eval), "a knight edge is not a decisive score");
@@ -928,11 +909,10 @@ fn continuation_history_pruning_preserves_a_forced_mate() {
     use crate::history::StatEntry;
     // Mate-safety with the gate armed as hard as it goes: poke the WHOLE
     // continuation-history table to its most negative bound, so every quiet
-    // the search meets is a maximal pruning candidate. The exact
-    // ply-relative mate must still return. Rd8# is a CHECK — it lives in
-    // the capture/check arm, never the quiet arm this gate guards — and the
-    // deeper mate-suite tests re-run with the gate active cover interior
-    // quiets under the shared `!is_loss(best_value)` fence.
+    // the search meets is a maximal pruning candidate, and the exact
+    // ply-relative mate must still return. Rd8# is a CHECK, so it lives in
+    // the capture/check arm; interior quiets are covered by the deeper
+    // mate-suite tests under the shared `!is_loss(best_value)` fence.
     let fen = "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1";
     let mut w = Worker::new(board(fen));
     w.limits.depth = Some(2);
@@ -1069,18 +1049,16 @@ fn singular_triple_margin_matches_the_hand_computed_margin() {
 
 #[test]
 fn capture_futility_prunes_a_futile_capture_at_its_margin() {
-    // White (Ka6, Na1) is boxed to exactly two legal moves, both captures
-    // of black pawns' guards: Nxb3 (an even trade — the black knight on b3
-    // is pawn-defended, SEE 0) and Nxc2 (an undefended pawn, SEE +208).
-    // Both are SEE-safe, so the capture-SEE gate can NEVER prune either —
-    // isolating capture FUTILITY as the only rule at play. The picker
-    // orders the higher-MVV Nxb3 first: it is searched (its qsearch child
-    // recaptures cxb3, so move 1 costs two nodes) and fails low, leaving
-    // best_value non-loss with no best move. Nxc2 then reaches the capture
-    // branch, where at depth 1 `lmr_depth == -1` and the fresh capture
-    // history is −699, so the futility bound is exactly
-    // `capture_futility_value(static_eval, -1, 208, -699)`. The boundary is
-    // sharp (`futility_value <= alpha`):
+    // White (Ka6, Na1) is boxed to exactly two legal moves, both captures:
+    // Nxb3 (an even trade — the black knight on b3 is pawn-defended, SEE 0)
+    // and Nxc2 (an undefended pawn, SEE +208). Both SEE-safe, so the
+    // capture-SEE gate can NEVER prune either — isolating capture FUTILITY.
+    // The picker orders the higher-MVV Nxb3 first: it is searched (its
+    // qsearch child recaptures cxb3, so move 1 costs two nodes) and fails
+    // low. Nxc2 then reaches the capture branch, where at depth 1
+    // `lmr_depth == -1` and the fresh capture history is −699, so the bound
+    // is exactly `capture_futility_value(static_eval, -1, 208, -699)` and
+    // the boundary (`futility_value <= alpha`) is sharp:
     //   - alpha = bound:     Nxc2 is pruned → 2 nodes (only move 1's pair).
     //   - alpha = bound - 1: Nxc2 is searched → 3 nodes.
     let fen = "kr4r1/8/K7/8/2p5/1n6/2p5/N7 w - - 0 1";
@@ -1133,11 +1111,10 @@ fn capture_futility_prunes_a_futile_capture_at_its_margin() {
 #[test]
 fn capture_pruning_preserves_a_forced_mate() {
     // Mate-safety with capture futility + capture SEE live in a tree full
-    // of captures: the losing side has a queen (h4), so both rooks' capture
-    // moves and the queen's are subject to the capture-pruning gates. The
-    // shared `!is_loss(best_value)` fence keeps them out of the mate band,
-    // so the exact ply-relative mate (Ra8+ …#, mate in two moves) still
-    // returns. Companion to the parent-futility / quiet-SEE mate twin.
+    // of captures: the losing side has a queen (h4), so both rooks' and the
+    // queen's captures are subject to the capture-pruning gates. The shared
+    // `!is_loss(best_value)` fence keeps them out of the mate band, so the
+    // exact ply-relative mate (Ra8+ …#) still returns.
     let fen = "6k1/5ppp/8/8/7q/8/5PPP/R2R2K1 w - - 0 1";
     let w = go_depth(fen, 8);
     assert_eq!(
@@ -1153,7 +1130,6 @@ fn parent_futility_and_quiet_see_preserve_the_forced_mate() {
     // `!is_loss(best_value)` fence and the `!is_decisive(best_value)` /
     // `!is_win(futility_value)` guards keep the shallow quiet prunings out
     // of the mate band, so the exact ply-relative KRK mate still returns.
-    // Mirrors the LMP / NMP / razoring twins on the same fixture.
     let fen = "k7/8/2K5/8/8/8/8/7R w - - 0 1";
     let w = go_depth(fen, 8);
     assert_eq!(
@@ -1200,8 +1176,7 @@ fn lmp_active_search_still_finds_the_forced_mate() {
     // guard keeps the losing side searching every evasion, and quiets are
     // only skipped once a non-loss value stands — so the movecount rule
     // prunes the wide shuffling nodes yet the exact ply-relative mate
-    // still comes back. KRK mates in mate_in(3); mirrors the razoring and
-    // NMP twins on the same fixture.
+    // still comes back. KRK mates in mate_in(3).
     let fen = "k7/8/2K5/8/8/8/8/7R w - - 0 1";
     let w = go_depth(fen, 8);
     assert_eq!(best_score(&w), mate_in(3), "LMP must not corrupt the mate");
@@ -1232,12 +1207,11 @@ fn seed_quiet_ttmove(w: &Worker, tt: &TranspositionTable, ttm: Move) {
 fn nmp_prunes_a_winning_cut_node_via_the_null_search() {
     // White a full queen up, quiet, not in check: the static eval clears
     // the N11 bar `beta - 14·depth - 45·improving + 374`, and after the
-    // pass the opponent (still down a queen) cannot pull the score below
-    // beta — so the null search fails high and NMP returns before any
-    // real move. RFP is vetoed by a quiet ttMove, so NMP is what cuts.
-    // depth 4 ⇒ R = 8 ⇒ the null search runs at depth −4, i.e. straight
+    // pass the opponent cannot pull the score below beta, so the null
+    // search fails high. RFP is vetoed by a quiet ttMove, so NMP is what
+    // cuts. depth 4 ⇒ R = 8 ⇒ the null search runs at depth −4, straight
     // into a capture-free qsearch that makes ZERO moves: `w.nodes == 0`
-    // proves the node returned through the pass, not a real search.
+    // proves the node returned through the pass.
     let fen = "7k/8/8/8/8/8/8/1Q5K w - - 0 1";
     let mut w = Worker::new(board(fen));
     let tt = test_tt();
@@ -1251,12 +1225,11 @@ fn nmp_prunes_a_winning_cut_node_via_the_null_search() {
     assert!(!is_win(eval), "material edge alone is not decisive");
     seed_quiet_ttmove(&w, &tt, Move::normal(Square::B1, Square::B2));
     // A real interior node always has a real parent move (the N11 assert
-    // `no two null moves in a row`); the search_at harness starts on a
+    // `no two null moves in a row`), but the search_at harness starts on a
     // fresh stack whose ply-0 slot is NULL, so install one by hand. The
-    // marker must END on an occupied square — item 21's correction reads
-    // `piece_on((ss-1).current_move.to())`, which in real search always
-    // holds (the child sees the parent's piece on its to-square). A
-    // plausible black parent move landing on the black king (h8).
+    // marker must END on an OCCUPIED square — item 21's correction reads
+    // `piece_on((ss-1).current_move.to())` — hence a black parent move
+    // landing on the black king (h8).
     init_stack(&mut w.stack);
     w.stack[ss(0)].current_move = Move::normal(Square::G8, Square::H8);
     w.nodes = 0;
@@ -1313,9 +1286,9 @@ fn nmp_disabled_below_nmp_min_ply() {
 fn nmp_disabled_without_non_pawn_material() {
     // The primary zugzwang fence (design/10 §5): a side with only pawns
     // must never null-move prune, because passing is exactly the move it
-    // wishes it had. In a K+P endgame the `non_pawn_material(us) != 0`
-    // gate keeps NMP off even when the eval clears the bar and RFP is
-    // vetoed — so the node searches a real move (`w.nodes > 0`). Contrast
+    // wishes it had. The `non_pawn_material(us) != 0` gate keeps NMP off
+    // even when the eval clears the bar and RFP is vetoed, so the node
+    // searches a real move. Contrast
     // `nmp_prunes_a_winning_cut_node_via_the_null_search`, where the same
     // setup WITH a queen prunes to zero nodes.
     let fen = "7k/8/8/8/8/2P1P3/8/K7 w - - 0 1";
@@ -1343,15 +1316,12 @@ fn nmp_disabled_without_non_pawn_material() {
 
 #[test]
 fn nmp_reduces_nodes_in_the_null_only_regime() {
-    // NMP's node-level payoff, isolated from RFP: at depth 10 RFP's
-    // margin (~580) exceeds 400, so a window 400cp below the eval leaves
-    // RFP's `eval - margin >= beta` unsatisfied while NMP's bar
-    // (beta + ~234) is cleared — the regime where NMP fires but RFP does
-    // not. White (a full queen up, non-pawn material present) passes, the
-    // opponent cannot recover, so the null search fails high and prunes.
-    // A control with NMP disabled via the ply floor searches strictly
-    // more nodes. (A direct fixed-depth search bypasses the per-go reset,
-    // so the floor sticks for the whole subtree.)
+    // NMP's node-level payoff, isolated from RFP: at depth 10 RFP's margin
+    // (~580) exceeds 400, so a window 400cp below the eval leaves RFP's
+    // `eval - margin >= beta` unsatisfied while NMP's bar (beta + ~234) is
+    // cleared. The control disables NMP via the ply floor and must search
+    // strictly more nodes. (A direct fixed-depth search bypasses the
+    // per-go reset, so the floor sticks for the whole subtree.)
     let fen = "r3k2r/ppp2ppp/2n5/8/8/2N5/PPP2PPP/R2QK2R w KQkq - 0 1";
     let depth: Depth = 10;
     let eval = static_eval(&board(fen));
@@ -1384,8 +1354,8 @@ fn nmp_active_search_still_finds_the_forced_mate() {
     // Mate-safety with NMP live in the tree: KRK mates in 2 full moves
     // (mate_in(3)). White has a rook (non-pawn material), so NMP fires in
     // the winning-side nodes — yet the exact ply-relative mate must still
-    // come back, never a pass-induced non-mate score. Searched deep
-    // enough (depth 8) that NMP is exercised throughout.
+    // come back, never a pass-induced non-mate score. Depth 8 so NMP is
+    // exercised throughout.
     let fen = "k7/8/2K5/8/8/8/8/7R w - - 0 1";
     let w = go_depth(fen, 8);
     assert_eq!(best_score(&w), mate_in(3), "NMP must not corrupt the mate");
@@ -1396,14 +1366,11 @@ fn nmp_active_search_still_finds_the_forced_mate() {
 #[test]
 fn lmr_shrinks_the_effective_branching_factor() {
     // The payoff of LMR (design/10 §6): reducing late moves collapses the
-    // per-ply effective branching factor from plain PVS's ~6–8 toward
-    // ~2. On a quiet Italian-ish midgame the node count from depth 6 to
-    // depth 8 must grow FAR less than an unreduced tree would — a loose
-    // ceiling (a per-ply EBF of ~3.5, versus LMR's measured ~1.9) that a
-    // mis-signed or mis-scaled reduction (which would fail to prune, or
-    // prune the wrong moves and re-search them all) blows straight past.
-    // Node counts are single-thread deterministic (D24), so this is a
-    // stable regression guard, not a timing test.
+    // per-ply effective branching factor from plain PVS's ~6–8 toward ~2.
+    // The bar is a LOOSE ceiling — a per-ply EBF of ~3.5 against LMR's
+    // measured ~1.9 — that a mis-signed or mis-scaled reduction blows
+    // straight past. Node counts are single-thread deterministic (D24), so
+    // this is a stable regression guard, not a timing test.
     let fen = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 1";
     let n6 = go_depth(fen, 6).nodes;
     let n8 = go_depth(fen, 8).nodes;
@@ -1417,13 +1384,10 @@ fn lmr_shrinks_the_effective_branching_factor() {
 #[test]
 fn lmr_active_deep_search_preserves_the_exact_mate() {
     // Mate safety with LMR reducing the bulk of the tree (the §3.8
-    // `depth >= 2 && move_count > 1` gate fires everywhere at this
-    // depth): the KRK forced mate in 2 full moves (mate_in(3), three
-    // plies) must still come back EXACT at depth 9, never a reduction-
-    // truncated shorter/longer distance. The re-search rules and the
-    // decisive-score guards are what this pins — complementing the
-    // shallow mate suite below (which now also runs under LMR) and the
-    // NMP mate test above.
+    // `depth >= 2 && move_count > 1` gate fires everywhere at this depth):
+    // the KRK forced mate in 2 full moves (mate_in(3), three plies) must
+    // still come back EXACT at depth 9, never a reduction-truncated
+    // distance. Pins the re-search rules and the decisive-score guards.
     let w = go_depth("k7/8/2K5/8/8/8/8/7R w - - 0 1", 9);
     assert_eq!(best_score(&w), mate_in(3), "LMR must not corrupt the mate");
 }
@@ -1522,12 +1486,11 @@ fn back_rank_mate_in_1_found_at_depth_2() {
 fn krk_mate_in_2_exact_score_at_depth_4() {
     // 1.Kb6 (only-move reply Kb8) 2.Rh8#: three plies, no mate in one.
     //
-    // Depth 4, not 3, since aspiration landed (§3.6): the iteration
-    // that first sees the mate fails high and its shallower re-search
-    // (adjusted_depth) legitimately ends the iteration on a non-mate
-    // value — SF-identical dynamics. One more iteration re-scores the
-    // front (mating) move inside a mate-band-widened window and the
-    // exact score sticks. The §8(4) bar is depth <= 6.
+    // Depth 4, not 3, because of aspiration (§3.6): the iteration that
+    // first sees the mate fails high and its shallower re-search
+    // (adjusted_depth) legitimately ends on a non-mate value; one more
+    // iteration re-scores the front move inside a mate-band-widened window
+    // and the exact score sticks. The §8(4) bar is depth <= 6.
     let w = go_depth("k7/8/2K5/8/8/8/8/7R w - - 0 1", 4);
     assert_eq!(best_score(&w), mate_in(3));
     // The PV replays legally from the root position.
@@ -1556,14 +1519,11 @@ fn two_rook_ladder_mate_in_3_exact_at_depth_12() {
     // 1.Rb6+ (rank 5 stays cut by Ra5) K→7th 2.Ra7+ K→8th 3.Rb8#:
     // five plies. The black king starts on g6, too far from the a/b
     // files to ever attack the unprotected checking rooks, and too
-    // free for anything shorter than the ladder. Pre-S1 the proof
-    // landed at depth 6 (five plies + one aspiration settling
-    // iteration); live correction history (S1/D22) shifts proof depth
-    // in PAWNLESS studies — the whole tree shares the pawn/minor
-    // correction cells, so the mate-line's bonuses saturate them and
-    // inflate every sibling's margins — and this position converges to
-    // the exact mate 3 at depth 12 (stable through 14+). Doc 07 §8(4)
-    // carries the amended depth ≤ 12 bar.
+    // free for anything shorter than the ladder. Depth 12, not 6:
+    // live correction history (S1/D22) deepens proof depth in PAWNLESS
+    // studies — the whole tree shares the pawn/minor correction cells,
+    // so the mate-line's bonuses saturate them and inflate every
+    // sibling's margins. Doc 07 §8(4) carries the depth ≤ 12 bar.
     let w = go_depth("8/8/6k1/R7/8/8/8/1R5K w - - 0 1", 12);
     assert_eq!(best_score(&w), mate_in(5));
     assert_eq!(w.root_pv().len(), 5);
@@ -1575,13 +1535,11 @@ fn two_rook_ladder_mate_in_3_exact_at_depth_12() {
 #[test]
 fn mate_suite_1_to_3_exact_scores_and_first_moves() {
     // The §8(4) exit bar in table form: ≥ 10 positions across mates in
-    // 1/2/3, each solved at depth ≤ 12 (the S1 bar — see the two-rook
-    // ladder test for why pawnless proofs deepened) with the exact
-    // ply-relative score AND a verified-optimal first move. Every entry — the mate
-    // distance and the complete optimal-first-move set — was checked
-    // against an exhaustive independent minimax over python-chess
-    // movegen, so a listed move set is exact (a single-element set
-    // means the fastest mate is unique).
+    // 1/2/3, each solved at depth ≤ 12 with the exact ply-relative score
+    // AND a verified-optimal first move. Every entry — mate distance and
+    // the COMPLETE optimal-first-move set — was checked against an
+    // exhaustive independent minimax, so a single-element set means the
+    // fastest mate is unique.
     //
     // (fen, mate distance in plies, all optimal first moves)
     type Entry = (&'static str, i32, &'static [&'static str]);
@@ -1611,14 +1569,10 @@ fn mate_suite_1_to_3_exact_scores_and_first_moves() {
     assert!(SUITE.len() >= 10, "the §8(4) bar is at least 10 positions");
     for &(fen, plies, optimal) in SUITE {
         // Mate-in-1 uses depth 2 so the score comes from a full search
-        // iteration, not bare qsearch (found at depth 1, the mate-band
-        // EMAs keep every later window effectively infinite). Deeper
-        // mates pre-S1 needed the mate distance plus one aspiration
-        // settling iteration; live correction history (S1/D22) shifts
+        // iteration, not bare qsearch. Deeper mates run to the §8(4)
+        // bar of depth ≤ 12: live correction history (S1/D22) deepens
         // proof depth in these pawnless studies (see the two-rook
-        // ladder test), so the §8(4) bar is now depth ≤ 12 — node
-        // counts stay tiny (~5k), the exact-score and optimal-first-
-        // move asserts stay untouched.
+        // ladder test). Node counts stay tiny (~5k).
         let depth = if plies == 1 { 2 } else { 12 };
         let w = go_depth(fen, depth);
         assert_eq!(best_score(&w), mate_in(plies), "score for {fen}");
@@ -1637,15 +1591,12 @@ fn mated_root_reports_the_negative_mate() {
     // mated-side reporting bar).
     //
     // This KQ-vs-K fixture is a worst case for LMP (doc 10 §3.5): FOUR
-    // white queen moves give check (Qa2+/Qb3+/Qc4+ all lie on the
-    // a2–g8 diagonal, plus the mating Qc8+ on rank 8), so they tie on
-    // the check-order bonus and the mating one sorts fourth. At the
-    // white reply node the movecount threshold `(3 + depth²)/2` only
-    // reaches 4 once that node has depth ≥ 3 (root depth ≥ 4), so LMP
-    // prunes Qc8# for one extra iteration — mate_in(2) surfaces from
-    // root depth 4 on. Depth 5 leaves a settling iteration of margin,
-    // like the KRK mate tests; the mate is still exact, LMP only
-    // delayed it (the `!is_loss` guard keeps the mated SIDE searching).
+    // white queen moves give check (Qa2+/Qb3+/Qc4+ on the a2–g8 diagonal
+    // plus the mating Qc8+), so they tie on the check-order bonus and the
+    // mating one sorts fourth. The white reply node's movecount threshold
+    // `(3 + depth²)/2` only reaches 4 at depth ≥ 3 (root depth ≥ 4), so
+    // mate_in(2) surfaces from root depth 4 on; depth 5 leaves a settling
+    // iteration of margin. LMP delays the mate, never corrupts it.
     let w = go_depth("7k/8/6K1/8/8/8/2Q5/8 b - - 0 1", 5);
     assert_eq!(best_score(&w), mated_in(2));
     assert_eq!(w.best_move().unwrap().to_string(), "h8g8");
@@ -1729,10 +1680,10 @@ fn static_eval(b: &Board) -> Value {
 /// sentinel frames below the root supply the stack context. `prev` is
 /// the parent's just-made move for a CHILD fixture (its to-square piece
 /// keys the continuation term); `None` models a root-driven node, where
-/// the null-move flat prior applies instead. CAUTION: with today's fill
-/// values both variants truncate to the same −1cp delta, so a fixture
-/// passing the wrong `prev` would pass by coincidence — pick the
-/// variant that matches the driven node, not the one that works.
+/// the null-move flat prior applies instead. CAUTION: both variants
+/// currently truncate to the same −1cp delta, so a fixture passing the
+/// wrong `prev` passes by coincidence — pick the variant that matches the
+/// driven node, not the one that works.
 fn fresh_cv(b: &Board, prev: Option<Move>) -> i32 {
     let mut w = Worker::new(b.clone());
     init_stack(&mut w.stack);
@@ -1901,14 +1852,13 @@ fn qsearch_evasions_are_searched_while_best_value_is_a_loss() {
 
 #[test]
 fn qsearch_non_capture_skip_drops_quiet_evasions_once_best_value_is_real() {
-    // The positive direction of the §3.8 step-7 non-capture skip (the
-    // §8.8 flip test its evasion-guard sibling above cannot provide):
-    // white is in check with THREE evasions — Rxa1, a clean recapture
-    // that sorts first, and the quiet Kh2/Kg2. The capture's child
-    // value makes best_value real (a rook up, not a loss), so both
-    // quiet evasions are dropped unsearched; disable the skip and all
-    // three run (nodes == 3). The in-check futility block is inert
-    // (futility_base is a loss), so ONLY this rule can skip them.
+    // The positive direction of the §3.8 step-7 non-capture skip (the §8.8
+    // flip test its evasion-guard sibling above cannot provide): white is
+    // in check with THREE evasions — Rxa1, a clean recapture that sorts
+    // first, and the quiet Kh2/Kg2. The capture's child value makes
+    // best_value real, so both quiet evasions are dropped unsearched;
+    // disable the skip and all three run (nodes == 3). The in-check
+    // futility block is inert, so ONLY this rule can skip them.
     let fen = "7k/8/8/R7/8/8/8/r6K w - - 0 1";
     let mut w = Worker::new(board(fen));
     let tt = test_tt();
@@ -2003,14 +1953,10 @@ fn qsearch_stalemate_test_needs_a_preceding_big_capture() {
 
 #[test]
 fn search_is_deterministic_at_fixed_depth() {
-    // Also the dither-determinism gate (§5): both value dithers —
-    // the draw dither and the step-12 equal-value dither — read only
-    // the worker's own made-move counter, so two identical
-    // single-threaded searches replay the same choices node for node
-    // (the release-bench two-run fingerprint in tools/check.sh is the
-    // deep version of this assert). The dither DOES change the bench
-    // number vs the pre-step-10 code — a functional change whose new
-    // count the commit trailer records (D24).
+    // Also the dither-determinism gate (§5): the draw dither reads only
+    // the worker's own made-move counter, so two identical single-threaded
+    // searches replay the same choices node for node. (The release-bench
+    // two-run fingerprint in tools/check.sh is the deep version.)
     let run = || {
         let w = go_depth(START_FEN, 4);
         (w.nodes, best_score(&w), w.best_move())
@@ -2074,11 +2020,10 @@ fn search_nnue_accumulator_stays_consistent_across_the_tree() {
 
         assert!(w.eval_ctx.nnue_active(), "NNUE stayed active for {fen}");
         assert!(w.nodes > 0, "search evaluated nodes for {fen}");
-        // The comment above CLAIMS this tree reaches null moves, and the
-        // null-move ply mapping (`EvalContext::null_plies`, perf study 15
-        // arm 1) is one of the two things this oracle is now the guard for.
-        // Assert it rather than argue it — study 14 §7.1's `has_repeated`
-        // hole was exactly a claimed-but-unexecuted path (D33 reviewer C, T2).
+        // The null-move ply mapping (`EvalContext::null_plies`) is one of
+        // the two things this oracle guards, so ASSERT that the tree
+        // reaches a null move rather than claiming it in prose — a
+        // claimed-but-unexecuted path is how this coverage was lost before.
         assert!(
             w.stats.nmp_try > 0,
             "the tree must contain a null move for {fen} — otherwise the \
@@ -2098,18 +2043,16 @@ fn search_nnue_accumulator_stays_consistent_across_the_tree() {
     }
 }
 
-/// The SOTA twin of the test above, and until perf study 15 it did not exist:
-/// **no test anywhere installed a SOTA net into a `Worker`**, so
+/// The SOTA twin of the test above: it installs a SOTA net into a `Worker` so
 /// `SotaContext::assert_matches_refresh` — the per-node oracle that recomputes
-/// BOTH accumulators and both PSQT channels from scratch and compares — had
-/// never once run inside a search (D33 reviewers A/C, the study's largest test
-/// hole). Every gate that could see the SOTA accumulators was a node-count or
-/// eval-hash SNAPSHOT: it fires only if a mistake happens to perturb the tree.
+/// BOTH accumulators and both PSQT channels from scratch and compares — runs
+/// inside a real search. Every other gate that can see the SOTA accumulators
+/// is a node-count or eval-hash SNAPSHOT, which fires only if a mistake
+/// happens to perturb the tree.
 ///
-/// This is the test that covers perf study 15 arm 1's SOTA half. Mutations it
-/// catches, each verified: `push_sota_dirty` indexing `ply` instead of
-/// `acc_ply(ply)`; `at_full`/`current_full` reading `ply + 1`; re-adding an
-/// EMPTY push in the null-move block; dropping `pop_null`.
+/// Mutations it catches, each verified: `push_sota_dirty` indexing `ply`
+/// instead of `acc_ply(ply)`; `at_full`/`current_full` reading `ply + 1`;
+/// re-adding an EMPTY push in the null-move block; dropping `pop_null`.
 #[cfg(feature = "sota")]
 #[test]
 fn search_sota_accumulator_stays_consistent_across_the_tree() {
@@ -2145,12 +2088,11 @@ fn search_sota_accumulator_stays_consistent_across_the_tree() {
         assert!(w.nodes > 0, "search evaluated nodes for {fen}");
         null_moves += w.stats.nmp_try;
     }
-    // Without a null move somewhere in these trees the oracle never sees the
-    // ply mapping this test exists for — the same measurement-not-argument
-    // rule as its v1 twin. Summed over the loop rather than asserted per
-    // position: `st_nmp_try` is per-search, and whether NMP fires in any ONE
-    // position depends on the synthetic net's eval clearing the NMP margin,
-    // which is not a property this test should pin.
+    // Without a null move somewhere in these trees the oracle never sees
+    // the ply mapping this test exists for. Summed over the loop, not
+    // asserted per position: `st_nmp_try` is per-search, and whether NMP
+    // fires in any ONE position depends on the synthetic net's eval
+    // clearing the NMP margin — not a property this test should pin.
     assert!(
         null_moves > 0,
         "at least one of these trees must contain a null move"
@@ -2247,11 +2189,9 @@ fn ponder_guard_blocks_every_check_time_stop() {
     // already-expired movetime must NOT stop a ponder search. The
     // depth limit (ID-loop condition, not check_time) bounds the test;
     // check_time only does real work every 512 main-node ENTRIES, so the
-    // fixture must have a tree that large. As the pruning suite deepened
-    // (LMP, then the Wave C-G history/threat couplings) the startpos tree
-    // at any small fixed depth kept shrinking below that floor, making
-    // this test flap; kiwipete at depth 5 (~5k nodes) is robustly above
-    // it — the fixture, not the depth, is what the test needs.
+    // FIXTURE must have a tree that large. Kiwipete at depth 5 (~5k nodes)
+    // is robustly above the floor; a startpos tree at small fixed depth
+    // shrinks below it as pruning deepens and makes this test flap.
     const KIWIPETE: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
     let mut w = Worker::new(board(KIWIPETE));
     w.limits.movetime = Some(0); // expired from the first poll
@@ -2306,13 +2246,12 @@ fn clock_time_management_enforces_the_hard_wall() {
 
 #[test]
 fn reported_pvs_replay_legally_under_the_dither() {
-    // Regression (§3.3 freshness): the equal-value dither could
-    // promote a move whose last child call was a zero-window scout
-    // (`value == alpha`, `inc == 1`), stitching an earlier sibling's
-    // stale `pv_table` row into the PV — fastchess flagged the
-    // resulting illegal tails in the P7 clock games. Every reported
-    // PV must replay legally from the root (the fastchess repro
-    // position, depth deep enough for the dither to fire).
+    // Regression (§3.3 freshness): the equal-value dither could promote a
+    // move whose last child call was a zero-window scout (`value == alpha`,
+    // `inc == 1`), stitching an earlier sibling's stale `pv_table` row into
+    // the PV and emitting an ILLEGAL tail. Every reported PV must replay
+    // legally from the root; this is the repro position, at a depth deep
+    // enough for the dither to fire.
     let fen = "rnbqk2r/ppp1bppp/4pn2/3p2B1/2PP4/2N2N2/PP2PPPP/R2QKB1R b KQkq - 5 5";
     let mut w = Worker::new(board(fen));
     w.limits.depth = Some(7);
@@ -2365,13 +2304,13 @@ fn soft_stop_halts_deepening_within_the_budget() {
     // case B provably witnesses the between-iteration SOFT stop, so this
     // test earns its name and does not degenerate into a hard-wall check.
     //
-    // Case A — 60 s clock (optimum ≈ 1.25k, maximum ≈ 8.6k), first move
-    // of the game: `best_previous_average_score` is still the
-    // `VALUE_INFINITE` sentinel, so `fallingEval` clamps high (1.708),
-    // inflating `total_time` ABOVE `maximum`. A deep last iteration then
-    // blows past both budgets in one pass and the hard wall backstops
-    // it — so we only bound the result: past optimum, within maximum
-    // plus one poll cadence (`params::CHECK_TIME_CALLS`).
+    // Case A — 60 s clock (optimum ≈ 1.25k, maximum ≈ 8.6k), first move of
+    // the game: `best_previous_average_score` is still the
+    // `VALUE_INFINITE` sentinel, so `fallingEval` clamps high (1.708) and
+    // `total_time` lands ABOVE `maximum`. A deep last iteration blows past
+    // both budgets in one pass and the hard wall backstops it, so this can
+    // only BOUND the result: past optimum, within maximum plus one poll
+    // cadence (`params::CHECK_TIME_CALLS`).
     let mut w = Worker::new(board(START_FEN));
     w.limits.time[crate::types::Color::White as usize] = 60_000;
     init_clock(&mut w, &nodestime_options());
@@ -2414,12 +2353,11 @@ fn soft_stop_halts_deepening_within_the_budget() {
     assert!(stop.load(Ordering::Relaxed), "the soft stop must fire");
     // A STABLE quiet search legitimately stops BELOW optimum — banking
     // time is the point of the multiplier stack (fe rides its 0.572
-    // floor when the score isn't falling, red < 1 once the best move
-    // has been stable, so total_time ≈ 0.4-0.8 × optimum here; the
-    // 2026-07-26 depth-redenomination made the banking regime reachable
-    // at realistic depths). The multiplier product's theoretical floor
-    // is 0.572·0.637·1.096·0.71 ≈ 0.28, so anything above optimum/4
-    // is a real soft-stop verdict, not a degenerate early exit.
+    // floor when the score isn't falling, red < 1 once the best move has
+    // been stable, so total_time ≈ 0.4-0.8 × optimum here). The
+    // multiplier product's theoretical floor is
+    // 0.572·0.637·1.096·0.71 ≈ 0.28, so anything above optimum/4 is a
+    // real soft-stop verdict, not a degenerate early exit.
     assert!(
         w.nodes as i64 > optimum / 4,
         "soft stop fired degenerately early: {} <= {}",
@@ -2442,11 +2380,9 @@ fn sub_iteration_node_budget_still_completes_iteration_one() {
     // so the `nodes >= 5` hard stop would otherwise fire mid-depth-1
     // with `completed_depth == 0` and salvage only a half-searched root.
     // The `completed_depth == 0` guard (design/12 §3.8, D31) suppresses
-    // every hard stop until iteration 1 has fully completed, guaranteeing
-    // a real, completed bestmove. Without the guard this search returns
-    // an aborted depth-0 result; the assertions below (a completed depth
-    // >= 1 AND a real bestmove) are exactly what the guard buys and what
-    // no other TM test pins.
+    // every hard stop until iteration 1 has fully completed. Without it
+    // this search returns an aborted depth-0 result; the assertions below
+    // are exactly what the guard buys, and no other TM test pins it.
     let mut w = Worker::new(board(START_FEN));
     w.limits.nodes = Some(5);
     assert!(
@@ -2496,8 +2432,8 @@ fn soft_stop_stability_reduction_pins_constants() {
     // time_reduction = lerp(iters, 2,15, 0.65,1.55) clamped [0.65,1.55];
     // reduction = (1.48 + prev) / (2.157 · time_reduction).
     // Window [2,15] = SF's [5,18] shifted down by our measured ~3.3
-    // iteration deficit at equal time (2026-07-26 depth-redenomination;
-    // rationale at params::TIME_REDUCTION_STABILITY_LO).
+    // iteration deficit at equal time (rationale at
+    // params::TIME_REDUCTION_STABILITY_LO).
     let (tr0, red0) = Worker::stability_reduction(0, 0.85); // below lo -> clamp 0.65
     assert!((tr0 - 0.65).abs() < 1e-12);
     assert!((red0 - 1.661_852_287_721_550_7).abs() < 1e-9);
@@ -2520,11 +2456,10 @@ fn tm_reduction_numerator_is_a_per_move_constant() {
     // `previous_time_reduction` is the PREVIOUS MOVE's time_reduction,
     // held CONSTANT for the whole search; only the running
     // `time_reduction` (the denominator, SF's local) is recomputed each
-    // iteration and written back to persist at search END. A regression
-    // that folded the two into one field would overwrite the numerator
-    // mid-search with each iteration's value, inflating the budget on a
-    // stabilizing search — invisible to the pure-function golden test
-    // above, which only ever passes an explicit numerator.
+    // iteration and written back to persist at search END. Folding the two
+    // into one field would overwrite the numerator mid-search and inflate
+    // the budget on a stabilizing search — invisible to the pure-function
+    // golden test above, which always passes an explicit numerator.
     const SEED: f64 = 0.42; // distinctive; never a natural time_reduction
     let mut w = Worker::new(board(START_FEN));
     w.limits.time[crate::types::Color::White as usize] = 600_000;
@@ -2613,12 +2548,12 @@ fn iter_value_ring_is_seeded_per_go_from_persist() {
 
 #[test]
 fn one_legal_reply_caps_the_soft_budget() {
-    // In check with exactly one evasion — the rook block h6a6,
-    // defended by the b7 pawn, so the position after it stays rich
-    // and mate-free and iterations grow normally. 10 min on the fake
-    // clock puts optimum (~16.7k nodes) far above the ~562-node
-    // single-reply cap, so stopping under optimum proves the cap
-    // bound the budget (§3.9's `min(561.7, total_time)`).
+    // In check with exactly one evasion — the rook block h6a6, defended by
+    // the b7 pawn, so the position after it stays rich and mate-free and
+    // iterations grow normally. 10 min on the fake clock puts optimum
+    // (~16.7k nodes) far above the ~562-node single-reply cap, so stopping
+    // under optimum proves the cap bound the budget (§3.9's
+    // `min(561.7, total_time)`).
     const ONE_REPLY: &str = "kr4n1/1p4pp/7r/8/4P3/5N2/5PPP/R6K b - - 0 1";
     let mut w = Worker::new(board(ONE_REPLY));
     w.limits.time[crate::types::Color::Black as usize] = 600_000;
@@ -3003,9 +2938,9 @@ fn aborted_loss_end_to_end_reports_the_last_completed_iteration() {
     // not degrade the report: the front root move carries exactly
     // what the last completed iteration published.
     let fen = "8/8/6k1/R7/8/8/8/1R5K b - - 0 1";
-    // Doc 10's LMR (P9) deepens the tree, so the ladder now first proves
-    // the loss at iteration 10 (was earlier pre-LMR); the probe cap must
-    // leave at least one iteration AFTER that for the abort to land in.
+    // The ladder first proves the loss at iteration 10, and the probe cap
+    // must leave at least one iteration AFTER that for the abort to land
+    // in — raise it if deeper pruning pushes the proof later.
     let max_depth = 12;
     let mut probe = Worker::new(board(fen));
     probe.limits.depth = Some(max_depth);
@@ -3125,12 +3060,10 @@ fn main_search_fail_high_softens_toward_beta() {
     let beta = -e_child - 100; // parent's true value -E sits above it
     let tt = test_tt();
     // The parent's static eval already clears this low beta, so N10 RFP
-    // would short-circuit the node before the move loop and pre-empt the
-    // node-exit soften this test targets. Seed a QUIET ttMove (e4e5) —
-    // the `(!ttMove || ttCapture)` guard vetoes RFP on a quiet ttMove —
-    // so the node searches and reaches the step-14 blend. The eval-only
-    // (VALUE_NONE) entry can neither cut (invalid value) nor change the
-    // eval (invalid eval → real evaluate()), so only the veto is felt.
+    // would short-circuit the node and pre-empt the node-exit soften this
+    // test targets. A QUIET ttMove (e4e5) vetoes RFP through the
+    // `(!ttMove || ttCapture)` guard; the eval-only (VALUE_NONE) entry can
+    // neither cut nor change the eval, so ONLY the veto is felt.
     let key = w.board.key();
     tt.probe(key).writer.write(
         key,
@@ -3170,9 +3103,8 @@ fn main_search_never_softens_a_decisive_fail_high() {
 // asks for: every debug-build search in this suite executes them at
 // every node, so a green debug run IS the "no NonPV node with
 // beta != alpha + 1, no PV cut node" report. The #[should_panic]
-// tests prove the asserts actually fire on the two illegal
-// combinations (doc 07 §5's NodeType guarantees); they are
-// debug-gated because release strips `debug_assert!`.
+// tests prove the asserts fire on the two illegal combinations, and
+// are debug-gated because release strips `debug_assert!`.
 
 #[cfg(debug_assertions)]
 fn raw_search_worker() -> (Worker, TranspositionTable) {
@@ -3212,12 +3144,11 @@ fn pv_node_rejects_cut_node_status() {
 
 #[test]
 fn bench_suite_debug_run_upholds_the_node_invariants() {
-    // §8 criterion 6's instrumented run over the bench suite: in a
-    // debug build every node entry executes the §3.7.1 asserts, so
-    // completing all 49 positions cleanly is the evidence. Depth 2
-    // keeps the debug-mode board-consistency oracle affordable; the
-    // full-depth version of this run is tools/check.sh's release
-    // bench (which cannot carry the asserts — hence this miniature).
+    // §8 criterion 6's instrumented run over the bench suite: in a debug
+    // build every node entry executes the §3.7.1 asserts, so completing
+    // all 49 positions cleanly is the evidence. Depth 2 keeps the
+    // debug-mode board-consistency oracle affordable; check.sh's release
+    // bench is the full-depth version but cannot carry the asserts.
     let tt = test_tt();
     for entry in crate::bench::BENCH_POSITIONS {
         let fen = entry.split(" moves").next().unwrap();
@@ -3357,13 +3288,11 @@ fn aspiration_fail_low_slides_beta_to_old_alpha_at_full_depth() {
 #[test]
 fn aspiration_trace_through_iterative_deepening_on_a_score_jump() {
     // KRK through the real driver — the doc's "crafted volatile
-    // position": iterations 1-2 see a quiet rook-up score, iteration
-    // 3 jumps to mate_in(3). Iteration 1 runs with the unset-sentinel
-    // window (clamped to the full window — "depth 1 is effectively an
-    // infinite-window search", §3.6), the jump iteration must fail
-    // high then re-search shallower with a widened delta, and the
-    // extra iteration 4 — its window blown wide open by the mate-band
-    // EMAs — settles on the exact mate.
+    // position": iterations 1-2 see a quiet rook-up score, iteration 3
+    // jumps to mate_in(3). Iteration 1 runs with the unset-sentinel window
+    // (clamped to the full window, §3.6), the jump iteration must fail high
+    // then re-search shallower with a widened delta, and iteration 4 —
+    // window blown wide open by the mate-band EMAs — settles on the mate.
     let w = go_depth("k7/8/2K5/8/8/8/8/7R w - - 0 1", 4);
     let trace = &w.asp_trace;
     for d in 1..=4 {
@@ -3449,46 +3378,25 @@ fn go_depth_full_window(fen: &str, depth: Depth) -> Worker {
 fn aspiration_preserves_values_on_quiet_positions_at_fixed_depth() {
     // Step-8 regression bar (§4/§5): on positions whose iteration
     // scores stay inside every window, aspiration keeps the full-window
-    // driver's BEST MOVE. The trace assert pins the fixtures'
-    // load-bearing property: no attempt ever failed.
+    // driver's BEST MOVE within a value band. The trace assert pins the
+    // fixtures' load-bearing property: no attempt ever failed.
     //
-    // Pre-P9 this also pinned exact fixed-depth SCORE identity, but doc
-    // 10's LMR (`Worker::reduction`, §3.3) scales the base reduction by
-    // `delta / root_delta` — the LOCAL window over the aspiration window.
-    // A narrow aspiration window and the `2·VALUE_INFINITE` full window
-    // therefore reduce their NonPV subtrees differently, so the lossy
-    // fixed-depth score can drift a few cp (measured: 21cp on the
-    // queen-up mirror) even when the chosen move is unchanged. The best
-    // move, mate distances (mate suite) and the SPRT (D25) are the
-    // surviving strength claims; exact score identity is a pre-LMR oracle.
+    // NOT exact score identity: LMR scales the base reduction by
+    // `delta / root_delta` — the LOCAL window over the aspiration window —
+    // so a narrow aspiration window and the `2·VALUE_INFINITE` full window
+    // reduce their NonPV subtrees differently and the lossy fixed-depth
+    // score drifts a few cp even when the chosen move is unchanged.
     //
-    // "Quiet" here means score-STABLE, which needs a clean material
-    // edge: delta = 5 + avg²/10588 then dwarfs the odd/even tempo
-    // swing between iterations. Near-zero positions (the startpos)
-    // are poor fixtures — delta ~5 sits BELOW their parity swing, and
-    // the resulting re-searches legitimately store different TT
-    // bounds than one full-window pass (measured: an 8cp drift on the
-    // startpos at depth 4). Decisive-score fixtures diverge for the
-    // opposite reason — a fail-high's shallower re-search can end the
-    // iteration below the mate (see the mate-suite tests, which spend
-    // one extra settling iteration instead).
+    // "Quiet" here means score-STABLE, which needs a clean material edge:
+    // delta = 5 + avg²/10588 must dwarf the odd/even tempo swing between
+    // iterations. Near-zero positions (the startpos) are poor fixtures —
+    // delta ~5 sits BELOW their parity swing. Decisive-score fixtures
+    // diverge for the opposite reason: a fail-high's shallower re-search
+    // can end the iteration below the mate.
     //
-    // Doc 10 §3.5's LMP tightens this window-stability bar further: on a
-    // full-material opening its lossy movecount pruning can move the
-    // fixed-depth value enough between iterations to trip an aspiration
-    // re-search (measured: 7 attempts, and a changed bestmove, on the
-    // white queen-up opening at depth 4). The surviving fixtures are the
-    // ones whose LMP-pruned value stays window-stable AND move-stable —
-    // the queen-up MIRROR (whose ordering keeps every attempt inside its
-    // window) and the low-branching knight endgame.
-    // S0 optimism re-scope (2026-07-26): on the queen-up mirror,
-    // optimism saturates (~+71 for the side up a queen) and its
-    // interplay with the window-width-coupled LMR drift lets the three
-    // near-tie winning replies reorder between drivers — bestmove
-    // identity no longer survives there (same fate as the queen-up
-    // OPENING under LMP, above). It still holds on the low-branching
-    // knight endgame, which keeps the bestmove bar alive; the mirror
-    // keeps the window-containment and value-band bars.
+    // The bestmove bar survives only on the low-branching knight endgame;
+    // on the queen-up mirror, saturated optimism plus window-coupled LMR
+    // drift reorders the near-tie winning replies between drivers.
     let suite: &[(&str, Depth, bool)] = &[
         // Black up a queen, black to move (value band only).
         (
@@ -3499,11 +3407,9 @@ fn aspiration_preserves_values_on_quiet_positions_at_fixed_depth() {
         // Black up a knight in a bare-kings endgame.
         ("4k3/8/3n4/8/8/8/8/4K3 b - - 0 1", 3, true),
     ];
-    // 30 → 40, 2026-08-01 (basket A): removing the step-12 dither + the D30
-    // ordering terms reshaped the lossy fixed-depth tree enough to move the
-    // queen-up fixture's asp-vs-full drift from ≤30 to 33 cp. Same fixture
-    // erosion the comment above documents for LMP/optimism; the band is the
-    // bar, not the value.
+    // The BAND is the bar, not the value: search changes that reshape the
+    // lossy fixed-depth tree move the queen-up fixture's drift (last
+    // measured 33 cp), so widen this rather than chase an exact number.
     const WINDOW_DRIFT_CP: Value = 40;
     for &(fen, depth, bestmove_bar) in suite {
         let asp = go_depth(fen, depth);
@@ -3536,16 +3442,13 @@ fn aspiration_preserves_values_on_quiet_positions_at_fixed_depth() {
 // preserves it: a zero-window scout that fails low has proven
 // `value <= alpha` (so skipping its PV re-search is sound), and one
 // that beats alpha is re-searched with the full window before
-// anything consumes it. The caveat since step 7 made the NonPV TT
-// cutoffs live: a cutoff may substitute a DEEPER stored value for a
-// scout's fixed-depth value. The step-7 done-condition ("scores
-// unchanged at fixed depth") pins down that this does not move the
-// root value on this suite — the cutoff-free full-window reference
-// walking the same tree (same generators, same stand-pat, same
-// terminal rules) must agree exactly with the final iteration.
-// Positions are chosen with no reachable repetitions so the
-// node-counter draw dither cannot fire, and with little material so
-// the exponential no-cutoff oracle stays cheap.
+// anything consumes it. Live NonPV TT cutoffs are the caveat — a
+// cutoff may substitute a DEEPER stored value for a scout's
+// fixed-depth value — and the bar is that this does not move the ROOT
+// value against a cutoff-free full-window reference walking the same
+// tree. Fixtures must have no reachable repetitions (so the
+// node-counter draw dither cannot fire) and little material (so the
+// exponential no-cutoff oracle stays cheap).
 
 fn ref_qsearch(b: &mut Board, ctx: &mut EvalContext, ply: usize) -> Value {
     let in_check = !b.checkers().is_empty();
@@ -3629,49 +3532,29 @@ fn ref_root(fen: &str, depth: Depth) -> (Value, Vec<Move>) {
 fn pvs_matches_full_window_negamax_at_fixed_depth() {
     // doc 07 §4 step 7 done-condition + §5 regression strategy: PVS
     // returns the same VALUE and an equally-best MOVE as full-window
-    // negamax at fixed depth. Node counts drop instead of matching —
-    // that half of the done-condition is the Bench: trailer (D24).
-    // Since step 8 the production driver aspirates the root window,
-    // which legitimately moves fixed-depth values (shallower fail-high
-    // re-searches); this suite therefore pins the PVS structure
-    // through the full-window test driver — aspiration's own bars are
-    // the trace/identity tests above plus bench and SPRT (D25).
+    // negamax at fixed depth. Node counts drop instead of matching — that
+    // half of the done-condition is the Bench: trailer (D24). Driven
+    // through the FULL-WINDOW test driver, because the production driver
+    // aspirates the root window and that moves fixed-depth values.
     //
-    // Doc 10 §3.5's LMP is the first LOSSY node-level pruning (LMR/RFP/
-    // NMP were value-preserving or fired only on decisive scores here):
-    // it discards late quiets outright, so on a wide or tactically
-    // shallow node the production fixed-depth value — and even the
-    // bestmove — can legitimately part from cutoff-free negamax (the
-    // minor-piece skirmish drifted 40cp, the two-rook ladder changed its
-    // chosen rook move). The cutoff-free oracle therefore only applies to
-    // fixtures LMP does not reshape: low-branching pawn endings and
-    // early-mate positions whose (check-ordered) mating move is searched
-    // before the movecount threshold. The lossy-node classes migrate to
-    // the bench trailer + SPRT (D25) and the LMP-specific tests above.
+    // Fixtures must be ones LMP does not reshape — low-branching endings
+    // and early-mate positions whose (check-ordered) mating move is
+    // searched before the movecount threshold. On a wide or tactically
+    // shallow node the production value, and even the bestmove,
+    // legitimately part from cutoff-free negamax.
     let suite: &[(&str, Depth)] = &[
         // KRK mate-in-2: exercises mate-distance pruning soundness.
         ("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3),
-        // The pawn-ending fixture (both depths) has migrated to the
-        // bench+SPRT channel with the S0 landings (2026-07-26): depth 3
-        // fell to the §3.7 finalization terms (heavier non-PV
-        // reductions floor the shallowest scouts, ~40cp) and depth 4 to
-        // §3.9 sibling depth reduction (an early alpha raise cheapens a
-        // later, better sibling — fixed-depth centipawn values are now
-        // order-dependent BY DESIGN; doc 07 §4 step 6 re-scope). The
-        // cutoff-free oracle's living bar is decisive fixtures, whose
-        // §3.9 exemption keeps mate distances exact.
         // Back-rank mate-in-1 with pawns on both sides.
         ("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 2),
     ];
-    // S1 (D22) re-scopes this oracle the same way LMP once did: live
-    // correction history makes the leaf eval history-dependent, so the
-    // production value drifts from the raw-eval reference by the
-    // correction magnitude a shallow fresh-table search accumulates
-    // (measured 3cp on the pawn ending; hard ceiling |cv|max/131072 =
-    // 493 at saturated tables). DECISIVE values stay exact — mate
-    // distances are eval-independent — and keep the bestmove assert;
-    // centipawn fixtures assert the drift band and surrender bestmove
-    // equality (a few cp legitimately reorders near-equal roots).
+    // Live correction history (S1/D22) makes the leaf eval
+    // history-dependent, so a non-decisive production value drifts from
+    // the raw-eval reference by the correction magnitude a shallow
+    // fresh-table search accumulates (hard ceiling |cv|max/131072 = 493 at
+    // saturated tables). DECISIVE values stay exact — mate distances are
+    // eval-independent — and keep the bestmove assert; centipawn fixtures
+    // assert only the drift band.
     const S1_CORR_DRIFT_CP: Value = 8;
     for &(fen, depth) in suite {
         let w = go_depth_full_window(fen, depth);
@@ -3698,8 +3581,8 @@ fn pvs_matches_full_window_negamax_at_fixed_depth() {
     }
 }
 
-// --- TT value equality at fixed depth (doc 07 §4 step 6's bar,
-//     re-scoped by step 7; doc 08 §8 criterion 6's value half) ---
+// --- TT value equality at fixed depth (doc 07 §4 step 6's bar;
+//     doc 08 §8 criterion 6's value half) ---
 
 /// One position of the TT value-equality suite: the fixed-depth value of
 /// the full-window driver against a FRESH table. A cutoff on an
@@ -3709,16 +3592,11 @@ fn pvs_matches_full_window_negamax_at_fixed_depth() {
 /// returned value equals cutoff-free negamax — which is the TT-boundary
 /// correctness the caller pins.
 ///
-/// Pre-P9 this searched twice (fresh, then the same table warmed by that
-/// run) and asserted fresh == warm. Doc 10's LMR (`Worker::reduction`,
-/// §3.7) couples the reduction to TT-supplied ttMoves (the ttMove rebate
-/// and the no-ttMove cut-node/full-depth surcharges), so a WARM table's
-/// richer move info legitimately reduces its NonPV subtrees differently
-/// and drifts the lossy fixed-depth score a few cp (measured: 1cp on the
-/// two-rook ladder, 4cp on the startpos) — never a mate distance, which
-/// the mate suite pins. Fresh-vs-warm determinism is therefore no longer
-/// a TT invariant; the surviving one is fresh-TT == negamax below, and
-/// warm-TT node shrink is covered by
+/// FRESH, not fresh-vs-warm: LMR couples the reduction to TT-supplied
+/// ttMoves, so a WARM table's richer move info reduces its NonPV subtrees
+/// differently and drifts the lossy fixed-depth score a few cp (never a
+/// mate distance, which the mate suite pins). The TT invariants are
+/// fresh-TT == negamax below, plus the node shrink in
 /// [`warm_tt_searches_fewer_nodes_at_equal_depth`].
 fn tt_value_pair(fen: &str, depth: Depth) -> Value {
     best_score(&go_depth_full_window_on(fen, depth, &test_tt()))
@@ -3726,45 +3604,25 @@ fn tt_value_pair(fen: &str, depth: Depth) -> Value {
 
 #[test]
 fn tt_on_and_off_return_identical_values_at_fixed_depth() {
-    // The step-6 exit bar, kept green through step 7: fixed-depth
-    // searches with the TT disabled vs enabled (fresh or same-depth
-    // warmed) return identical VALUES — node counts may differ.
-    // `ref_negamax` — proven equal to the pre-TT engine at the commit
-    // that added it — is the TT-disabled oracle.
+    // The step-6 exit bar: fixed-depth searches with the TT disabled vs
+    // enabled return identical DECISIVE values — node counts may differ.
+    // `ref_negamax` is the TT-disabled oracle.
     //
-    // Depths stay <= 4: from a FEN root (no game history) the first
-    // possible in-tree repetition is ply 4, which at these depths is
-    // qsearch's plain deterministic VALUE_DRAW — the node-counter
-    // draw dither is unreachable, so any divergence would be TT state
-    // moving a same-draft value, exactly what must not happen.
-    // Positions keep the material
-    // low: the CUTOFF-FREE oracle explores every capture/evasion
-    // chain exhaustively, which explodes on full-material boards (the
-    // startpos test below covers that class without the oracle).
-    //
-    // The `ref_negamax` oracle prunes NOTHING, so — like the PVS suite
-    // above — this bar now holds only on fixtures doc 10 §3.5's lossy
-    // LMP does not reshape. The wide-branching (two-rook ladder) and
-    // tactically-shallow (minor-piece skirmish, the pathological mated
-    // KQ-vs-K) fixtures legitimately part from cutoff-free negamax once
-    // late quiets are discarded, so they move to the LMP-specific tests
-    // and the SPRT; the surviving fixtures are the low-branching /
-    // early-mate ones whose value LMP leaves intact.
+    // Three load-bearing fixture constraints. (1) Depths <= 4: from a FEN
+    // root the first possible in-tree repetition is ply 4, which at these
+    // depths is qsearch's plain deterministic VALUE_DRAW, so the draw
+    // dither is unreachable and any divergence would be TT state moving a
+    // same-draft value. (2) Low material: the CUTOFF-FREE oracle explores
+    // every capture/evasion chain and explodes otherwise. (3) LMP must not
+    // reshape them — `ref_negamax` prunes NOTHING.
     let suite: &[(&str, Depth)] = &[
         // KRK mate-in-2: decisive scores through value_to_tt/from_tt.
         ("k7/8/2K5/8/8/8/8/7R w - - 0 1", 3),
-        // The pawn-ending fixture migrated to the bench+SPRT channel
-        // with the S0 §3.9 sibling depth reduction (2026-07-26): TT
-        // presence changes move order, and an early alpha raise now
-        // cheapens later siblings, so fixed-depth CENTIPAWN equality
-        // between TT-on and TT-off no longer holds by design (doc 07
-        // §4 step 6 re-scope). Decisive values stay exact — the §3.9
-        // rule exempts them — and remain this suite's living bar.
         // Back-rank mate with pawn shields on both sides.
         ("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", 3),
     ];
-    // S1 (D22): same re-scope as the PVS oracle — decisive values exact,
-    // centipawn values within the correction-drift band (see
+    // Same S1/D22 correction-drift band as the PVS oracle: decisive values
+    // exact, centipawn values inside the band (see
     // [`pvs_matches_full_window_negamax_at_fixed_depth`]).
     const S1_CORR_DRIFT_CP: Value = 8;
     for &(fen, depth) in suite {
@@ -3785,14 +3643,11 @@ fn tt_on_and_off_return_identical_values_at_fixed_depth() {
 #[test]
 fn fresh_startpos_search_is_bit_reproducible() {
     // Full-material coverage without the exponential no-cutoff oracle.
-    // Pre-P9 this asserted a fresh vs same-depth-WARMED startpos value
-    // match; doc 10's LMR couples reductions to TT-supplied ttMoves
-    // (see [`tt_value_pair`]), so a warm table legitimately drifts the
-    // startpos value a few cp. The surviving invariant is single-thread
-    // DETERMINISM (D24, §8 criterion 6): two independent FRESH searches
-    // of the startpos — same driver, same fresh table, node-count dither
-    // and all — reproduce the value, the best move AND the node count
-    // bit-for-bit.
+    // The invariant is single-thread DETERMINISM (D24, §8 criterion 6):
+    // two independent FRESH searches of the startpos — same driver, same
+    // fresh table, node-count dither and all — reproduce the value, the
+    // best move AND the node count bit-for-bit. NOT fresh-vs-warm: a warm
+    // table legitimately drifts the value a few cp (see [`tt_value_pair`]).
     let a = go_depth_full_window(START_FEN, 3);
     let b = go_depth_full_window(START_FEN, 3);
     assert_eq!(best_score(&a), best_score(&b), "startpos value determinism");
@@ -3802,22 +3657,13 @@ fn fresh_startpos_search_is_bit_reproducible() {
 
 #[test]
 fn warm_tt_searches_fewer_nodes_at_equal_depth() {
-    // The other half of the step-6 exit bar in miniature (the real
-    // "bench nodes drop materially" number is recorded in the commit
-    // trailer, D24): re-searching the same position at the same depth
-    // against the warmed table must cost fewer nodes — the ttMove-
-    // first ordering and the eval cache are actually doing work.
-    //
-    // Depth 6 (was 5, was 4): doc 10 §3.5's LMP shrinks the startpos tree
-    // so hard at shallow depth (~370 nodes at 4) that the ttMove ordering
-    // can no longer beat it — a warm table actually reshaped the LMP-pruned
-    // tree LARGER there; basket A's ordering-term removals (2026-08-01)
-    // moved the same marginal crossover past depth 5. From depth 6 the TT
-    // cutoffs dominate and the shrink is robust. The fresh-vs-warm VALUE
-    // equality is no longer asserted: as with
-    // `fresh_startpos_search_is_bit_reproducible` (LMR) and LMP, a warm
-    // table's richer move info legitimately drifts the lossy fixed-depth
-    // score a few cp — the node shrink is the invariant this test owns.
+    // The other half of the step-6 exit bar in miniature (the real "bench
+    // nodes drop materially" number lives in the commit trailer, D24):
+    // re-searching at the same depth against the warmed table must cost
+    // fewer nodes. Depth 6 is a FLOOR, not a preference — LMP shrinks the
+    // shallow startpos tree so hard (~370 nodes at depth 4) that a warm
+    // table can reshape it LARGER, and the crossover has drifted past
+    // depth 5. VALUE equality is deliberately not asserted here.
     let tt = test_tt();
     let fresh = go_depth_on(START_FEN, 6, &tt);
     let warm = go_depth_on(START_FEN, 6, &tt);
@@ -3838,10 +3684,7 @@ fn item12_nudges_preserve_correctness_and_determinism() {
     // history, parent conthist, quiet ttMove). A search must still (a)
     // never panic — the from-square guard protects against a colliding
     // ttMove mis-indexing — (b) solve a mate exactly, and (c) stay
-    // bit-reproducible across fresh runs (the nudges are pure functions of
-    // deterministic state).
-    //
-    // Back-rank mate in 1: 1.Ra8#.
+    // bit-reproducible. Back-rank mate in 1: 1.Ra8#.
     let w = go_depth("6k1/5ppp/8/8/8/8/8/R6K w - - 0 1", 4);
     assert!(is_mate(best_score(&w)), "mate score must survive item 12");
     let a = go_depth(START_FEN, 5);
@@ -3940,11 +3783,10 @@ fn exclusion_search_skips_the_excluded_move() {
     // design/10 §3.5 / §3.10 step 2: an exclusion search must SKIP the
     // ttMove (`excluded_move`) — the MovePicker still emits it first, so
     // without the top-of-loop skip the search would include the very move
-    // it is meant to exclude (defeating the singular test and firing
-    // spurious multicuts). We drive a node whose ONLY legal move is the
-    // excluded one: the loop must end with `move_count == 0` and take the
-    // §3.10 fail-low, returning `alpha`. Before the skip landed this
-    // searched Ka7 and returned a real (non-alpha) value.
+    // it is meant to exclude, defeating the singular test and firing
+    // spurious multicuts. The fixture's ONLY legal move is the excluded
+    // one, so the loop must end with `move_count == 0` and take the §3.10
+    // fail-low, returning `alpha` rather than a real value.
     let fen = "k7/8/2K5/8/8/8/8/1R6 b - - 0 1";
     let mut w = Worker::new(board(fen));
     let tt = test_tt();
@@ -4078,11 +3920,10 @@ fn n14_in_check_probcut_fails_high_before_the_move_loop() {
     // that runs even in check: a valid, non-decisive, stored LOWER bound at
     // depth >= depth - PROBCUT_DEPTH_SUB already >= beta + PROBCUT_CHECK_BETA
     // lets the node fail high at `beta + PROBCUT_CHECK_BETA` WITHOUT entering
-    // the move loop. This white-box test seeds exactly that TT entry on an
-    // in-check node and pins the early return; a mirror with a contradicting
-    // (UPPER) bound asserts the gate stays dormant. The smoke test
-    // (`item16_...`) uses non-check positions and never deterministically
-    // populates this path.
+    // the move loop. White-box: seed exactly that TT entry on an in-check
+    // node; the mirror below uses a contradicting (UPPER) bound to assert
+    // the gate stays dormant. The `item16_` smoke test uses non-check
+    // positions and never deterministically populates this path.
     //
     // Black king in check from the white rook down the open h-file.
     let fen = "7k/8/8/8/8/8/6K1/7R b - - 0 1";

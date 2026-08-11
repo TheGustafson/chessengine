@@ -9,10 +9,9 @@ use super::sota_features::{ACC, RowOffset};
 use super::sota_head::{FT_QUANT, FT_SHIFT, L2, L3, MAX_THREAT_SHIFT};
 use std::sync::LazyLock;
 
-/// The L1 sparse dot writes `L2` int32 accumulators. The kernels process the
-/// outputs in 16-wide blocks (one avx512 register / two avx256 registers each),
-/// so `L2` must be a multiple of 16. Widening the head bottleneck (D41) just
-/// bumps [`super::sota_head::L2`]; the block loop scales automatically.
+/// The L1 sparse dot writes `L2` int32 accumulators in 16-wide blocks (one
+/// avx512 register / two avx256 registers each), so `L2` must be a multiple
+/// of 16; widening `L2` scales the block loop automatically.
 const L2_BLK: usize = 16;
 const _: () = assert!(
     L2.is_multiple_of(L2_BLK),
@@ -24,120 +23,73 @@ const _: () = assert!(
     "L3 must be a multiple of 16 for the l2_tail block loop"
 );
 
-// BOTH feature transformers fold i8 weight rows into an i16 accumulator since
-// perf study 32 — HalfKA's 57.7 MB i16 table became a 28.9 MB i8 one plus a
-// per-column scale the merge applies — so there is exactly one fold family and
-// the threat channel and the HalfKA channel share every kernel below.
+// BOTH feature transformers fold i8 weight rows into an i16 accumulator (the
+// HalfKA table is quantised to i8 with a per-column scale the merge applies),
+// so there is one fold family shared by the threat and HalfKA channels.
 //
 // In-place fold: the Finny cache's cold from-scratch build.
 type ApplyI8Fn = fn(&mut [i16; ACC], &[i8], &[RowOffset], &[RowOffset]);
 // Fused copy+apply: read `src`, apply deltas, write `dst` in ONE pass — the
-// lazy fold's child = parent ± deltas without a separate ~1.5 KB memmove
-// (profiling-study §4.3/opt #2). `dst`/`src` may not alias.
+// lazy fold's child = parent ± deltas without a separate memmove. `dst`/`src`
+// may not alias.
 type ApplyI8IntoFn = fn(&mut [i16; ACC], &[i16; ACC], &[i8], &[RowOffset], &[RowOffset]);
-// TWO-DESTINATION in-place apply (perf study 9 item 4): `acc ±= deltas`, and
-// the result is ALSO written to `out`. The Finny cached refresh needs the same
-// bytes in two places — the cache entry (its memo for the next refresh with
-// this king key) and the search stack's accumulator slot — and used to get
-// there by folding in place and then `memmove`ing 2×1280 i16 to the stack.
-// Both destinations are written from the SAME registers the fold already
-// holds, so the second home costs one store per block instead of a whole
-// read+write pass. `acc` and `out` may not alias.
+// Two-destination in-place apply: `acc ±= deltas`, and the result is ALSO
+// written to `out`. The Finny warm refresh needs the same bytes in the cache
+// entry and the search stack slot; both are written from the registers the
+// fold already holds. `acc` and `out` may not alias.
 type ApplyI8DualFn = fn(&mut [i16; ACC], &mut [i16; ACC], &[i8], &[RowOffset], &[RowOffset]);
 type L1DotFn = fn(&mut [i32; L2], &[u8; ACC], &[u16], &[i8]);
 // The FT merge + pairwise activation. BOTH channels carry a net-dependent
 // rescale into it, and they are independent of one another:
 //
-//   `scale` — the HalfKA accumulator's per-lane dequantisation multiplier
-//     (perf study 32). The i8 rows are stored at `FT_QUANT / scale[j]`, so the
-//     merge puts lane `j` back into the FT_QUANT frame before it clamps. A
-//     WRAPPING i16 multiply in every backend: the reduced accumulator wraps
-//     exactly where the old FT_QUANT-frame one did, and pinning the width is
-//     what keeps the three backends bit-identical. A vector, so it stays a
-//     parameter rather than becoming a const generic.
+//   `scale` — the HalfKA accumulator's per-lane dequantisation multiplier.
+//     The i8 rows are stored at `FT_QUANT / scale[j]`, so the merge puts lane
+//     `j` back into the FT_QUANT frame before it clamps. A WRAPPING i16
+//     multiply in every backend — pinning the width is what keeps the three
+//     backends bit-identical.
 //   `threat_shift` — the NET's threat frame shift
 //     (`sota_head::threat_shift_for`), not a compile-time constant: a QAT net
-//     exports its threat table at scale 256 and needs shift 0 where a legacy
-//     CEN2 net needs 2 (perf study 30). Each backend monomorphises over its
-//     three admissible values, so the inner loop keeps exactly the instruction
-//     it had — measured, §5 of that study.
+//     exports its threat table at scale 256 (shift 0) where a legacy CEN2 net
+//     needs 2. Each backend monomorphises over its three admissible values.
 type ActivateFn = fn(&mut [u8; ACC], &[[i16; ACC]; 2], &[[i16; ACC]; 2], &[u8; ACC], usize, u32);
 type FindNnzFn = fn(&[u8; ACC], &mut [u16; ACC / 4]) -> usize;
-// The explicit f32 head-tail kernels (perf study #4 item #2a — the one hot
-// path that still lived on autovectorization after the ×8 D47 head growth).
-// Per-lane op sequences match the scalar reference exactly (same fused
-// `mul_add`, same clamp order, same i-sequential accumulation per j lane),
-// so every backend is bit-identical on finite inputs.
+// The explicit f32 head-tail kernels. Per-lane op sequences match the scalar
+// reference exactly (same fused `mul_add`, same clamp order, same
+// i-sequential accumulation per j lane), so every backend is bit-identical
+// on finite inputs.
 type L1DequantFn = fn(&mut [f32; L2], &[i32; L2], &[f32; L2], f32);
 type L2TailFn = fn(&mut [f32; L3], &[f32; L2], &[f32; L2 * L3], &[f32; L3]);
-// The policy selected-row dot (perf study #4 item #4): i8 row × f32
-// bottleneck. Reduction shape is DEFINED as 16 partial lanes (lane k sums
-// elements k, k+16, …) + a halving tree — the same fixed-shape pattern as
-// `propagate_l3` — so every backend is bit-identical to the scalar
-// reference. NOTE this deliberately replaced the old serial element-order
-// sum in `PolicyHead::row_score` (a ~128-deep add dependency chain that
-// could never vectorize); the new shape's f32 rounding differs from the old
-// serial loop's, which was verified non-functional by the package's
-// 100-game fixed-node PGN-identity oracle before landing.
+// The policy selected-row dot: i8 row × f32 bottleneck. Reduction shape is
+// DEFINED as 16 partial lanes (lane k sums elements k, k+16, …) + a halving
+// tree, so every backend is bit-identical to the scalar reference.
 type PolicyDotFn = fn(&[i8; L2], &[f32; L2]) -> f32;
-// The head's final f32 L3 -> scalar dot (perf study 26 arm 3). Same fixed
-// reduction SHAPE as `policy_dot` -- 16 partial lanes (lane k sums elements
-// k, k+16) then a halving tree -- so every backend is bit-identical to the
-// scalar reference, which is the loop that used to live in
-// `SotaHead::propagate_l3`. It is here rather than autovectorized because
-// LLVM would not widen it: with L3 = 32 it emitted **2-lane** `vfmadd213ps`
-// over sixteen `vmovsd` pair-loads, 4.56% of `forward_into`'s instructions
-// for a 32-element dot product.
+// The head's final f32 L3 -> scalar dot. Same fixed reduction SHAPE as
+// `policy_dot`, bit-identical to the scalar reference (the loop that used to
+// live in `SotaHead::propagate_l3`).
 type L3DotFn = fn(&[f32; L3], &[f32; L3]) -> f32;
-// The SKP1 skip-lane dot (perf study §6-S2): u8 activations × bucket-major
-// f32 lane. Reduction shape is DEFINED as 16 partial lanes + the halving
-// tree (the policy_dot discipline) so every backend is bit-identical to the
-// scalar reference. NOTE this replaced the head's serial element-order sum;
-// the rounding change was gated by integer-cp identity on the 800-FEN
-// battery (S2 landing commit).
+// The SKP1 skip-lane dot: u8 activations × the i8-quantised bucket-major
+// lane. i32 accumulation is exact, so no reduction shape needs pinning.
 type SkipDotFn = fn(&[u8], &[i8]) -> i32;
 
 // ---------------------------------------------------------------------------
-// Perf study 65 — the NARROW WEIGHT ROW.
+// The NARROW (6-bit) FullThreats weight row.
 // ---------------------------------------------------------------------------
 
 /// Signed bits a "narrow" FullThreats weight row is stored in.
 ///
-/// Study 64 §2.1 measured that **55.25 % of this engine's L1-miss latency is
-/// weight-row loads**, and with `L1 = 1280` fixed by owner ruling the only term
-/// left in `rows × lanes × bytes` is the last one. Study 51 §4.2 and study 64
-/// §6.1 measured the folded-row width distribution; study 65 re-measured it per
-/// FOLD and per LANE:
-///
-/// | population | ≤ 6 bits | 7 bits | 8 bits |
-/// |---|---:|---:|---:|
-/// | threat rows, **fold-weighted** | **53.06 %** | 38.71 % | 8.23 % |
-/// | threat rows living in an ALL-NARROW fold | **9.99 %** | — | — |
-/// | HalfKA rows, fold-weighted | 0.00 % | 2.70 % | 97.30 % |
-///
-/// Three consequences decide this design:
-///
-/// 1. **Per ROW, not per fold.** The 53.06 % is already the fold-weighted ROW
-///    rate; only 9.99 % of folded rows live in a fold whose every row is
-///    narrow, so a whole-fold "all narrow?" predicate converts **5.3× less**
-///    than a per-row plane does. The dispatch is therefore per row, hoisted out
-///    of the tile loop.
-/// 2. **Threats only.** HalfKA has literally zero narrow rows.
-/// 3. **Not a lane split.** `LANEMAX` measured the per-lane maxima over the
-///    whole threat table: only **91 of 1280** lanes fit 6 bits and 891 fit 7,
-///    so a uniform lane-split layout — which would need no dispatch at all —
-///    is worth one cache line in twenty. Measured and rejected (study 65 §3).
-///
-/// 6 bits × 1280 lanes = **960 B = exactly 15 cache lines**, against 20 today,
-/// and the row start stays 64-byte aligned with no padding. 7 bits would be
-/// 1120 B = 17.5 lines and would have to pad to 18, which is why the second
-/// plane is a follow-up and not part of this arm.
+/// Design constraints, all measured before pinning:
+/// * **Per ROW, not per fold** — most narrow rows do not live in an all-narrow
+///   fold, so the narrow/wide dispatch is per row, hoisted out of the tile
+///   loop.
+/// * **Threats only** — HalfKA has essentially no narrow rows.
+/// * 6 bits × 1280 lanes = 960 B = exactly 15 cache lines (vs 20 wide), with
+///   the row start still 64-byte aligned and no padding; 7 bits would need
+///   padding, which is why there is no second plane.
 pub(crate) const NARROW_BITS: usize = 6;
-/// Stored bytes of a narrow row. The row keeps its 1280-byte SLOT — the layout,
-/// the `feature * ACC` offset arithmetic and every producer are untouched — and
-/// simply stops reading the last 320 bytes. Cache lines are fetched on demand,
-/// so "not read" and "not present" cost the same, and this buys the whole byte
-/// cut without the 243 KB permutation table study 64 §6.1 costed the route at.
+/// Stored bytes of a narrow row. The row keeps its `ACC`-byte SLOT — the
+/// layout, the `feature * ACC` offset arithmetic and every producer are
+/// untouched — and simply stops reading the tail; unread cache lines are never
+/// fetched, so "not read" costs the same as "not present".
 pub(crate) const NARROW_BYTES: usize = ACC * NARROW_BITS / 8;
 
 #[cfg(feature = "narrow65")]
@@ -149,11 +101,10 @@ pub(crate) const NARROW_MAX: i16 = 31;
 /// Whether the kernel that will actually run can decode a narrow row.
 ///
 /// The packed form is read with `vpermb` + `vpmultishiftqb`, which are
-/// **AVX512_VBMI** — and VBMI is not implied by the VNNI the compile-time
-/// direct path keys on (Cascade Lake has VNNI and no VBMI). So the decision is
-/// made once, at LOAD time, by the same predicate the dispatcher uses: if it is
-/// false the loader leaves the table in its 8-bit form, the bitmap stays empty,
-/// every row takes the existing path and the build is bit-identical to today.
+/// **AVX512_VBMI** — not implied by the VNNI the compile-time direct path keys
+/// on (Cascade Lake has VNNI and no VBMI). Decided once, at LOAD time, by the
+/// same predicate the dispatcher uses: if false the loader leaves the table in
+/// its 8-bit form, the map stays empty, and every row takes the existing path.
 pub(crate) fn narrow_supported() -> bool {
     #[cfg(all(
         target_arch = "x86_64",
@@ -187,27 +138,17 @@ pub(crate) fn narrow_supported() -> bool {
     }
 }
 
-/// Perf study 66 — the FullThreats **row map**, which replaces study 65's
-/// narrow bitmap and is what makes the compacted layout possible.
+/// The FullThreats **row map**, which decouples "which rows are narrow" from
+/// "where rows live" and is what makes the compacted layout possible.
 ///
 /// `map[f]` is the BYTE offset of feature `f`'s row in the threat table, with
-/// **bit 0 set when the row is stored narrow**. Both strides (1280 and 960) are
-/// even, and every plane base is a multiple of 64, so bit 0 is structurally
-/// free — there is no masking cost and no separate bitmap load.
-///
-/// The map is what decouples "which rows are narrow" from "where rows live":
-///
-/// | layout | `map[f]` | table size |
-/// |---|---|---|
-/// | study 65, slot-preserving | `f·ACC \| narrow` | unchanged, dead 320 B tail per narrow row |
-/// | study 66, **compacted** | `plane_base + rank·stride \| narrow` | shrunk by the packed bytes |
-///
-/// Empty ⇒ the table is flat i8 at `f·ACC` and every path takes the pre-study-65
+/// **bit 0 set when the row is stored narrow**. Both strides are even and
+/// every plane base is a multiple of 64, so bit 0 is structurally free.
+/// Empty ⇒ the table is flat i8 at `f·ACC` and every path takes the wide
 /// route.
 ///
-/// Called once per row per FOLD (hoisted out of the tile walk), not once per row
-/// per tile — perf study 57's rule about the row-offset scaling applies to this
-/// lookup for the same reason.
+/// Called once per row per FOLD (hoisted out of the tile walk), not once per
+/// row per tile.
 #[inline(always)]
 pub(crate) fn row_entry(map: &[u32], off: usize) -> (usize, bool) {
     let m = map.get(off / ACC).copied().unwrap_or(off as u32);
@@ -280,10 +221,9 @@ static KERNELS: LazyLock<Kernels> = LazyLock::new(|| {
             && std::arch::is_x86_feature_detected!("avx512bw")
             && std::arch::is_x86_feature_detected!("avx512vnni")
         {
-            // vbmi2+vl unlock the vpcompressw find_nnz (item #2d); both are
-            // present on every Zen 4 / Ice Lake+ part, but the plain table
-            // keeps pre-VBMI2 AVX-512 CPUs (e.g. Skylake-X never gets here —
-            // no VNNI — so this is belt-and-braces).
+            // vbmi2+vl unlock the vpcompressw find_nnz; both are present on
+            // every Zen 4 / Ice Lake+ part, but the plain table keeps
+            // pre-VBMI2 AVX-512 CPUs as belt-and-braces.
             if std::arch::is_x86_feature_detected!("avx512vbmi2")
                 && std::arch::is_x86_feature_detected!("avx512vl")
             {
@@ -301,9 +241,8 @@ static KERNELS: LazyLock<Kernels> = LazyLock::new(|| {
     scalar::KERNELS
 });
 
-/// Compile-time backend selection (perf study #4 item #2c; the design/11
-/// §3.4.6 escape hatch, Reckless pattern): when the build target statically
-/// carries the same AVX-512 features the runtime dispatcher would detect
+/// Compile-time backend selection: when the build target statically carries
+/// the same AVX-512 features the runtime dispatcher would detect
 /// (`-C target-cpu=native` on a VNNI-era CPU), route straight to the avx512
 /// backend — no LazyLock initialized-check, no indirect call, and the kernel
 /// bodies can inline into their call sites. Portable and x86-64-v3 builds
@@ -332,14 +271,13 @@ macro_rules! kernel_dispatch {
     }};
 }
 
-/// Perf study 29's TRAFFIC-PINNING probes (`probe-accpin` / `probe-wpin`).
+/// Traffic-pinning probes (`probe-accpin` / `probe-wpin` and friends).
 ///
-/// Both keep the number and the WIDTH of every load in the kernels exactly as
+/// All keep the number and the WIDTH of every load in the kernels exactly as
 /// they are and change only WHERE those loads point, so `L1-dcache-loads` is
-/// invariant and the drop in misses / load-stall cycles isolates one stream's
-/// share. They produce wrong evaluations by construction — these features are
-/// measurement instruments, never shipped, and `bench … nodes` fixes the node
-/// budget so the two arms remain comparable at the same tree size.
+/// invariant and the drop in misses isolates one stream's share. They produce
+/// wrong evaluations by construction — measurement instruments, never
+/// shipped; `bench … nodes` fixes the node budget so arms stay comparable.
 #[cfg(any(
     feature = "probe-accpin",
     feature = "probe-wpin",
@@ -358,16 +296,11 @@ pub(crate) mod probe {
 
     /// One accumulator-shaped buffer every pinned read is redirected to.
     /// `Box` so it is heap-resident like the real stack, `LazyLock` so it is
-    /// built once. Cache-line alignment does not matter here: the point is
-    /// that the whole working set is 2.5 KB and therefore L1-resident.
-    /// TWO distinct buffers, and every handout goes through `black_box`.
-    /// Without both, the probe stops being load-count-neutral: with one buffer
-    /// `activate`'s `pv`/`tv` pair becomes one address and LLVM CSEs 80 of its
-    /// 160 loads away, and with a constant pointer it CSEs the src stream
-    /// across the HalfKA and threat folds in the same `compute`. Measured: the
-    /// naive form dropped 249 loads/node and 360 instructions/node, which is a
-    /// different experiment. `black_box` makes the pointer opaque, so the same
-    /// loads are issued — they simply all hit the same 2.5 KB of L1.
+    /// built once; the point is that the whole working set is L1-resident.
+    /// TWO distinct buffers, and every handout goes through `black_box` —
+    /// with one buffer or a constant pointer LLVM CSEs loads away and the
+    /// probe stops being load-count-neutral. `black_box` makes the pointer
+    /// opaque, so the same loads are issued against the same few KB of L1.
     #[cfg(feature = "probe-accpin")]
     pub(crate) static PIN_ACC: std::sync::LazyLock<Box<[[i16; ACC]; 2]>> =
         std::sync::LazyLock::new(|| Box::new([[0i16; ACC]; 2]));
@@ -382,16 +315,12 @@ pub(crate) mod probe {
     }
 
     /// The WRITE half (`probe-dstpin`). `probe-accpin` alone redirects only
-    /// the fold's `src`, so the per-ply accumulator stack keeps its full write
-    /// volume and its full footprint — which means it keeps evicting weight
-    /// rows, and the probe under-reports whatever share of fusion's prize is
-    /// capacity rather than read latency. This buffer takes the stores too.
+    /// the fold's `src`, so the accumulator stack keeps its write footprint
+    /// and keeps evicting weight rows; this buffer takes the stores too.
     ///
     /// A leaked `Box` rather than a `static mut`: one allocation, `'static`
-    /// by construction, and no aliasing question about the *address*. The
-    /// aliasing question about the CONTENTS is real and deliberate — every
-    /// fold now writes the same 2.5 KB — which is exactly why this feature
-    /// computes wrong evaluations and is a measurement instrument only.
+    /// by construction. Every fold writing the same buffer is the traffic
+    /// collapse being measured — wrong evaluations by design.
     #[cfg(feature = "probe-dstpin")]
     // D14(a)-style sanctioned relaxation for a measurement-only feature.
     #[allow(unsafe_code)]
@@ -405,10 +334,9 @@ pub(crate) mod probe {
         });
         // SAFETY: the pointer comes from `Box::into_raw` on a leaked
         // allocation, so it is non-null, aligned, and valid for the whole
-        // program. The engine is single-threaded under `bench`, and this
-        // feature exists only to run `bench` — handing out repeated `&mut` to
-        // one buffer is precisely the traffic collapse being measured, and the
-        // resulting evaluations are known-wrong by design.
+        // program. The engine is single-threaded under `bench` (the only
+        // thing this feature runs under); the repeated `&mut` handout is the
+        // traffic collapse being measured, evaluations known-wrong by design.
         unsafe { &mut *(addr as *mut [i16; ACC]) }
     }
 
@@ -422,29 +350,18 @@ pub(crate) mod probe {
     ))]
     pub(crate) static ZERO_IDX: [super::RowOffset; 64] = [super::RowOffset(0); 64];
 
-    /// Perf study 39's **SUBTRACTIVE** arm at study 31's magnitude, plus the
-    /// control that says whether a pinning probe measures locality at all.
+    /// The SUBTRACTIVE pinning arm: `probe-actpin` pins ONLY `activate`'s
+    /// four accumulator arrays (`probe-accpin` pins the fold `src` stream
+    /// too, so the two are not comparable at equal magnitude).
     ///
-    /// `probe-actpin` pins ONLY `activate`'s four accumulator arrays — 68.9
-    /// lines/node, the exact dose of study 31's additive copy — so the two
-    /// directions are finally comparable at equal magnitude. `probe-accpin`
-    /// pins the fold `src` stream too and therefore cannot be.
-    ///
-    /// **`P39_PINFILL=live` is the point of this module.** Study 29 read a
-    /// −6.8% instruction drop off `accpin` and attributed it to *compiler CSE*.
-    /// It is not CSE: a pin buffer full of ZEROES makes `activate` emit an
-    /// all-zero `ft`, so `find_nnz` returns almost nothing and `l1_dot` — the
-    /// sparse L1 layer, with its own weight rows and its own misses — does
-    /// almost no work. The probe silently deletes a whole layer of the
-    /// network, and per-instruction normalisation cannot repair that because
-    /// the deleted instructions carry loads and stalls of their own.
-    ///
-    /// Under `P39_PINFILL=live` the FIRST `activate` copies the real
-    /// accumulators into the pin and every later one reads that snapshot: a
-    /// realistic accumulator, realistic magnitudes, realistic group sparsity,
-    /// so the head does its normal work. Same binary, same code layout, one
-    /// runtime branch — the difference between the two modes is the size of
-    /// the confound.
+    /// **`P39_PINFILL=live` is the point of this module.** A pin buffer full
+    /// of ZEROES makes `activate` emit an all-zero `ft`, so `find_nnz`
+    /// returns almost nothing and `l1_dot` — with its own weight rows and its
+    /// own misses — does almost no work: the probe silently deletes a whole
+    /// layer of the network. Under `live` the FIRST `activate` copies the
+    /// real accumulators into the pin and every later one reads that
+    /// snapshot: realistic magnitudes and group sparsity, so the head does
+    /// its normal work. Same binary, same code layout, one runtime branch.
     #[cfg(feature = "probe-actpin")]
     pub(crate) mod livepin {
         use super::ACC;
@@ -481,20 +398,18 @@ pub(crate) mod probe {
         /// the first call when `P39_PINFILL=live`.
         ///
         /// Relaxed load/store on `FILLED` rather than a `swap`: an atomic RMW
-        /// on the eval path would be ~20 cycles of pure probe artefact, and
-        /// `bench` is single-threaded.
+        /// on the eval path would be pure probe artefact, and `bench` is
+        /// single-threaded.
         #[inline]
         #[allow(unsafe_code)]
         pub(crate) fn take(pst: &Pair, threat: &Pair) -> (&'static Pair, &'static Pair) {
             let p = pins();
             // SAFETY: both pointers come from `Box::into_raw` on leaked `Pair`
             // allocations — non-null, aligned, valid for the whole program.
-            // Handing out `&'static Pair` aliased against a transient `&mut`
-            // during the one-shot fill is sound here because the fill happens
-            // before either reference is handed out and `bench` is
-            // single-threaded; the *contents* being shared across plies is the
-            // traffic collapse this instrument exists to create, which is why
-            // it computes wrong evaluations by design.
+            // The one-shot fill happens before either reference is handed out
+            // and `bench` is single-threaded; the contents being shared
+            // across plies is the traffic collapse this instrument exists to
+            // create (wrong evaluations by design).
             unsafe {
                 if p.live && !FILLED.load(Relaxed) {
                     FILLED.store(true, Relaxed);
@@ -509,87 +424,50 @@ pub(crate) mod probe {
         }
     }
 
-    /// Perf study 39's **ADDITIVE** traffic probe — study 31's instrument,
-    /// rebuilt with the two controls it never had.
+    /// The ADDITIVE traffic probe: redundant accumulator-pair copies per
+    /// evaluated node, cost read off the stall counters. Both knobs are
+    /// **runtime** on purpose — ONE binary serves the whole panel, so no
+    /// comparison inside it can be confounded by code layout:
     ///
-    /// Study 31 priced accumulator streaming by ADDING one redundant
-    /// accumulator-pair copy per evaluated node and reading the cost off
-    /// `ex_no_retire.load_not_complete`: **2.36 stall cycles per 64-byte
-    /// line**. Study 29 priced the same quantity SUBTRACTIVELY
-    /// (`probe-dstpin`) and got **0.45**. Neither ran the arms that separate
-    /// the candidate explanations, so both knobs here are **runtime**:
-    ///
-    /// * `P39_DOSE` — copies per evaluated node (default 1). A dose series
-    ///   measures whether stall cycles are LINEAR in added traffic. Study
-    ///   29's "capacity cliff" reconciliation requires the cost function to be
-    ///   CONVEX at our operating point; a linear dose response falsifies it.
-    /// * `P39_RING` — how many distinct accumulator-pair slots the copies
-    ///   rotate through, rounded up to a power of two (default 16). The
-    ///   probe's own footprint is `2 × RING × 5120` bytes, so RING sweeps the
-    ///   copy from L1-resident (RING = 1, 10 KB) through the real accumulator
-    ///   stack's hot window (RING = 16, 160 KB) and out into L3.
-    ///   **RING = 1 is the control study 31 lacked**: byte-identical code,
-    ///   identical instruction and load counts, essentially no cold lines —
-    ///   so `cold − hot` is the probe's LOCALITY cost with its ISSUE cost
-    ///   differenced away.
-    ///
-    /// Runtime knobs rather than cargo features on purpose: ONE binary serves
-    /// the whole additive panel, so no comparison inside it can be confounded
-    /// by code layout (study 29 §8.6 needed two nulls precisely because its
-    /// arms were different binaries; here they are the same bytes).
+    /// * `P39_DOSE` — copies per evaluated node (default 1); a dose series
+    ///   tests whether stall cycles are LINEAR in added traffic.
+    /// * `P39_RING` — distinct accumulator-pair slots the copies rotate
+    ///   through, rounded up to a power of two (default 16). RING = 1 keeps
+    ///   the copy L1-resident: byte-identical code, identical instruction and
+    ///   load counts, essentially no cold lines — so `cold − hot` is the
+    ///   probe's LOCALITY cost with its ISSUE cost differenced away.
     #[cfg(feature = "probe-addcopy")]
     pub(crate) mod addcopy {
         use super::ACC;
         use std::sync::OnceLock;
         use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
-        /// i16 lanes in one accumulator PAIR: 2 × 1280 × 2 B = 5120 B = 80
-        /// 64-byte lines. One copy therefore moves 80 read + 80 write lines =
-        /// **160 lines**, which is study 31's per-evaluated-node figure
-        /// exactly.
+        /// i16 lanes in one accumulator PAIR (2 × 1280 × 2 B = 5120 B = 80
+        /// 64-byte lines; one copy moves 80 read + 80 write lines).
         const PAIR: usize = 2 * ACC;
 
-        /// `src`/`dst` are leaked `Box<[i16]>` allocations kept as integers.
-        /// A `&'static mut` cannot be handed out of a `&'static Rings`, and
-        /// this mirrors the existing `pin_dst` idiom two screens up.
+        /// `src`/`dst` are leaked `Box<[i16]>` allocations kept as integers
+        /// (a `&'static mut` cannot be handed out of a `&'static Rings`);
+        /// mirrors the `pin_dst` idiom above.
         struct Rings {
             src: usize,
             dst: usize,
             mask: usize,
             dose: usize,
             /// `P39_SRC=live` — read the REAL accumulator pair `activate` is
-            /// about to consume instead of the cold ring.
-            ///
-            /// This exists because my ring copy generates **2.7× the L1 misses
-            /// study 31's copy did** for the same geometric line count (1.30
-            /// per line against 0.477), and a calibration against known
-            /// traffic (`tools/perf39/calib39.sh`) puts a fully-cold line at
-            /// ~1.2 counter events — i.e. my ring lines are ~100% cold and
-            /// study 31's were ~40%. The obvious way to be 40% cold is for the
-            /// copy's READ half to touch memory the engine was about to touch
-            /// anyway, which prefetches `activate` rather than adding traffic.
-            /// This arm tests that reconstruction directly rather than
-            /// asserting it.
+            /// about to consume instead of the cold ring, so the copy's read
+            /// half touches memory the engine was about to touch anyway.
             live_src: bool,
             /// `P39_SITE=fold` — issue the copies from the FullThreats fold
-            /// instead of from `activate`.
-            ///
-            /// The recommendation this study makes turns on whether "stall
-            /// cycles per line" is a property of the TRAFFIC or of where in
-            /// the node it happens to be issued. Fusion removes accumulator
-            /// traffic from the fold; the probe adds it in `activate`. The
-            /// fold fires 0.8538 times per node against `activate`'s 0.4311,
-            /// so **fold dose 1 (136.6 lines/node) and activate dose 2 (137.95)
-            /// are the same traffic volume in two different places** — and if
-            /// they price the same, the number transfers.
+            /// instead of from `activate`, to test whether stall cost is a
+            /// property of the traffic or of where in the node it is issued.
             fold_site: bool,
         }
 
         static RINGS: OnceLock<Rings> = OnceLock::new();
         /// Plain relaxed load/store, never a `fetch_add`: an atomic RMW is a
-        /// locked op worth ~20 cycles and would be a large fraction of what
-        /// this probe is trying to measure. `bench` is single-threaded, so a
-        /// non-atomic increment is all the ordering this needs.
+        /// locked op and would be a large fraction of what this probe
+        /// measures; `bench` is single-threaded.
         static CURSOR: AtomicUsize = AtomicUsize::new(0);
 
         fn env_usize(key: &str, default: usize) -> usize {
@@ -625,15 +503,15 @@ pub(crate) mod probe {
             })
         }
 
-        /// One dose = one accumulator-pair-sized vector copy through the ring.
+        /// One dose = one accumulator-pair-sized vector copy through the ring,
+        /// issued from `activate` (the default site).
         ///
-        /// `wrapping_add(bias)` with an opaque zero rather than
-        /// `copy_from_slice`: the latter lowers to `memcpy`, which for 5 KB on
-        /// Zen 4 is `rep movsb` — a different microarchitectural animal from
-        /// the `vmovdqu64` streaming this probe is pricing (see study 38 on
-        /// `rep movsb`). The add form autovectorises to the same
-        /// load/`vpaddw`/store shape the fold kernels use.
-        /// The `activate` call site — the default, and study 31's placement.
+        /// NOTE: the copy is `wrapping_add` of an opaque zero, NOT
+        /// `copy_from_slice` — the latter lowers to a libc `memcpy`
+        /// (`rep movsb`), a different microarchitectural animal from the
+        /// `vmovdqu64` streaming this probe prices; the add form
+        /// autovectorises to the fold's own load/`vpaddw`/store shape. Check
+        /// the disassembly before trusting this; do not "simplify" it back.
         #[inline]
         pub(crate) fn tick(live: &[[i16; ACC]; 2]) {
             let r = rings();
@@ -642,8 +520,7 @@ pub(crate) mod probe {
             }
         }
 
-        /// The FullThreats-fold call site (`P39_SITE=fold`), which is where the
-        /// traffic fusion actually removes lives.
+        /// The FullThreats-fold call site (`P39_SITE=fold`).
         #[inline]
         pub(crate) fn tick_fold() {
             let r = rings();
@@ -689,21 +566,12 @@ pub(crate) mod probe {
     }
 }
 
-/// Perf study 61 — the ceiling probe, **split by channel**.
-///
-/// Study 51 measured `probe-wpin` (all four fold sites pinned to row 0) at
-/// −13.19 % cycles and called it "the whole prize for the fold's weight rows".
-/// It is one number for two tables with completely different shapes:
-/// `hka_weights` is 28.8 MB / 22,528 rows and `thr_weights` is 77.7 MB /
-/// 60,720 rows, and the threat channel folds 4.594 rows per fold against
-/// HalfKA's 2.279. A prize that is 80 % one channel and 20 % the other is a
-/// different engineering problem from a 50/50 split, and nothing in studies
-/// 29–60 says which it is.
-///
-/// `probe-wpin-hka` pins only the three HalfKA sites; `probe-wpin-thr` pins
-/// only `apply_threat_deltas_into`. Both are strict subsets of `probe-wpin`,
-/// so `Δhka + Δthr ≈ Δboth` is a built-in consistency check on the pair.
-/// Measurement only — they compute wrong evaluations by construction.
+/// The ceiling probe, split by channel: `probe-wpin` pins all four fold
+/// sites' row indices to row 0; `probe-wpin-hka` pins only the three HalfKA
+/// sites; `probe-wpin-thr` only `apply_threat_deltas_into`. The split probes
+/// are strict subsets of `probe-wpin`, so `Δhka + Δthr ≈ Δboth` is a built-in
+/// consistency check on the pair. Measurement only — they compute wrong
+/// evaluations by construction.
 #[cfg(any(feature = "probe-wpin", feature = "probe-wpin-hka"))]
 macro_rules! pin_rows_hka {
     ($adds:ident, $subs:ident) => {
@@ -761,26 +629,15 @@ pub(crate) fn apply_halfka_deltas(
     adds: &[RowOffset],
     subs: &[RowOffset],
 ) {
-    #[cfg(feature = "foldcount")]
-    {
-        super::foldcount::HKA_INPLACE.hit(adds.len() + subs.len());
-        #[cfg(feature = "rowprobe")]
-        {
-            super::foldcount::note_row_reuse(0, adds);
-            super::foldcount::note_row_reuse(0, subs);
-        }
-    }
     pin_rows_hka!(adds, subs);
     kernel_dispatch!(i8_deltas(acc, weights, adds, subs))
 }
 
-/// Two-destination i8-weight fold — the HalfKA Finny cache's warm refresh.
-/// `acc` and `out` must not alias. See [`ApplyI8DualFn`] for why both homes
-/// are written from the fold's own registers.
+/// Fused copy+apply for the HalfKA (i8-weight) fold. `dst` and `src` may not
+/// alias.
 #[inline]
-// `probe-accpin` shadows the accumulator parameters with its pinned
-// buffer, which is exactly what the probe is for; the originals then
-// go unread. No effect on any build without that feature.
+// `probe-accpin` shadows the accumulator parameters with its pinned buffer;
+// the originals then go unread. No effect on builds without that feature.
 #[cfg_attr(feature = "probe-accpin", allow(unused_variables))]
 pub(crate) fn apply_halfka_deltas_into(
     dst: &mut [i16; ACC],
@@ -789,26 +646,6 @@ pub(crate) fn apply_halfka_deltas_into(
     adds: &[RowOffset],
     subs: &[RowOffset],
 ) {
-    #[cfg(feature = "foldcount")]
-    {
-        super::foldcount::HKA_INTO.hit(adds.len() + subs.len());
-        super::foldcount::note_hka_shape(adds.len(), subs.len());
-        #[cfg(feature = "rowprobe")]
-        {
-            let z = &super::foldcount::ZERO_ROW_HKA;
-            super::foldcount::note_zero_rows(z, weights, adds, ACC);
-            super::foldcount::note_zero_rows(z, weights, subs, ACC);
-            super::foldcount::note_row_fold(0, adds);
-            super::foldcount::note_row_fold(0, subs);
-            super::foldcount::note_row_reuse(0, adds);
-            super::foldcount::note_row_reuse(0, subs);
-            // Perf study 65 — the same census on the HalfKA side, so its
-            // 97.3 %-need-8-bits result is confirmed per FOLD and not only per
-            // row (study 51 §4.2 measured only the row distribution).
-            super::foldcount::note_fold_width(0, adds, subs);
-            super::foldcount::note_fold_redundancy(0, adds, subs, &[]);
-        }
-    }
     pin_rows_hka!(adds, subs);
     pin_src!(src);
     pin_dst!(dst);
@@ -816,8 +653,8 @@ pub(crate) fn apply_halfka_deltas_into(
 }
 
 /// Two-destination in-place apply: `acc ±= deltas`, and the same result is
-/// written to `out` as well (perf study 9 item 4). See [`ApplyI8DualFn`].
-/// `acc` and `out` must not alias.
+/// written to `out` as well. See [`ApplyI8DualFn`]. `acc` and `out` must not
+/// alias.
 #[inline]
 #[cfg_attr(feature = "probe-dstpin", allow(unused_variables))]
 pub(crate) fn apply_halfka_deltas_dual(
@@ -827,19 +664,8 @@ pub(crate) fn apply_halfka_deltas_dual(
     adds: &[RowOffset],
     subs: &[RowOffset],
 ) {
-    #[cfg(feature = "foldcount")]
-    {
-        super::foldcount::HKA_DUAL.hit(adds.len() + subs.len());
-        super::foldcount::note_hka_dual_shape(adds.len() + subs.len());
-        super::foldcount::note_dual_pair(adds.len(), subs.len());
-        #[cfg(feature = "rowprobe")]
-        {
-            super::foldcount::note_row_reuse(0, adds);
-            super::foldcount::note_row_reuse(0, subs);
-        }
-    }
-    // Perf study 43 arm NT stores `acc` non-temporally, which the ISA only
-    // defines for a 64-byte-aligned address. The alignment is structural
+    // The `nt43` arm stores `acc` non-temporally, which the ISA only defines
+    // for a 64-byte-aligned address. The alignment is structural
     // (`FinnyEntry` is `align(64)`, `acc` at offset 128), so this asserts the
     // invariant rather than checking a value that could legitimately vary.
     debug_assert_eq!(
@@ -854,9 +680,8 @@ pub(crate) fn apply_halfka_deltas_dual(
 
 /// Fused copy+apply for the FullThreats (i8-weight) fold.
 #[inline]
-// `probe-accpin` shadows the accumulator parameters with its pinned
-// buffer, which is exactly what the probe is for; the originals then
-// go unread. No effect on any build without that feature.
+// `probe-accpin` shadows the accumulator parameters with its pinned buffer;
+// the originals then go unread. No effect on builds without that feature.
 #[cfg_attr(feature = "probe-accpin", allow(unused_variables))]
 pub(crate) fn apply_threat_deltas_into(
     dst: &mut [i16; ACC],
@@ -866,37 +691,16 @@ pub(crate) fn apply_threat_deltas_into(
     subs: &[RowOffset],
     row_map: &[u32],
 ) {
-    #[cfg(feature = "foldcount")]
-    {
-        super::foldcount::THR_INTO.hit(adds.len() + subs.len());
-        super::foldcount::note_thr_shape(adds.len() + subs.len());
-        super::foldcount::note_thr_pair(adds.len(), subs.len());
-        #[cfg(feature = "rowprobe")]
-        {
-            let z = &super::foldcount::ZERO_ROW_THR;
-            super::foldcount::note_zero_rows(z, weights, adds, ACC);
-            super::foldcount::note_zero_rows(z, weights, subs, ACC);
-            super::foldcount::note_row_fold(1, adds);
-            super::foldcount::note_row_fold(1, subs);
-            super::foldcount::note_row_reuse(1, adds);
-            super::foldcount::note_row_reuse(1, subs);
-            // Perf study 65 — per-FOLD width, which is what decides whether a
-            // narrow-row layout dispatches per row or per fold.
-            super::foldcount::note_fold_width(1, adds, subs);
-            super::foldcount::note_fold_redundancy(1, adds, subs, row_map);
-        }
-    }
-    // Perf study 39's placement arm: the same copies, issued from the fold
-    // rather than from `activate` (`P39_SITE=fold`). Inert otherwise.
+    // `probe-addcopy`'s fold-site arm (`P39_SITE=fold`); inert otherwise.
     #[cfg(feature = "probe-addcopy")]
     probe::addcopy::tick_fold();
     pin_rows_thr!(adds, subs);
     pin_src!(src);
     pin_dst!(dst);
-    // Perf study 65: one branch per FOLD, not per row. `narrow_bits` is empty
-    // unless the loader packed a narrow plane — which it only does behind
-    // `narrow_supported()` and the `narrow65` feature — so every other build
-    // reaches exactly the call it reached before.
+    // One branch per FOLD, not per row. `row_map` is empty unless the loader
+    // packed a narrow plane — which it only does behind `narrow_supported()`
+    // and the `narrow65` feature — so every other build reaches exactly the
+    // call it reached before.
     #[cfg(all(target_arch = "x86_64", feature = "narrow65"))]
     if !row_map.is_empty() {
         return avx512::i8_deltas_into_narrow(dst, src, weights, adds, subs, row_map);
@@ -911,11 +715,9 @@ pub(crate) fn apply_threat_deltas_into(
 #[inline]
 pub(crate) fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: &[i8]) {
     // The SIMD backends read each group's four FT bytes as ONE unaligned
-    // 32-bit load (see [`ft_group`]), which is what lets `vpbroadcastd` fold
-    // the load into the broadcast with no range check. `find_nnz` is the only
-    // producer of `nnz` and only ever emits group indices in `0..ACC/4`; this
-    // is the debug-time proof of that invariant — checked once per group over
-    // the whole test suite instead of once per group in the shipped kernel.
+    // 32-bit load (see [`ft_group`]). `find_nnz` is the only producer of
+    // `nnz` and only ever emits group indices in `0..ACC/4`; this is the
+    // debug-time proof of that invariant.
     debug_assert!(
         nnz.iter().all(|&g| usize::from(g) < ACC / 4),
         "l1_dot: nnz group index out of range (find_nnz contract broken)"
@@ -926,14 +728,11 @@ pub(crate) fn l1_dot(pre: &mut [i32; L2], ft: &[u8; ACC], nnz: &[u16], weights: 
 /// The four FT bytes of `group`, as the little-endian `i32` the `dpbusd` /
 /// `maddubs` kernels broadcast.
 ///
-/// Written as one unaligned 32-bit read rather than
-/// `i32::from_le_bytes([ft[g * 4], …])` **for the codegen, not the arithmetic**
-/// — the two are bit-identical on any little-endian target. Indexing the array
-/// made LLVM emit a `cmp $0x13f,%ecx` / `ja <panic>` pair it could not hoist
-/// out of the group loop (it cannot see `find_nnz`'s range), and that loop is
-/// only ~11 instructions long and runs ~39 times per NODE. Removing the pair
-/// measured **−1.75% of all engine instructions and −5.25% of all engine
-/// branches**, node-identical and eval bit-exact (perf study 8 §4.1).
+/// One unaligned 32-bit read rather than `i32::from_le_bytes([ft[g * 4], …])`
+/// **for the codegen, not the arithmetic** — the two are bit-identical on any
+/// little-endian target, but indexing made LLVM emit a bounds-check pair it
+/// could not hoist out of the short, hot group loop. Removing that pair
+/// mattered; do not rewrite as indexed `from_le_bytes` without measuring.
 ///
 /// # Safety
 /// `group < ACC / 4`, i.e. `group` came from [`find_nnz`]. The `debug_assert`
@@ -947,9 +746,8 @@ unsafe fn ft_group(ft: &[u8; ACC], group: usize) -> i32 {
 }
 
 #[inline]
-// `probe-accpin` shadows the accumulator parameters with its pinned
-// buffer, which is exactly what the probe is for; the originals then
-// go unread. No effect on any build without that feature.
+// The pin probes shadow the accumulator parameters with their pinned buffer;
+// the originals then go unread. No effect on builds without those features.
 #[cfg_attr(
     any(feature = "probe-accpin", feature = "probe-actpin"),
     allow(unused_variables)
@@ -962,19 +760,11 @@ pub(crate) fn activate(
     stm: usize,
     threat_shift: u32,
 ) {
-    #[cfg(feature = "foldcount")]
-    super::foldcount::ACTIVATE.hit(0);
-    // Perf study 39's ADDITIVE arm rides here — one evaluated node, one
-    // redundant accumulator-pair copy, which is study 31's instrument.
+    // `probe-addcopy`'s default call site.
     #[cfg(feature = "probe-addcopy")]
     probe::addcopy::tick(pst);
-    // `activate` is the single largest accumulator-STREAM reader in the
-    // engine: four `[i16; ACC]` arrays, 10.24 KB per evaluation, which is the
-    // exact quantity Stockfish carries as 4.10 KB by fusing the two channels.
-    //
-    // `probe-actpin` (study 39) pins ONLY these four arrays — 68.9 lines/node,
-    // the exact magnitude of study 31's additive copy, in the subtractive
-    // direction. `probe-accpin` additionally pins the fold `src` stream.
+    // `probe-actpin` pins ONLY the four accumulator arrays read here;
+    // `probe-accpin` additionally pins the fold `src` stream.
     #[cfg(feature = "probe-accpin")]
     let (pst, threat) = (
         std::hint::black_box(&*probe::PIN_ACC),
@@ -982,18 +772,12 @@ pub(crate) fn activate(
     );
     #[cfg(all(feature = "probe-actpin", not(feature = "probe-accpin")))]
     let (pst, threat) = probe::livepin::take(pst, threat);
-    // The HalfKA rescale is a WRAPPING i16 multiply in every backend, which is
-    // what keeps the three bit-identical (see the avx512 merge). It wraps
-    // exactly where the pre-study-32 FT_QUANT-frame accumulator wrapped, so it
-    // is no *new* hazard — but unlike that one it is a hazard nobody would
-    // notice, because a wrap turns a saturating lane into a near-zero one and
-    // the clamp hides it. The threat channel carries the same style of bound
-    // check on its own shift (`|t| <= 8191`); this is its twin, and it is the
-    // tripwire that would fire if a future net's accumulator range grew.
-    //
-    // Skipped under `probe-accpin`/`probe-actpin`: those features deliberately
-    // redirect the accumulators to a pinned buffer and compute wrong evals by
-    // design, so the bound is not their contract.
+    // The HalfKA rescale is a WRAPPING i16 multiply in every backend (pinning
+    // the width keeps the three bit-identical). A wrap turns a saturating
+    // lane into a near-zero one and the clamp hides it, so this tripwire is
+    // what fires if a future net's accumulator range grows; the threat
+    // channel's shift bound check is its twin. Skipped under the pin probes,
+    // which redirect the accumulators and compute wrong evals by design.
     #[cfg(not(any(feature = "probe-accpin", feature = "probe-actpin")))]
     debug_assert!(
         pst.iter().all(
@@ -1043,7 +827,7 @@ pub(crate) fn find_nnz(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
 
 /// Dequantize + SCReLU the L1 pre-activations: per lane,
 /// `out[j] = clamp(pre[j]·dequant + bias[j], 0, 1)²` with a fused mul-add —
-/// exactly the scalar head loop it replaces (perf study #4 item #2a).
+/// exactly the scalar head loop it replaces.
 #[inline]
 pub(crate) fn l1_dequant(out: &mut [f32; L2], pre: &[i32; L2], bias: &[f32; L2], dequant: f32) {
     kernel_dispatch!(l1_dequant(out, pre, bias, dequant))
@@ -1051,8 +835,7 @@ pub(crate) fn l1_dequant(out: &mut [f32; L2], pre: &[i32; L2], bias: &[f32; L2],
 
 /// The dense f32 L2→L3 tail: `out = SCReLU(bias + Σ_i weights[i]·l1[i])`,
 /// j-lane order preserved and i-sequential per lane — bit-identical to the
-/// scalar mul_add loop (perf study #4 item #2a: at D47 dims this is 4096
-/// FMAs/eval and was the last autovectorized hot path).
+/// scalar mul_add loop.
 #[inline]
 pub(crate) fn l2_tail(
     out: &mut [f32; L3],
@@ -1169,21 +952,19 @@ mod scalar {
     }
 
     /// The scalar reference for the merged FT activation, stated from the
-    /// head's own math (design/11 §12.6; restated 2026-08, originality-audit
-    /// item 2 — see `docs/audit/2026-08-originality/00-synthesis.md` §2).
+    /// head's own math.
     ///
     /// Per perspective, accumulator lane `j` carries two channels that must
     /// meet in one `FT_QUANT` frame:
     ///
     ///   * HalfKA, rescaled by its per-column i8 quantisation scale. The
-    ///     multiply happens in i16 and WRAPS — that is the defined semantics,
-    ///     not a shortcut: the vector backends multiply in i16 lanes
-    ///     (`vpmullw`), so a widen-before-multiply here would disagree with
-    ///     them on the (never observed) overflow, exactly where the old
-    ///     FT_QUANT-frame accumulator wrapped too.
+    ///     multiply happens in i16 and WRAPS — defined semantics, not a
+    ///     shortcut: the vector backends multiply in i16 lanes (`vpmullw`),
+    ///     so a widen-before-multiply here would disagree with them on the
+    ///     (never observed) overflow.
     ///   * threats, rescaled by the power-of-two merge shift
-    ///     (`FT_QUANT/threat_quant` carried as a shift, perf study 8 §4.6 —
-    ///     4 for a CEN2 net, 1 at threat_quant 128, 0 for a QAT net at 256).
+    ///     (`FT_QUANT/threat_quant` carried as a shift — 4 for a CEN2 net,
+    ///     1 at threat_quant 128, 0 for a QAT net at 256).
     ///
     /// The clamped sum is the lane's pre-activation in `[0, FT_QUANT]`; the
     /// activation multiplies each lane by its partner `ACC/2` above it and
@@ -1214,11 +995,10 @@ mod scalar {
     }
 
     /// The scalar reference for the sparse-group scan, stated from what the
-    /// L1 matmul needs (restated 2026-08, originality-audit item 2): the
-    /// activated FT vector is consumed as `ACC/4` four-byte groups (one
-    /// `vpdpbusd` word each), and a group is worth visiting exactly when any
-    /// of its four activations is nonzero. Emit each live group's index, in
-    /// ascending order, into `out`; return how many were emitted.
+    /// L1 matmul needs: the activated FT vector is consumed as `ACC/4`
+    /// four-byte groups (one `vpdpbusd` word each), and a group is worth
+    /// visiting exactly when any of its four activations is nonzero. Emit
+    /// each live group's index, ascending, into `out`; return the count.
     #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn find_nnz(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
         let mut live = 0usize;
@@ -1269,9 +1049,9 @@ mod scalar {
         }
     }
 
-    /// The bit-exact reference for the head's L3 dot — this IS the loop that
-    /// lived in `SotaHead::propagate_l3` until perf study 26 arm 3, moved here
-    /// unchanged so the SIMD backends have something to be identical to.
+    /// The bit-exact reference for the head's L3 dot — moved unchanged from
+    /// `SotaHead::propagate_l3` so the SIMD backends have something to be
+    /// identical to.
     #[cfg_attr(feature = "split58", inline(never))]
     pub(super) fn l3_dot(weights: &[f32; L3], l2: &[f32; L3]) -> f32 {
         const LANES: usize = 16;
@@ -1415,11 +1195,10 @@ mod avx2 {
                         // the widen, so this wraps exactly where the avx512
                         // `vpmullw` and the scalar `wrapping_mul` wrap.
                         let raw = _mm_loadu_si128(p.as_ptr().add(offset).cast());
-                        // Perf study 50: the scale is u8 on disk and in
-                        // memory, so the 128-bit i16 load becomes a 64-bit
-                        // byte load plus a zero-extend. Same op count, half
-                        // the bytes; `_mm_cvtepu8_epi16` is exact for the
-                        // 1..=255 range the loader guarantees.
+                        // The scale is u8 in memory: a 64-bit byte load plus
+                        // a zero-extend, half the bytes at the same op count;
+                        // `_mm_cvtepu8_epi16` is exact for the loader's
+                        // 1..=255 range.
                         let sv =
                             _mm_cvtepu8_epi16(_mm_loadl_epi64(scale.as_ptr().add(offset).cast()));
                         let pv = _mm256_cvtepi16_epi32(_mm_mullo_epi16(raw, sv));
@@ -1563,18 +1342,8 @@ mod avx2 {
         subs: &[RowOffset],
     ) {
         // SAFETY: as i8_deltas_inner; reads `src`, writes the disjoint `dst`.
-        //
-        // PERF STUDY 57 DELETED THE §6-F HOIST HERE, and the deletion is the
-        // point rather than a tidy-up. This kernel used to carry a
-        // `[MaybeUninit<usize>; 96]` pair plus a chunking loop whose ONLY job
-        // was to compute `feature * ACC` once instead of once per 16-lane
-        // block. Now that the row list arrives pre-scaled as [`RowOffset`],
-        // there is nothing left to hoist: the array, the two `assume_init`
-        // reads, the chunk cursor and the `source` re-point are all dead, and
-        // removing them takes the last `MaybeUninit` out of this backend.
-        // Bit-identical: same rows, same order (adds then subs), same wrapping
-        // i16 lane arithmetic — the chunked form folded the same multiset in
-        // the same sequence, it just re-entered the block loop every 96 rows.
+        // The adds/subs arrive as pre-scaled [`RowOffset`]s, so there is no
+        // per-block `feature * ACC` arithmetic left to hoist.
         unsafe {
             for off in (0..ACC).step_by(LANES) {
                 let mut value = _mm256_loadu_si256(src.as_ptr().add(off).cast());
@@ -1729,14 +1498,11 @@ mod avx2 {
         unsafe { l2_tail_inner(out, l1, weights, bias) }
     }
 
-    /// The last three steps of the reference halving tree, in registers:
-    /// `sums[k] += sums[k+4]`, then `+= sums[k+2]`, then `+= sums[1]`.
+    /// The last three steps of the reference halving tree, in registers.
     /// Shared by both f32 dots and by both SIMD backends so the four of them
     /// cannot drift from the scalar reference or from each other.
-    ///
-    /// SAFETY-free: `#[target_feature]` is not needed on a pure AVX shuffle
-    /// chain that is only ever reached from an AVX2/AVX-512 caller, but it is
-    /// marked anyway so the caller's feature set propagates and it inlines.
+    /// `#[target_feature]` so the caller's feature set propagates and it
+    /// inlines.
     #[target_feature(enable = "avx")]
     pub(super) fn halve8(a: __m256) -> f32 {
         let b = _mm_add_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps::<1>(a));
@@ -1868,11 +1634,9 @@ mod avx512 {
     /// `activate_inner` walks the HALF-accumulator `0..ACC / 2` in `LANES`-wide
     /// steps with no remainder handling, so it needs `ACC % (2 * LANES) == 0`
     /// — one factor stronger than the assert above, which guards the FOLD
-    /// kernels. Every defined `L1` (768/1280/1536/2048) satisfies it; the point
-    /// is that a future width cannot silently leave the tail of `ft` UNWRITTEN.
-    /// That went from cosmetic to load-bearing with perf study 15 arm 4: `ft` is
-    /// now a reused buffer, so an unwritten lane is the PREVIOUS position's
-    /// activation rather than a deterministic zero (D33 reviewer A, A4).
+    /// kernels. Load-bearing, not cosmetic: `ft` is a reused buffer, so a
+    /// future width that left its tail UNWRITTEN would read the PREVIOUS
+    /// position's activations rather than a deterministic zero.
     const _: () = assert!(ACC.is_multiple_of(2 * LANES));
 
     /// zmm blocks in one accumulator (40 at the shipping ACC = 1280). NOT
@@ -1882,67 +1646,22 @@ mod avx512 {
 
     /// Accumulator blocks held in registers across the feature loop.
     ///
-    /// Perf study 12 §7 — **−314 i/n, the study's largest single win.** The
-    /// fold's arithmetic is fixed (`rows x BLOCKS` load/add pairs) but its LOOP
-    /// CONTROL is `tiles x rows x ~6` — load the feature, `lea`+`shl` for
-    /// `feature * ACC`, bump, compare, branch — so it scales with the number of
-    /// tiles and not with the work. Study 2 chose `REGS = 8`, i.e. **five**
-    /// tiles at ACC = 1280, spending ~220 i/n of control on ~7.1 rows per node.
-    /// AVX-512 has 32 zmm and the body needs only one live register beyond the
-    /// accumulators, so the tile can be far wider.
+    /// The fold's arithmetic is fixed (`rows × BLOCKS` load/add pairs) but its
+    /// LOOP CONTROL scales with the number of tiles, so wider tiles win on
+    /// instruction count. Exact divisors of `ACC_BLOCKS` only: a non-dividing
+    /// tile pushes the remainder into the one-block tail loop, which costs
+    /// more control than it saves; `REGS = 40` (one tile, no tile loop) was
+    /// measured and is a disaster — 40 accumulators spill.
     ///
-    /// Exact divisors of `ACC_BLOCKS` only: a non-dividing tile pushes the
-    /// remainder into the one-block tail loop, which costs more control than it
-    /// saves. 1280 -> 20 (2 tiles), 768 -> 12 (2), 1536 -> 16 (3), 2048 -> 16 (4).
-    /// Measured: 20 is the optimum at 1280 and the largest divisor that fits.
-    /// `REGS = 40` (one tile, no tile loop at all) was measured too and is a
-    /// **disaster** — 6581.5 -> 7589.2 i/n — because 40 accumulators spill.
-    ///
-    /// # Perf study 44 — the cap is an ARM, because 20 was chosen on the wrong counter
-    ///
-    /// Everything above was adjudicated on `instructions:u`, whose noise floor
-    /// on this box is exactly 0.0 — which is precisely why a narrower tile was
-    /// never tried: more tiles is unambiguously more loop control, so it loses
-    /// on instructions by construction. Study 20 is the standing counterexample
-    /// (−5.99% CYCLES with instructions UP 0.19%), and study 44's back-end
-    /// census supplies the mechanism that would make this one of those cases:
-    /// **`de_dis_dispatch_token_stalls1.store_queue_rsrc_stall` is 502.6
-    /// cycles/node, the largest single dispatch-blocking resource in the
-    /// engine** — larger than the load queue (442.1). A `REGS = 20` tile ends
-    /// with 20 `zmm` stores, and Zen 4 splits each into two 32-byte store ops
-    /// (study 39 §1: 2.043 store dispatches per line written), so every tile
-    /// closes with a **40-store burst** into a 64-entry store queue.
-    ///
-    /// Narrowing the cap interleaves those stores with the next tile's loads
-    /// instead of bunching them. It is bit-identical at every setting: the tile
-    /// walk covers the same blocks in the same order with the same arithmetic,
-    /// and no row is read more or fewer times (register `k` consumes its own
-    /// distinct 32 bytes of each row either way).
-    ///
-    /// ## MEASURED, and the cap is now 5 (perf study 44 §4.5)
-    ///
-    /// 32 paired rounds, balanced Latin square, byte-identical null riding in
-    /// the rotation, node- and eval-hash-identical at every setting. Contrasts
-    /// are arm-minus-null on `cycclean` (`cycles` − SMT theft):
-    ///
-    /// | cap | `store_queue_rsrc_stall` | cycles contrast | `instructions:u` |
-    /// |---|---:|---:|---:|
-    /// | 20 (was) | — | — | — |
-    /// | 10 | −9.24% (30/32) | −0.33% (0.8 se) — **null** | +1.261% |
-    /// | 8 | −19.74% (9/9) | +0.18% — **null**, unexplained | +2.305% |
-    /// | **5 (now)** | **−19.70% (32/32, p < 0.0001)** | **−1.10% (2.2 se)** | **+4.076%** |
-    ///
-    /// The null read 16/32 on cycles — a coin flip — and exactly 0.000% on
-    /// instructions, every round.
-    ///
-    /// **`instructions:u` rises 4.08% and cycles still fall.** That is the
-    /// whole reason this was never found: eight prior studies of this kernel
-    /// adjudicated on a counter that can only ever prefer the widest tile.
-    ///
-    /// **Measured at ACC = 1280 ONLY.** The cap applies at every width (768 and
-    /// 1536 and 2048 all fall to `REGS = 4`, their largest divisor ≤ 5), and the
-    /// `const _` asserts below still machine-check that the tile divides the
-    /// accumulator exactly — but the *benefit* is measured at one width.
+    /// The cap is 5, chosen on CYCLES, not instructions: a wide tile ends
+    /// with a burst of `zmm` stores (each split into two store ops on Zen 4)
+    /// into the store queue, and narrowing the cap interleaves those stores
+    /// with the next tile's loads. Bit-identical at every setting — same
+    /// blocks, same order, same arithmetic, no row read more or fewer times.
+    /// NOTE: do not re-judge the cap on `instructions:u`; that counter can
+    /// only prefer the widest tile (instructions RISE at cap 5 while cycles
+    /// fall). Measured at ACC = 1280 only; other widths fall to their largest
+    /// divisor ≤ 5 and stay machine-checked by the asserts below.
     const REGS_CAP: usize = if cfg!(feature = "regs20_44") {
         20
     } else if cfg!(feature = "regs4_44") {
@@ -1957,10 +1676,10 @@ mod avx512 {
 
     const fn pick_regs() -> usize {
         let mut r = REGS_CAP;
-        // Down to 1, not to 8: 1 divides everything, so the `const _` assert below
-        // can never fire on a future width whose BLOCKS has no divisor in 9..=20
-        // (e.g. ACC 800 -> 25). That case degrades to the per-block loop rather
-        // than breaking the build (review A finding 3).
+        // Down to 1: 1 divides everything, so the `const _` assert below can
+        // never fire on a future width whose BLOCKS has no small divisor —
+        // that case degrades to the per-block loop rather than breaking the
+        // build.
         while r > 1 {
             if ACC_BLOCKS.is_multiple_of(r) {
                 return r;
@@ -1970,10 +1689,9 @@ mod avx512 {
         1
     }
     const REGS: usize = pick_regs();
-    // The win depends on the tile dividing the accumulator EXACTLY: a remainder
-    // falls into the one-block `while off < ACC` tail, whose control cost per
-    // block is what the wide tile exists to remove. True for every shipped
-    // width — 1280/20, 768/12, 1536/16, 2048/16 all give remainder 0.
+    // The win depends on the tile dividing the accumulator EXACTLY: a
+    // remainder would fall into a one-block tail whose per-block control cost
+    // is what the wide tile exists to remove.
     const _: () = assert!(
         ACC_BLOCKS.is_multiple_of(REGS),
         "fold tile must divide the accumulator exactly"
@@ -1983,24 +1701,12 @@ mod avx512 {
 
     /// Lanes per tile, and the number of tiles in one accumulator.
     ///
-    /// Perf study 25. Every fold kernel used to end its tile walk with a
-    /// one-block `while off < ACC` remainder, under a comment saying that
-    /// remainder is DEAD — `pick_regs` returns an exact divisor of
-    /// `ACC_BLOCKS`, pinned by the `const _` assert above. It really is dead,
-    /// at every width, and `TILES * TILE == ACC` below is the machine-checked
-    /// statement of that. Deleting the four of them is bit-identical: same
-    /// blocks, same order, same arithmetic.
-    ///
-    /// **Measured, because the obvious form was the wrong one.** Rewriting the
-    /// walk as `for t in 0..TILES { let off = t * TILE; … }` — trip count
-    /// compile-time, which reads like the strictly better shape — cost **+9.6
-    /// instructions/node**, and `for _ in 0..TILES` with an accumulated offset
-    /// still cost **+7.9** with branches up 3.6/node: LLVM declines to unroll
-    /// the counted loop and keeps a real induction variable. Leaving the walk
-    /// as `while off + TILE <= ACC` and removing ONLY the remainder measured
-    /// **−3.2 i/n**, because with nothing after the loop LLVM unrolls both
-    /// tiles outright. All three are node- and eval-hash-identical; the
-    /// counter has a 0.0 noise floor, so those signs are real.
+    /// The tile walk has NO remainder: `pick_regs` returns an exact divisor
+    /// of `ACC_BLOCKS`, and `TILES * TILE == ACC` below is the machine-checked
+    /// statement of that. NOTE: keep the walk as `while off + TILE <= ACC` —
+    /// rewriting it as a counted `for` loop was measured slower (LLVM keeps a
+    /// real induction variable instead of unrolling); do not restructure it
+    /// without measuring.
     const TILE: usize = LANES * REGS;
     const TILES: usize = ACC / TILE;
     const _: () = assert!(TILES * TILE == ACC, "the tile walk must cover ACC exactly");
@@ -2009,21 +1715,12 @@ mod avx512 {
     /// arms: `shaped_dispatch!(kern(args…); na, ns; (1,1), (1,2), …)`.
     ///
     /// **Rust idiom note.** A `macro_rules!` repetition is the declarative way
-    /// to write a table whose rows differ only in two *const generic*
-    /// arguments. Neither a loop nor a `const fn` can do it: each row must be
-    /// its own monomorphisation, and the counts must be known at compile time —
-    /// that is the entire point of the kernel. The macro keeps the shape list
-    /// readable as a list of shapes instead of dozens of near-identical `match`
-    /// lines, and it makes "which pairs are covered" a single grep. Taking the
-    /// callee as `$f:ident` lets the same table serve the `into` fold and the
-    /// Finny `dual` fold, which have different arities.
-    ///
-    /// `macro_rules!` is *textually* scoped, so this must precede every use —
-    /// hence its position here at the head of the backend rather than beside
-    /// the first caller. The argument list is captured as a single `tt` (one
-    /// parenthesised token tree) rather than as `$($arg:expr),+`: a repetition
-    /// of arguments nested inside the repetition of shapes would have to repeat
-    /// the same number of times, which is not what is meant.
+    /// to write a table whose rows differ only in two const-generic arguments:
+    /// each row must be its own monomorphisation with compile-time counts.
+    /// Taking the callee as `$f:ident` lets one table serve both fold arities;
+    /// the argument list is captured as a single `tt` so it need not repeat
+    /// per shape. `macro_rules!` is *textually* scoped, hence its position at
+    /// the head of the backend.
     macro_rules! shaped_dispatch {
         ($f:ident $args:tt; $na:expr, $ns:expr; $(($a:literal, $s:literal)),* $(,)?) => {
             match ($na, $ns) {
@@ -2033,7 +1730,7 @@ mod avx512 {
         };
     }
 
-    // ── Perf study 65 — the narrow-row decode. ─────────────────────────────
+    // ── The narrow-row decode. ─────────────────────────────────────────────
     //
     // A wide row's 32 lanes are ONE instruction: `vpmovsxbw zmm, [mem]`. A
     // narrow row's 32 lanes are 24 packed bytes and four:
@@ -2043,15 +1740,12 @@ mod avx512 {
     //   vpternlogd      (m & 0x3F) ^ 0x20  ⇒  the byte is exactly `w + 32`
     //   vpmovzxbw       widen to 32 i16
     //
-    // so the row costs 40 extra shuffle-port ops and reads 15 cache lines
-    // instead of 20. The `+32` per lane is deliberately NOT undone here: it is
-    // lane-uniform, so the whole fold's bias is one `vpsubw` per tile register
-    // (and exactly zero when the fold has as many narrow subs as narrow adds,
-    // which the modal (1,1) shape does).
-    //
-    // Eight 6-bit fields are 48 bits, so no field ever straddles a qword — that
-    // is the property that makes `vpmultishiftqb` a single instruction here and
-    // it is why the packer groups by eight.
+    // The `+32` per lane is deliberately NOT undone here: it is lane-uniform,
+    // so the whole fold's bias is one `vpsubw` per tile register (and exactly
+    // zero when the fold has as many narrow subs as narrow adds). Eight 6-bit
+    // fields are 48 bits, so no field ever straddles a qword — the property
+    // that makes `vpmultishiftqb` a single instruction here, and why the
+    // packer groups by eight.
 
     #[cfg(feature = "narrow65")]
     /// `vpermb` index: output qword `q` takes source bytes `6q..6q+5`.
@@ -2088,15 +1782,12 @@ mod avx512 {
     #[cfg(feature = "narrow65")]
     static NARROW_SHIFT: [i8; 32] = narrow_shift();
 
-    /// The four decode constants, materialised ONCE per fold.
-    ///
-    /// They were originally loaded inside `narrow_lanes`, and LLVM hoisted them
-    /// only as far as the TILE loop — three `vpbroadcast`s per tile, i.e. ~20
-    /// extra `.rodata` loads per node, competing for L1 with a weight stream
-    /// that moves 45.9 GB per frame. **Measured: that alone was +19.3 L1d
-    /// misses/node, which is more than the whole arm was trying to save.**
-    /// Passing them by value makes the hoist a property of the source rather
-    /// than of the register allocator's mood.
+    /// The four decode constants, materialised ONCE per fold and passed by
+    /// value. NOTE: loaded inside `narrow_lanes`, LLVM hoisted them only as
+    /// far as the TILE loop — re-broadcast `.rodata` loads competing with the
+    /// weight stream for L1, more than the narrow rows save. Passing by value
+    /// makes the hoist a property of the source, not the register allocator;
+    /// keep it.
     #[cfg(feature = "narrow65")]
     #[derive(Clone, Copy)]
     struct NarrowConsts {
@@ -2182,50 +1873,14 @@ mod avx512 {
         }
     }
 
-    /// Two-destination i8 fold — the HalfKA Finny warm
-    /// refresh, both homes written from the fold's own registers.
+    /// Two-destination i8 fold — the HalfKA Finny warm refresh, both homes
+    /// written from the fold's own registers.
     ///
-    /// # Perf study 62 — this kernel had NO shape dispatch, for no reason
-    ///
-    /// Study 25 gave `i8_deltas_into_inner` a compile-time-shape dispatch
-    /// because a HalfKA *make-move* fold is always one of four shapes. The
-    /// Finny warm refresh folds a **set difference between two king buckets**,
-    /// which is a different distribution, so the four arms would not have
-    /// covered it and it was left on the runtime-length body. Nobody ever
-    /// counted the distribution — `HKA_DUAL_SHAPE` records only the SUM of the
-    /// two list lengths, and a sum cannot answer the question a dispatch asks
-    /// (the same defect study 61 found in `THR_SHAPE`).
-    ///
-    /// Counted for the first time here (`foldcount::DUAL_PAIR`, 823,842 warm
-    /// refreshes in the study frame), the distribution is **concentrated on the
-    /// diagonal**: `(2,2)` 19.06 %, `(1,1)` 12.68 %, `(3,3)` 12.25 %, `(4,4)`
-    /// 5.38 %. Cumulative coverage of a square grid: `0..=3` 62.82 %, `0..=4`
-    /// **79.95 %**, `0..=5` 89.93 %, `0..=6` 95.01 %.
-    ///
-    /// So the site that "would not have been covered" is in fact the most
-    /// dispatch-friendly fold in the engine, and it has been running the
-    /// runtime-length body — two loops whose trip counts LLVM cannot see, an
-    /// unroll remainder each, **per tile, eight times per call** — for
-    /// 823,842 calls per 5 M nodes.
-    ///
-    /// # What it was worth. **LANDED.**
-    ///
-    /// The `0..=4` grid (24 arms, 79.95 % of warm refreshes) is
-    /// **−42.54 instructions/node** for +13,296 B of `.text` — 3.20 i/node per
-    /// KB, second only to the threat fold's first ring, and larger than
-    /// anything study 61 landed. The `0..=6` extension (`dual62b`, 24 more
-    /// arms, 95.01 %) is a further −13.71 i/n for +19,712 B = 0.70 i/node per
-    /// KB, which fails study 62 §4's pre-registered `.text` rule and is NOT
-    /// landed.
-    ///
-    /// > **The general lesson, which is why this banner is long: study 61
-    /// > screened this symbol on REFRESH RATE (at Stockfish parity) and on ROW
-    /// > LOCALITY (capacity-bound, and it is) and concluded "not an
-    /// > opportunity". Both facts were true and neither was about the kernel's
-    /// > loop control. A site screened on the axes that happen to have
-    /// > instruments is not screened.**
-    ///
-    /// `noshape62` restores the runtime-length body for the whole site.
+    /// Shape-dispatched like the into-fold: the warm refresh folds a set
+    /// difference between two king buckets whose `(adds, subs)` distribution
+    /// concentrates on and near the diagonal, so the `0..=4` grid covers the
+    /// large majority of calls. `noshape62` restores the runtime-length body
+    /// for the whole site.
     #[target_feature(enable = "avx512f,avx512bw")]
     unsafe fn i8_deltas_dual_inner(
         acc: &mut [i16; ACC],
@@ -2246,7 +1901,7 @@ mod avx512 {
                 (1, 1), (1, 2), (2, 1), (2, 2), (1, 0), (0, 1), (2, 0), (0, 2),
                 (3, 0), (0, 3), (1, 3), (3, 1), (2, 3), (3, 2), (3, 3),
                 (4, 0), (0, 4), (4, 1), (1, 4), (4, 2), (2, 4), (4, 3), (3, 4), (4, 4));
-            // NOT LANDED — 0.70 i/node per KB, below study 62 §4's rule.
+            // Below the pre-registered `.text` landing rule; not default.
             #[cfg(all(feature = "dual62b", not(feature = "noshape62")))]
             shaped_dispatch!(i8_dual_shaped(acc, out, weights, adds, subs);
                 adds.len(), subs.len();
@@ -2258,14 +1913,12 @@ mod avx512 {
         }
     }
 
-    /// The Finny warm refresh with **compile-time row counts** — perf study 62.
-    ///
-    /// Exactly [`i8_into_shaped`] with the second destination store, and with
-    /// `acc` read as well as written (the fold is in-place on the cache entry).
-    /// `(0, 0)` is deliberately NOT dispatched: an empty warm refresh must copy
-    /// `acc` to `out` verbatim, which the generic body does and this one would
-    /// too, but keeping it on one path keeps the empty-list contract in one
-    /// place (0.38 % of calls).
+    /// The Finny warm refresh with **compile-time row counts** — exactly
+    /// [`i8_into_shaped`] with the second destination store, and with `acc`
+    /// read as well as written (the fold is in-place on the cache entry).
+    /// `(0, 0)` is deliberately NOT dispatched: an empty warm refresh must
+    /// copy `acc` to `out` verbatim, which the generic body does; keeping it
+    /// on one path keeps the empty-list contract in one place.
     #[target_feature(enable = "avx512f,avx512bw")]
     #[inline]
     unsafe fn i8_dual_shaped<const NA: usize, const NS: usize>(
@@ -2327,10 +1980,9 @@ mod avx512 {
     ///
     /// `#[inline(never)]` mirrors `i8_deltas_into_generic`: once a dispatch
     /// exists, the runtime-length body must not be inlined back into the
-    /// dispatcher, or the shaped arms lose their straight-line layout. It is
-    /// dropped under `noshape62`, so that the revert build is byte-identical to
-    /// the pre-study-62 tree and stays a valid control — verified by building
-    /// (`.text` md5 `242abfdd` both sides, same feature set).
+    /// dispatcher, or the shaped arms lose their straight-line layout. Dropped
+    /// under `noshape62` so the revert build stays byte-identical to the
+    /// pre-dispatch tree (a valid control).
     #[target_feature(enable = "avx512f,avx512bw")]
     #[cfg_attr(not(feature = "noshape62"), inline(never))]
     unsafe fn i8_deltas_dual_generic(
@@ -2363,23 +2015,17 @@ mod avx512 {
                     }
                 }
                 for (k, vk) in v.iter().enumerate() {
-                    // Perf study 43 arm NT. The two destinations have opposite
-                    // reuse distances and only one of them wants a cache line:
-                    //
-                    //  * `out` is `stack[ply].acc[p]`, which the head reads
-                    //    within the same node -- it must stay a normal store;
-                    //  * `acc` is the FINNY CACHE ENTRY, whose next read is the
-                    //    next refresh at this king key. Measured: 0.16472
-                    //    refreshes/node spread over all 128 slots, so a hot slot
-                    //    comes round roughly every ~350 nodes, and in 350 nodes
-                    //    the engine streams ~3 MB of weight rows through a 1 MB
-                    //    L2. The line cannot survive, so keeping it costs an RFO
-                    //    now (6.6 lines/node) and evicts weight rows for nothing.
-                    //
-                    // `_mm512_stream_si512` REQUIRES 64-byte alignment; that is
-                    // guaranteed structurally, not by luck -- `FinnyEntry` is
-                    // `#[repr(C, align(64))]` and `acc` sits at offset 128
-                    // (`by_piece` 96 + `psqt` 32) -- and the wrapper
+                    // The `nt43` arm. The two destinations have opposite reuse
+                    // distances and only one wants a cache line:
+                    //  * `out` is `stack[ply].acc[p]`, read by the head within
+                    //    the same node — it must stay a normal store;
+                    //  * `acc` is the FINNY CACHE ENTRY, next read at the next
+                    //    refresh with this king key — far enough away that the
+                    //    line cannot survive, so keeping it costs an RFO now
+                    //    and evicts weight rows for nothing.
+                    // `_mm512_stream_si512` REQUIRES 64-byte alignment; that
+                    // is structural — `FinnyEntry` is `#[repr(C, align(64))]`
+                    // and `acc` sits at offset 128 — and the wrapper
                     // `debug_assert`s it.
                     #[cfg(feature = "nt43")]
                     _mm512_stream_si512(acc.as_mut_ptr().add(off + k * LANES).cast(), *vk);
@@ -2392,21 +2038,13 @@ mod avx512 {
         }
     }
 
-    /// The fold with **compile-time row counts** — perf study 25 arm 1, moved
-    /// onto i8 rows by perf study 32.
+    /// The fold with **compile-time row counts**.
     ///
     /// `NA`/`NS` are the exact lengths of `adds`/`subs`, so both row loops
     /// unroll away completely: no loop control, no unroll remainder, no
-    /// empty-list clones, and `feature * ACC` is computed ONCE for the whole
+    /// empty-list clones, and the row offsets are read ONCE for the whole
     /// call instead of once per tile. What is left is straight-line
     /// `vpmovsxbw` / `vpaddw` / `vpsubw` with no branch of any kind.
-    ///
-    /// This is NOT perf study 12 §4's rejected offset hoist. That one built a
-    /// `[MaybeUninit<usize>; 96]` for a *runtime*-length list and paid 91
-    /// instructions of prologue to save 4 multiplies. Here the array is
-    /// `[usize; NA]` with `NA <= 2` known at compile time: it lives in two
-    /// registers, the "loop" filling it is two `lea`+`shl` pairs, and there is
-    /// no prologue at all.
     ///
     /// Bit-identical to the generic path: same rows, same order (adds then
     /// subs), same per-lane wrapping i16 arithmetic.
@@ -2468,150 +2106,26 @@ mod avx512 {
         adds: &[RowOffset],
         subs: &[RowOffset],
     ) {
-        // Perf study 25 arm 1 — dispatch on the SHAPE of the delta set.
+        // Dispatch on the SHAPE of the delta set.
         //
         // `apply_dirty_directed` (`sota_accumulator.rs`) builds both lists in
-        // `[usize; 2]` arrays, so a HalfKA fold is ALWAYS one of four shapes,
-        // and the comment there pins the lower bound: every real move emits at
-        // least one add and one sub (a null move pushes no entry at all). LLVM
-        // cannot see any of that through `&[usize]`, so it emitted a 6231-byte
-        // function — the row loops unrolled x2 with an odd/even remainder
-        // branch, cloned across the empty-list cases, 480 `vpaddw`/`vpsubw` in
-        // 24 copies of the tile body. Measured on that code: 11.16% of all
-        // engine cycles for 6.93% of instructions (fast build, d16 frame).
-        //
-        // The four shaped instantiations are branch-free straight lines. The
-        // generic fallback stays for the threat channel's longer feature lists
-        // and for the EMPTY case, which must remain a plain copy — see the
+        // `[RowOffset; 2]`, so a HalfKA fold is always one of the four
+        // `{1,2}²` shapes; LLVM cannot see that through slices, so the
+        // runtime-length body carries loop control the shaped arms compile
+        // away. The FullThreats channel routes through this same dispatch
+        // with longer lists; the square grid to `(6,6)` covers the large
+        // majority of threat folds, and the generic fallback takes the rest
+        // plus the EMPTY case, which must remain a plain copy — see the
         // "stale-child bug" note at `sota_accumulator.rs`'s forward fold.
-        // ## Perf study 61 — the ONE-SIDED and THREE-ROW shapes. **LANDED.**
         //
-        // The four arms above were chosen in study 25, when this kernel was
-        // HalfKA-ONLY: `apply_dirty_directed` builds both lists in `[usize; 2]`
-        // and every real move emits at least one add and one sub, so `(1,1)`,
-        // `(1,2)`, `(2,1)`, `(2,2)` is a COMPLETE cover of HalfKA and the
-        // fallthrough was genuinely dead. Study 32 quantised HalfKA to i8,
-        // deleted the i16 family, and routed **the entire FullThreats channel**
-        // through this same dispatch — without revisiting the arm list, and
-        // without anyone counting what the new traffic's shapes are.
-        //
-        // Counted here for the first time (`foldcount::THR_PAIR`, 4,270,334
-        // threat folds in the study frame):
-        //
-        // | `(adds, subs)` | folds | share | path |
-        // |---|---:|---:|---|
-        // | `(0,1)` | 444,368 | **10.41 %** | generic |
-        // | `(1,0)` | 371,467 | **8.70 %** | generic |
-        // | `(0,2)` | 168,840 | 3.95 % | generic |
-        // | `(2,0)` | 84,674 | 1.98 % | generic |
-        // | the four study-25 arms | 1,164,466 | 27.27 % | shaped |
-        // | everything else | 2,036,519 | 47.69 % | generic |
-        //
-        // **19.11 % of every threat fold is a SINGLE weight row, and it runs the
-        // runtime-length kernel** — two loops whose trip counts LLVM cannot see,
-        // an x2 unroll with an odd/even remainder branch, and an empty-list test,
-        // eight times over (once per tile), to apply one row.
-        //
-        // A one-sided list is exactly the case the generic form was never for.
-        // Adding the four one-sided shapes takes straight-line coverage from
-        // 27.27 % to **52.31 %** of threat folds. `i8_into_shaped` already
-        // handles `NS = 0` correctly — `srow` is `[usize; 0]`, the `zip` fills
-        // nothing and the `for &base in &srow` loop compiles away entirely — so
-        // this is a dispatch change and not a kernel change.
-        //
-        // **Bit-identical by construction, at the strongest level:** the shaped
-        // and generic kernels walk the same tiles in the same order, read the
-        // same rows in the same order (adds then subs), and perform the same
-        // per-lane wrapping i16 add/sub. The gate checks it anyway.
-        //
-        // The cost is `.text`: eleven more instantiations of a straight-line
-        // tile body, measured at **+8,048 B total** (714,725 → 722,773), which
-        // is far less than the naive estimate because LLVM shares the tile
-        // prologue and epilogue across instantiations.
-        //
-        // **Measured together, 32 rounds, blocked Latin square, byte-identical
-        // null in the rotation, node total 5,001,562 on every run:**
-        //
-        // | arm | coverage of threat folds | `instructions:u` | `branches:u` |
-        // |---|---:|---:|---:|
-        // | study 25 (was) | 27.27 % | — | — |
-        // | + one-sided | 52.31 % | **−0.438 % (−24.7/node)** | **−0.509 %** |
-        // | + three-row (**shipped**) | **68.40 %** | **−1.219 % (−68.9/node)** | **−2.274 %** |
-        //
-        // Both counters read 32/32 at **se 0.000** against a null of exactly
-        // −0.000 %. `cycles:u` was NOT resolvable — a GPU training run shared
-        // the box and the null moved further than the arm — so this is landed
-        // on the exact counters and its wall-clock value is not established.
-        //
-        // **The win per converted fold GROWS with the shape**, which is the
-        // useful generalisation: −115 instructions per one-sided fold against
-        // −322 per three-row fold, because the generic kernel pays its loop
-        // control per row per tile. **31.60 % of threat folds are still
-        // generic** (both lists ≥ 4, or one ≥ 5) and the next study should
-        // either continue the table or fix the generic kernel's loop control,
-        // which is now the cheaper-looking of the two.
-        //
-        // `noshape61` restores the study-25 dispatch so this contrast stays
-        // measurable on the shipped tree.
-        //
-        // ## ⚠ PERF STUDY 62 REFUTED BOTH HALVES OF THAT CLOSING PARAGRAPH
-        //
-        // **(a) "The win per converted fold grows with the shape" is not a
-        // law.** Measured per-fold win against mean rows per fold, on the same
-        // frame, one ring of the grid at a time:
-        //
-        //   one-sided (1.24 rows)   −115 i/fold
-        //   three-row (4.61 rows)   −322
-        //   max = 4   (6.27 rows)   −211   <- MORE rows, CHEAPER fold
-        //   max = 5   (7.97 rows)   −292
-        //   max = 6   (9.60 rows)   −496
-        //   subs = 7  (~9.5 rows)   −177
-        //   subs = 8  (~10.5 rows)  −414
-        //
-        // It is not monotone in rows and it is not monotone in either list
-        // length. Study 62 pre-registered a mechanism for the non-monotonicity
-        // — LLVM unrolls the generic row loops ×4 and leaves a one-row
-        // remainder loop, so cost should track `len mod 4` — built the probe
-        // that separates `subs = 7` (3 remainder rows) from `subs = 8` (none),
-        // and **the probe refuted it**: `subs = 8` is worth 2.3× more per fold
-        // than `subs = 7`, the opposite of the prediction. **The per-fold win
-        // is not predictable from the shape; only measuring a ring prices it.**
-        //
-        // **(b) "Fix the generic kernel's loop control … the cheaper of the
-        // two" is refuted by outcome.** Continuing the table is a pure dispatch
-        // change, bit-identical by construction, and on this tree the remaining
-        // rings are worth **−61.80 i/n** on the threat fold alone. Route B is
-        // the one with three measured failures in this same kernel (study 37's
-        // paired loop +0.147 %, study 58's re-price of it +16.96 i/n, study
-        // 58's `as_chunks::<4>` +63.35 i/n) and it was not built.
-        //
-        // Landed here: the rest of the square grid to `0..=6`, in the three
-        // rings a/b/c measured separately (79.42 % → 87.04 % → **92.45 %** of
-        // threat folds), **−61.80 i/n and −2.387 % branches, 30/30 at se
-        // 0.000**, for +23,648 B of `.text`.
-        //
-        // NOT landed, and both are real instruction wins: the rectangular
-        // `subs = 7` and `subs = 8` columns (`shape62d`/`shape62e`, −3.91 and
-        // −5.37 i/n). They fail study 62 §4's pre-registered `.text` rule —
-        // 0.60 and 0.75 i/node per KB against 2.02–4.05 for everything landed.
-        //
-        // `noshape62` restores study 61's dispatch (and `noshape61` implies it).
-        //
-        // ## Perf study 63 — `hot63`: the MODAL shape, tested before the table
-        //
-        // This kernel serves TWO callers and studies 61/62 grew its table 16×
-        // for one of them. `apply_halfka_deltas_into` can only ever present a
-        // shape in `(0..=2, 0..=2)` — `apply_dirty_directed` builds both lists
-        // in `[RowOffset; 2]` — and the census says it presents just three:
-        // `(1,1)` 3,529,017, `(1,2)` 1,316,030, `(2,1)` 48,267, summing to
-        // `hka_into.calls` exactly. So 4,893,314 calls per 5 M nodes walk a
-        // 48-arm decision tree that three arms would decide, and nobody
-        // measured what the shared table costs the caller it was not grown for.
-        // `(1,1)` is also the modal THREAT shape (449,864), making it 43.4 % of
-        // all 9,163,648 into-folds.
-        //
-        // `hot63` hoists it to a leading direct branch. MEASURED AND REJECTED:
-        // see the banner on the feature in `Cargo.toml` for the number.
+        // Shaped and generic are bit-identical by construction: same tiles in
+        // the same order, same rows in the same order (adds then subs), same
+        // per-lane wrapping i16 arithmetic. NOTE: the per-fold win of a new
+        // arm is NOT predictable from its shape — measure any extension of
+        // the grid. `noshape61`/`noshape62` restore the smaller dispatch
+        // tables so those contrasts stay measurable; `hot63` (measured and
+        // rejected — see `Cargo.toml`) hoists the modal `(1,1)` shape to a
+        // leading branch.
         unsafe {
             #[cfg(feature = "hot63")]
             if adds.len() == 1 && subs.len() == 1 {
@@ -2630,13 +2144,6 @@ mod avx512 {
                 (2, 0) => return i8_into_shaped::<2, 0>(dst, src, weights, adds, subs),
                 #[cfg(not(feature = "noshape61"))]
                 (0, 2) => return i8_into_shaped::<0, 2>(dst, src, weights, adds, subs),
-                // The THREE-row family. `(3,0) (0,3) (1,3) (3,1) (2,3) (3,2)
-                // (3,3)` is a further 686,947 folds = 16.09 % of the channel,
-                // taking coverage 52.31 % → 68.40 %. It was measured as its own
-                // arm (`shape61x`) precisely because a body up to six rows wide
-                // is where `.text` cost could plausibly overtake the win — and
-                // it does not: it MORE than doubles the win (−24.7 → −68.9 i/n)
-                // for +3,088 B.
                 #[cfg(not(feature = "noshape61"))]
                 (3, 0) => return i8_into_shaped::<3, 0>(dst, src, weights, adds, subs),
                 #[cfg(not(feature = "noshape61"))]
@@ -2653,28 +2160,7 @@ mod avx512 {
                 (3, 3) => return i8_into_shaped::<3, 3>(dst, src, weights, adds, subs),
                 _ => {}
             }
-            // ## Perf study 62 — the rest of the square grid. **LANDED.**
-            //
-            // Measured as three rings so the marginal value of each is on the
-            // record (single-run whole-frame totals, each reproduced to better
-            // than 4 parts in 10⁸; the combined arm is confirmed at 30/30,
-            // se 0.000 in `panel-ladder.txt`):
-            //
-            //   ring           arms  coverage  Δ i/node  Δ.text   i/node per KB
-            //   0..=3 (st.61)    15    68.40 %       —        —        —
-            //   0..=4 (a)        +9    79.42 %   −19.90   +4,912     4.05
-            //   0..=5 (b)       +11    87.04 %   −19.01   +7,408     2.57
-            //   0..=6 (c)       +13    92.45 %   −22.89  +11,328     2.02
-            //
-            // ROWS, which is the unit the generic kernel's control is charged
-            // in, move faster than folds: 59.66 % of all threat rows were still
-            // generic after study 61, and the three rings take that to 19.31 %.
-            //
-            // The last column is the study's landing rule (§4, pre-registered
-            // before the candidate was built): `.text` buys instructions, and
-            // `instructions:u` is structurally blind to what `.text` costs, so
-            // a rung lands only at >= 2.0 i/node per KB. Everything above
-            // qualifies; the two rungs below do not, by a factor of 2.9.
+            // The rest of the square grid to `(6,6)`.
             #[cfg(not(feature = "noshape62"))]
             shaped_dispatch!(i8_into_shaped(dst, src, weights, adds, subs);
                 adds.len(), subs.len();
@@ -2683,35 +2169,10 @@ mod avx512 {
                 (5, 5),
                 (6, 0), (0, 6), (6, 1), (1, 6), (6, 2), (2, 6), (6, 3), (3, 6), (6, 4), (4, 6),
                 (6, 5), (5, 6), (6, 6));
-            // ## The rectangular rungs — MEASURED, NOT LANDED.
-            //
-            // The reason to go rectangular is an asymmetry the capped
-            // `THR_PAIR` histogram could not show. `foldcount::THR_LENS` (new
-            // in study 62) records the two list lengths uncapped:
-            //
-            //   adds:  <= 6 covers 98.64 % of folds, longest observed 12
-            //   subs:  <= 6 covers 92.99 %,          longest observed 16
-            //
-            // The whole residual tail is LONG SUB LISTS against short add
-            // lists, so a square ring past 6 would spend nine arms on
-            // `(7..12, s)` cells holding 1.36 % of the channel. These two add
-            // the next SUB COLUMNS instead, for every add count already
-            // covered.
-            //
-            // They are split in two because they were also the study's
-            // MECHANISM probe, and the probe REFUTED its hypothesis. LLVM
-            // unrolls the generic row loops ×4 and leaves a one-row remainder
-            // loop re-entered per list per TILE, so the win per fold ought to
-            // track `len mod 4`: `subs = 7` (3 remainder rows) should pay far
-            // more than `subs = 8` (none). Measured, it is the other way round
-            // — **−3.91 i/n for `subs = 7` against −5.37 for `subs = 8`**, i.e.
-            // ~177 vs ~414 instructions per converted fold. The per-fold win is
-            // not predictable from the shape.
-            //
-            // Both fail the landing rule: 0.60 and 0.75 i/node per KB. A quiet
-            // box that can resolve `cycles:u` should re-test them — study 62's
-            // front-end panel found the `.text` cost does NOT convert into
-            // dispatch starvation, which is the argument for reinstating them.
+            // The rectangular `subs = 7` / `subs = 8` columns (the residual
+            // tail is long sub lists against short add lists): real
+            // instruction wins, but below the pre-registered `.text` landing
+            // rule — kept behind features, not default.
             #[cfg(all(feature = "shape62d", not(feature = "noshape62")))]
             shaped_dispatch!(i8_into_shaped(dst, src, weights, adds, subs);
                 adds.len(), subs.len();
@@ -2724,126 +2185,25 @@ mod avx512 {
         }
     }
 
-    /// The runtime-length i8 fold — **the whole FullThreats channel**, plus the
-    /// tests' long lists and the EMPTY-list contract (both lists empty must copy
-    /// `src` to `dst` verbatim, which the in-place twins never have to do).
+    /// The runtime-length i8 fold — **the whole FullThreats channel** beyond
+    /// the shaped table, plus the tests' long lists and the EMPTY-list
+    /// contract (both lists empty must copy `src` to `dst` verbatim, which
+    /// the in-place twins never have to do). Not `#[cold]`: this is a hot
+    /// path, and the label cost real block placement when it was mislabelled.
     ///
-    /// # It is not cold, and it stopped being cold in perf study 32
-    ///
-    /// This carried `#[cold]` + `#[inline(never)]` from perf study 25 arm 1,
-    /// where it was **true**: the fold family was still split by weight type,
-    /// HalfKA folded `i16` rows through the shaped dispatch above and the threat
-    /// channel had its own `i8` kernel, so nothing but tests and the empty case
-    /// reached this function. Study 32 quantised HalfKA to `i8` and deleted the
-    /// `i16` family — "both feature transformers now fold i8 rows" — which
-    /// routed every threat fold into the *shared* kernel, out through the shape
-    /// dispatch (threat lists average 4.658 rows, so they miss all four shapes)
-    /// and into here. The attribute came across with the code. Perf study 36
-    /// then measured the result: **12.38% of engine cycles in a function
-    /// labelled cold.**
-    ///
-    /// Perf study 37 measured what the label cost. `#[inline(never)]` was
-    /// **provably inert** — the binary is byte-identical with it removed,
-    /// because `cold` already forbids inlining — and `#[cold]` was worth
-    /// −0.744 instructions and −0.744 branches per node, entirely from block
-    /// placement in the caller: it laid the generic call out as the unlikely
-    /// arm of the shape dispatch, so the one path that is actually taken took a
-    /// jump the fallthrough now covers.
-    ///
-    /// # ⚠ DO NOT "TIDY" THE TWO ROW LOOPS INTO ONE — that arm was built and it LOST
-    ///
-    /// Perf study 37 arm 3 walked the add and sub lists TOGETHER for their
-    /// common prefix (`split_at(adds.len().min(subs.len()))`, then one paired
-    /// loop plus whichever tail survives), on the reasoning that two cursor
-    /// bumps, two compares and two back-edges per pair become one of each. The
-    /// per-row control here really is **6 instructions per row per tile**
-    /// (`mov`, `add`, `lea`, `shl`, `cmp`, `jne` — read off the shipped
-    /// disassembly, not estimated), i.e. ~47.9 i/n and ~8.0 br/n at 3.993
-    /// rows/node over 2 tiles, so the target was real.
-    ///
-    /// It is bit-identical — wrapping `i16` add/sub is a commutative group
-    /// operation per lane, so only the multiset of signed rows matters — and it
-    /// measured **+0.147% instructions, +0.243% branches and +0.331% L1d
-    /// loads**, node- and hash-identical, 12 paired rounds, against a null of
-    /// exactly zero on the first two. A LOSS, three times over.
-    ///
-    /// **Why**, and this is the part worth keeping: the two-loop form is
-    /// 3616 bytes because **LLVM clones the whole tile body across the
-    /// empty-list cases and unrolls both tiles**, and that cloning is worth more
-    /// than the control it duplicates. The paired form collapsed to 1744 bytes
-    /// (405 instructions from 714, one tile body instead of the clones) —
-    /// tidier, smaller, and slower. Turning two loops into three also gives the
-    /// common `na == ns` case two empty-tail entry tests it did not have.
-    ///
-    /// The lesson generalises to anything else proposed here: in this kernel the
-    /// specialised, duplicated shape IS the optimisation, and a restructuring
-    /// that lets LLVM re-merge the paths pays for it. Measure before believing
-    /// a control-count argument.
-    ///
-    /// ## ⚠ PERF STUDY 58 RE-PRICED IT AT `TILES = 8` AND IT LOST HARDER
-    ///
-    /// Study 37 §9 item 4 left this open in writing — *"whether the paired arm
-    /// would still lose at a different `REGS`/`TILES`… I did not test another
-    /// width and the banner does not claim I did"* — and study 44 then took
-    /// `REGS_CAP` to 5, so the walk this arm attacks became **four times
-    /// wider**. That is the exact shape that made study 57 arm A worth −41 i/n
-    /// after study 37 had priced it at −8, so it was rebuilt and re-measured
-    /// against post-57 main on the 5,001,562-node frame:
-    ///
-    /// | arm | `instructions:u` | `branches:u` |
-    /// |---|---:|---:|
-    /// | study 37, `TILES = 2` | +0.147% | +0.243% |
-    /// | **study 58, `TILES = 8`** | **+0.290% (+16.96 i/n)** | **+0.566% (+3.35 br/n)** |
-    ///
-    /// Node-identical, 3 paired rounds, every round the same sign, against a
-    /// counter whose null on this box is 0.000. **The width was not the
-    /// reason.** At eight tiles there are no unrolled tile bodies left to
-    /// clone, so study 37's stated mechanism does not even apply here — and the
-    /// arm is twice as bad. What actually costs is turning two row loops into
-    /// three: each gets its own entry test and its own unroll prologue, per
-    /// tile, and at `TILES = 8` that multiplies by four as well.
-    ///
-    /// The same study built the neighbouring idea — split the row lists ONCE
-    /// outside the tile walk into compile-time 4-row groups plus a ≤3 tail
-    /// (`as_chunks::<4>`), to stop LLVM re-deciding its unroll prologue inside
-    /// the tile loop (~5 instructions per list per tile, ~80 per call, read off
-    /// the disassembly). That measured **+1.083% instructions (+63.35 i/n) and
-    /// +16.24 br/n** — the largest single loser of the study. Two loops became
-    /// four, and LLVM's own scaffolding is cheaper than any hand-split.
-    ///
-    /// **The rule, now paid for three times: in this kernel a loop-control
-    /// instruction count is not a prize, it is an estimate of what LLVM would
-    /// charge you for taking the loop away from it.**
-    ///
-    /// # ⚠ THE `vpmovsxbw` : `vpaddw` 1:1 RATIO IS A HARDWARE FLOOR (perf study 47)
-    ///
-    /// The disassembly of this function is **450 `vpmovsxbw` against 450
-    /// `vpaddw`/`vpsubw`** — the i8→i16 widening is half of every vector op it
-    /// issues, and at 7.1754 fold rows/node it is **287 `vpmovsxbw`/node, 22.3%
-    /// of every 512-bit op in the engine**. Study 47 measured the box to find
-    /// out whether that is reducible. It is not, and the number is:
-    ///
-    /// > the convert pipes run at **32 i16 lanes/cycle** (measured, and measured
-    /// > to be the SAME at 256 bits — Zen 4's double-pump is uniform), and the
-    /// > fold must widen 7.1754 rows × 1280 lanes = **9184 lanes/node**
-    /// > ⇒ **287 cycles/node = 6.87% of the frame, irreducible at this layout.**
-    ///
-    /// Four alternatives were measured or counted, none of them argued:
-    ///
-    /// * **64-B `vmovdqu64` + two register `vpmovsxbw`**: 3 ops per 64 B against
-    ///   2. The fused `vpmovsxbw zmm,[mem]` form already costs exactly what the
-    ///   register form does (both 1.005 c/op) — the load rides free.
-    /// * **ALU-domain sign extension** (`vpsllw`+`vpsraw`, or mask/shift/sub):
-    ///   16–21 lanes/cycle against 32. Shifts and logicals are 1-pipe here too.
-    /// * **`vpmaddubsw` with a {1,0} byte selector**: identical op count, and it
-    ///   scrambles lane order for nothing.
-    /// * **Summing rows in the i8 domain before one widen**: incorrect. Two i8
-    ///   weights sum to [−255, 254], outside i8.
-    ///
-    /// The only real win is **i16 weight rows**, measured at −0.195 c/chunk-update
-    /// (−1.34% of frame) — and it doubles the traffic of a kernel that study 44
-    /// measured at **86–88% load-stall**, i.e. it re-pays study 32's measured
-    /// −6.8% cycles to buy back a third of it. **Do not re-propose it.**
+    /// NOTE — rewrites of this body that were built and LOST; measure before
+    /// believing any control-count argument here:
+    /// * merging the add/sub loops into one paired walk (built twice, at two
+    ///   tile widths) — LLVM clones and unrolls the two-loop form, and that
+    ///   cloning is worth more than the control it duplicates;
+    /// * pre-splitting the row lists into compile-time 4-row chunks
+    ///   (`as_chunks::<4>`) — LLVM's own unroll scaffolding is cheaper than
+    ///   any hand-split.
+    /// NOTE — the 1:1 `vpmovsxbw` : `vpaddw` ratio is a hardware floor at
+    /// this layout (the convert pipes are the limit, and the fused
+    /// `vpmovsxbw zmm,[mem]` load already rides free); i16 weight rows would
+    /// double the traffic of a load-stall-bound kernel. Do not re-propose
+    /// either.
     #[target_feature(enable = "avx512f,avx512bw")]
     #[inline(never)]
     unsafe fn i8_deltas_into_generic(
@@ -2855,8 +2215,6 @@ mod avx512 {
     ) {
         // SAFETY: as `i8_deltas_into_inner`; reads `src`, writes the disjoint
         // `dst`, and each row is a 32-byte load sign-extended to 32 i16 lanes.
-        // Perf study 12 §4 — the offset hoist + CAP chunking is gone; see the
-        // shaped kernel above for the full rationale.
         unsafe {
             let mut off = 0;
             while off + TILE <= ACC {
@@ -2886,26 +2244,21 @@ mod avx512 {
         }
     }
 
-    // ── Perf study 65 — the narrow-plane twins of the two into-kernels. ────
+    // ── The narrow-plane twins of the two into-kernels. ────────────────────
     //
-    // These are SEPARATE functions rather than a `const NARROW: bool` parameter
-    // on the existing ones, and that is deliberate on two counts. (a) The
-    // decode needs AVX512_VBMI, which the compile-time direct dispatch does not
-    // imply (Cascade Lake has VNNI, no VBMI), so the narrow bodies must carry a
-    // wider `target_feature` than the wide ones may. (b) It makes the claim
-    // "nothing about the wide path changed" a property of the diff rather than
-    // of a code-generation argument — `narrow_bits` is empty for HalfKA and for
-    // every build where the loader declined to pack, and in that case the
-    // dispatch below never runs at all.
+    // SEPARATE functions rather than a `const NARROW: bool` parameter,
+    // deliberately: (a) the decode needs AVX512_VBMI, which the compile-time
+    // direct dispatch does not imply, so the narrow bodies must carry a wider
+    // `target_feature` than the wide ones may; (b) `row_map` is empty for
+    // HalfKA and for every build where the loader declined to pack, in which
+    // case the dispatch below never runs — "nothing about the wide path
+    // changed" is a property of the diff.
 
     #[cfg(feature = "narrow65")]
-    /// The shaped fold with a per-ROW narrow/wide decision, hoisted.
-    ///
-    /// The width test is done ONCE per row in the prologue, beside the offset
-    /// hoist study 57 landed, and the tile walk then branches on a register.
-    /// Study 65 measured why it must be per row and not per fold: 53.06 % of
-    /// folded threat rows are narrow but only 9.99 % live in a fold whose every
-    /// row is — a whole-fold predicate converts 5.3× less.
+    /// The shaped fold with a per-ROW narrow/wide decision, hoisted: the width
+    /// test happens ONCE per row in the prologue, beside the offset hoist, and
+    /// the tile walk branches on a register. Per row and not per fold because
+    /// most narrow rows do not live in an all-narrow fold.
     #[target_feature(enable = "avx512f,avx512bw,avx512vl,avx512vbmi")]
     #[inline]
     unsafe fn i8_into_narrow_shaped<const NA: usize, const NS: usize>(
@@ -2986,8 +2339,7 @@ mod avx512 {
     }
 
     #[cfg(feature = "narrow65")]
-    /// The runtime-length twin, for the 7.55 % of threat folds outside the
-    /// shaped table.
+    /// The runtime-length twin, for the threat folds outside the shaped table.
     #[target_feature(enable = "avx512f,avx512bw,avx512vl,avx512vbmi")]
     #[inline(never)]
     unsafe fn i8_into_narrow_generic(
@@ -3059,8 +2411,8 @@ mod avx512 {
 
     #[cfg(feature = "narrow65")]
     /// Shape dispatch for the narrow path — the same grid the wide path uses,
-    /// so a fold does not lose studies 61/62's straight-line coverage merely
-    /// because one of its rows is narrow.
+    /// so a fold does not lose its straight-line coverage merely because one
+    /// of its rows is narrow.
     #[target_feature(enable = "avx512f,avx512bw,avx512vl,avx512vbmi")]
     unsafe fn i8_deltas_into_narrow_inner(
         dst: &mut [i16; ACC],
@@ -3111,56 +2463,18 @@ mod avx512 {
         // u8×i8 four-product dot directly into i32 — the maddubs+madd pair
         // (and its i16 saturation reasoning) collapses into one instruction
         // per (group, block). Loop order is GROUP-outer with all L2/16 output
-        // blocks held in registers (perf study #4 item #2b): the blk-outer
-        // form re-walked the nnz list and re-broadcast each 4-byte FT group
-        // once per block — free at L2=16 (1 block), 7 redundant passes at the
-        // D47 L2=128 (8 blocks, 8 zmm accumulators — well inside the 32-reg
-        // file). i32 wrapping adds are order-independent ⇒ bit-identical.
-        // SAFETY: active groups address four FT bytes and L2 complete
-        // four-byte output rows in loader-validated storage.
-        // PERF STUDY 21: `CHAINS` independent accumulator sets.
+        // blocks held in registers; the blk-outer form re-walked the nnz list
+        // and re-broadcast each FT group once per block.
         //
-        // The group-outer order above is right, but at the SHIPPING width it
-        // leaves one dependency chain. `L2 = 16` ⇒ `BLOCKS = 1`, so every one
-        // of the ~39 active groups accumulated into the same `zmm`, and
-        // `vpdpbusd` on Zen 4 is ~4-cycle latency at ~1-per-cycle throughput:
-        // 39 x 4 = 156 cycles of dependency for 39 cycles of work. Widths that
-        // already carry >= 4 blocks have enough independent chains of their
-        // own and are left byte-for-byte as they were.
-        //
-        // ## PERF STUDY 46: 4 IS THE RIGHT NUMBER, AND IT IS NOW MEASURED
-        //
-        // Study 21 DERIVED 4 from a cited latency x throughput. Study 46's
-        // commission proposed that 4 was only half the truth -- "2 issue ports
-        // against a 4-5 cycle latency needs 8-10 chains" -- so the constant was
-        // measured directly on the box (generated inline asm, chain-count
-        // sweep, min-of-5, `tools/perf46/gen_ilp.py`). Cycles per op:
-        //
-        //   chains        1      2      3      4      5      8     10
-        //   vpdpbusd zmm  4.007  2.002  1.338  1.004  1.002  1.002  1.002
-        //   vpdpbusd ymm  4.005  2.003  1.335  1.002  0.802  0.538  0.527
-        //
-        // 512-bit latency is 4 cycles and 512-bit throughput is 1.00 op/cycle
-        // -- ONE effective FMA/VNNI pipe, because Zen 4 double-pumps 512-bit
-        // ops over a 256-bit datapath. The knee is exactly 4 and the curve is
-        // FLAT from 4 to 10, so raising `CHAINS` above 4 buys provably zero.
-        // The ymm row is the control that proves the mechanism rather than
-        // asserting it: the same instruction at 256 bits runs 2/cycle and its
-        // knee moves to 8, at the same 4-cycle latency.
-        //
-        // DO NOT re-propose 8 chains here. If a future arch raises `L2` so
-        // that `BLOCKS >= 4`, the gate above already switches `CHAINS` to 1 for
-        // the same reason -- the blocks are themselves independent chains.
-        //
-        // Study 46 also tested spreading the `as_chunks::<CHAINS>()` remainder
-        // across chains instead of folding all of it into `sums[0]` below
-        // (bit-identical, since i32 wrapping adds are order-independent). It
-        // measured WORSE -- 96.81 vs 92.95 cycles/call at the typical count of
-        // 39 -- so the shipped shape stays. The tail is not a defect.
-        //
-        // Bit-identical, for the reason the paragraph above already states:
-        // i32 wrapping adds are order-independent, so partitioning the groups
-        // across chains and summing the partials at the end is the same value.
+        // CHAINS: `vpdpbusd` is ~4-cycle latency at ~1-per-cycle throughput
+        // (one effective 512-bit pipe — Zen 4 double-pumps), so at `L2 = 16`
+        // (BLOCKS = 1) every active group would accumulate into one zmm and
+        // serialise. Four independent accumulator sets cover the latency; the
+        // measured knee is exactly 4 with a flat curve beyond, so raising
+        // CHAINS buys nothing — do not re-propose 8. Widths with BLOCKS >= 4
+        // already have independent chains and keep CHAINS = 1. The remainder
+        // tail folds into `sums[0]`; spreading it was measured worse.
+        // Bit-identical either way: i32 wrapping adds are order-independent.
         // SAFETY: active groups address four FT bytes and L2 complete
         // four-byte output rows in loader-validated storage.
         unsafe {
@@ -3170,13 +2484,9 @@ mod avx512 {
             for (blk, sum) in sums[0].iter_mut().enumerate() {
                 *sum = _mm512_loadu_si512(pre.as_ptr().add(blk * L2_BLK).cast());
             }
-            // NOTE: the study's "prefetch the next group's rows" was tried
-            // here and measured noise-to-negative (−0.3% over 4 interleaved
-            // pairs): the per-bucket L1 table is ~160 KB and L2-resident, so
-            // the loads never miss far enough to hide. Perf study 21 re-ran
-            // the same idea on the FT weight rows with a proper
-            // wrong-address control and measured +0.01% — the address does
-            // not matter, so do not re-propose row prefetching here.
+            // NOTE: prefetching upcoming rows (here and on the FT weight
+            // rows) was measured at noise — the table is L2-resident; do not
+            // re-propose.
             //
             // `as_chunks` (not `chunks_exact`) so the inner trip count is a
             // CONSTANT: it removes the per-group conditional pointer advance
@@ -3212,48 +2522,17 @@ mod avx512 {
         }
     }
 
-    /// # ⚠ THIS LOOP IS AT ITS ISSUE FLOOR — and the reason generalises (study 47)
-    ///
-    /// The emitted lane-iteration is **15 512-bit ops** (two 6-op merges plus a
-    /// 3-op tail), 40 iterations per eval, **258.7 ops/node = 20.1% of every
-    /// 512-bit op in the engine**. Measured against its own emitted shape it
-    /// costs **0.586 c/op** — the isolated per-op sum predicts 0.889, so this
-    /// mix already overlaps the pipes at a factor of 0.659, far better than the
-    /// fold kernel's 0.873. There is no arrangement win left here.
-    ///
-    /// **★ THE RULE THAT KILLS THE OBVIOUS IDEAS: on Zen 4 a folded memory
-    /// operand costs exactly ONE issue slot — the same as the register-form op**
-    /// (`vpmullw` reg 1.006, `vpmullw` mem 1.006; a bare `vmovdqu64` is 1.077).
-    /// Both loads that CAN fold here already do, read off the shipped
-    /// disassembly:
-    ///
-    /// ```text
-    /// vmovdqu64 (%rax,%r14,2),%zmm2       ; pst   load
-    /// vpsllw    $0x1,(%r8,%r14,2),%zmm3   ; threat load FOLDED into the shift
-    /// vpmullw   (%rbx,%r14,2),%zmm2,%zmm2 ; scale  load FOLDED into the multiply
-    /// ```
-    ///
-    /// So **CSE-ing a folded load STRICTLY LOSES**: the `scale` vectors are each
-    /// re-loaded once per perspective, and hoisting them turns
-    /// `2 × vpmullw[mem]` into `1 × vmovdqu64 + 2 × vpmullw[reg]` — three ops for
-    /// two. (This also retro-explains perf study 46 §3.2, which measured
-    /// spreading `l1_dot`'s tail as WORSE and could not say why.)
-    ///
-    /// Four more candidates, all closed by measurement rather than by argument:
-    ///
-    /// * **`vpaddsw` → `vpaddw`** would genuinely halve that op (1.003 → 0.518 —
-    ///   saturation costs 2× on this box, which nobody knew). It is **NOT
-    ///   bit-safe**: `vpmullw` is wrapping *by design* (see the study-32 note
-    ///   below), so the saturating add really can fire, and wrapping instead
+    /// NOTE — this loop is at its issue floor; the standing guards, each from
+    /// measurement:
+    /// * On Zen 4 a folded memory operand costs exactly ONE issue slot (the
+    ///   same as the register-form op), and both loads that CAN fold here
+    ///   already do — so CSE-ing a folded load into a separate `vmovdqu64`
+    ///   STRICTLY LOSES (three ops for two).
+    /// * `vpaddsw` → `vpaddw` is NOT bit-safe: `vpmullw` is wrapping by
+    ///   design, so the saturating add really can fire, and wrapping instead
     ///   flips those lanes to the opposite clamp.
-    /// * **`vpsllw $1` → `vpaddw t,t`** (1.005 → 0.518) loses: the shift carries
-    ///   a folded load and the add cannot, so it costs 1.588 against 1.005.
-    /// * **`vpsllw $7` + `vpmulhuw` → `vpmullw` + `vpsrlw`**: two 1-pipe ops
-    ///   either way.
-    /// * **Pre-shifting the threat accumulator to delete `vpsllw`** is
-    ///   *backwards*: it moves work from here (34.5 merges/node) into the fold
-    ///   (287 chunk-updates/node), which runs 8× more often. **Never move work
-    ///   from `activate` to the fold.**
+    /// * Never move work from `activate` into the fold — the fold runs ~8×
+    ///   more often per node.
     #[target_feature(enable = "avx512f,avx512bw")]
     unsafe fn activate_inner<const SHIFT: u32>(
         out: &mut [u8; ACC],
@@ -3263,26 +2542,12 @@ mod avx512 {
         stm: usize,
     ) {
         const H: usize = ACC / 2;
-        // Study-2 option D (D1+D2 as one i16 pipeline, 32 lanes/zmm — the
-        // old path widened to i32 at 16 lanes/zmm, 2.54x SF's cost):
-        //   4t          via 2x vpaddsw   (saturates only for |t| > 8191 —
-        //                                 measured max |t| = 431 over the
-        //                                 800-FEN battery + 6k corpus
-        //                                 positions; debug builds trip the
-        //                                 assert below if a future net
-        //                                 breaks the bound)
-        //   |4t|        via vpabsw
-        //   round(|t|·255/64) = (|4t|·32640 + 2^14) >> 15  via vpmulhrsw —
-        //     EXACT: (4|t|·32640+16384)>>15 = 512·(|t|·255+32)>>15
-        //     = (|t|·255+32)>>6, the scalar reference's magnitude rounding.
-        //     NOTE the study's original recipe applied vpmulhrsw to the
-        //     SIGNED value; that rounds negative half-cases toward +inf and
-        //     diverges from the reference by 1 for every t ≡ 32 (mod 64),
-        //     t < 0 — hence abs/mulhrsw/sign, mirroring the i32 path's own
-        //     sign-reapplication shape.
-        //   sign        via vpsignw (t == 0 ⇒ 0, matching signum()·…)
-        //   p + r       via vpaddsw — saturation only occurs beyond the
-        //               [0,255] clamp, so the clamped result is exact
+        // The merge as one i16 pipeline (32 lanes/zmm; the old path widened
+        // to i32 at 16 lanes/zmm). Exactness, per step:
+        //   t << SHIFT  stays in i16 — the |t| bound is debug-asserted below
+        //   p·scale + t·2^SHIFT  via vpmullw + vpsllw + vpaddsw — the
+        //               saturating add can only saturate beyond the
+        //               [0, FT_QUANT] clamp, so the clamped result is exact
         //   clamp       via vpmaxsw/vpminsw
         //   (l·r)>>9    via vpsllw<7> + vpmulhw (l ≤ 255 ⇒ l·128 < 2^15)
         //   store       via vpmovwb — products ≤ 127, truncation == value.
@@ -3304,53 +2569,20 @@ mod avx512 {
             }
             let zero = _mm512_setzero_si512();
             let ceiling = _mm512_set1_epi16(FT_QUANT as i16);
-            // ★ PERF STUDY 48 — LANE OUTER, PERSPECTIVE INNER, AND THE SCALE
-            // IN A REGISTER.
-            //
+            // LANE OUTER, PERSPECTIVE INNER, AND THE SCALE IN A REGISTER.
             // `scale` is the one array here that does NOT depend on the
-            // perspective: both merges read the SAME 2560 bytes at the SAME
-            // offsets. With the perspective loop outside, the whole array was
-            // therefore streamed TWICE per evaluation — 40 redundant `zmm`
-            // loads, and on Zen 4 a 512-bit load is double-pumped into two
-            // dispatches (study 29 §2.1, measured 2.0015), so **80 redundant
-            // load dispatches per eval = 34.5 per node = 1.5 % of every load
-            // the engine issues**.
-            //
-            // Interchanging the loops alone would only trade those loads for
-            // an equal number of `vmovdqu64`s, which is the trade perf study 47
-            // §5.2 priced and (correctly, for the shape it considered)
-            // rejected: hoisting a FOLDED memory operand costs an issue slot,
-            // so `2 × vpmullw[mem]` → `1 × vmovdqu64 + 2 × vpmullw[reg]` is
-            // three ops for two.
-            //
-            // **`vpmullw` is commutative, and that is what makes this strictly
-            // better rather than a wash.** Exactly one of the multiply's two
-            // operands can be memory. Study 47 assumed it had to be the scale;
-            // it does not. Put the REUSED operand (the scale) in a register and
-            // fold the per-perspective accumulator load into the multiply
-            // instead, and the separate `vmovdqu64` for `pst` disappears:
-            //
-            // | per 32-lane group (4 merges) | ops | 512-bit loads |
-            // |---|---:|---:|
-            // | before: 4 × (`vmovdqu64` pst + `vpsllw`[threat] + `vpmullw`[scale]) | 12 | 12 |
-            // | after: 2 × `vmovdqu64` scale + 4 × (`vpmullw`[pst] + `vpsllw`[threat]) | 10 | 10 |
-            //
-            // So it removes an op AND a load per merge pair — the only strict
-            // improvement of the two, and the reason it is not the arm study 47
-            // closed. Bit-identical: every output byte is the same expression
-            // over the same inputs; only the loop order and the operand that
-            // happens to live in a register change.
+            // perspective; perspective-outer streamed the whole array twice
+            // per evaluation. `vpmullw` is commutative, so the REUSED operand
+            // (the scale) lives in a register and the per-perspective
+            // accumulator load folds into the multiply instead — removing an
+            // op AND a load per merge pair, the only strict improvement of
+            // the two orders. Bit-identical: every output byte is the same
+            // expression over the same inputs.
             for lane in (0..H).step_by(32) {
-                // ★ PERF STUDY 50 — the scale is u8, so this is a 32-byte
-                // load zero-extended into 32 i16 lanes instead of a 64-byte
-                // load. `vpmovzxbw` takes its 256-bit memory operand in the
-                // SAME single issue slot a `vmovdqu64` takes (study 47's
-                // table: every memory-operand op costs ~1 c), so the op count
-                // is unchanged and only the BYTES move: 2560 -> 1280 per
-                // evaluation, and the whole array drops from 40 cache lines
-                // to 20. On Zen 4 a 512-bit load is double-pumped into two
-                // dispatches and a 256-bit load into one (study 29 §2.1,
-                // measured 2.0015), so it is also -40 load dispatches/eval.
+                // The scale is u8, so this is a 32-byte load zero-extended
+                // into 32 i16 lanes instead of a 64-byte load: same op count
+                // (`vpmovzxbw` takes its memory operand in one issue slot),
+                // half the bytes streamed.
                 let sv_left =
                     _mm512_cvtepu8_epi16(_mm256_loadu_si256(scale.as_ptr().add(lane).cast()));
                 let sv_right =
@@ -3359,59 +2591,29 @@ mod avx512 {
                     let perspective = stm ^ flip;
                     let p = &pst[perspective];
                     let t = &threat[perspective];
-                    // The threat rescale, as ONE SHIFT.
-                    //
-                    // The two FT transformers are quantised differently —
-                    // HalfKA at FT_QUANT = 255, FullThreats at the NET's own
-                    // `threat_quant` — so the merge used to carry a six-op
-                    // `round(t · 255/64)`: abs / shift / mulhrs /
-                    // compare-mask / masked-sub / add. That was 24 of this
-                    // loop body's 48 instructions and ~2.2% of ALL engine
-                    // instructions, where Stockfish — whose two feature sets
-                    // fold into ONE 1024-wide accumulator, not two — merges the
-                    // threat channel with a single
-                    // `vec_add_16(acc, vec_convert_8_16(column))`
-                    // (`eca43a97:src/nnue/nnue_accumulator.cpp:237-238`).
-                    //
-                    // The ratio does not have to be exact: it is a GAIN on one
-                    // eval channel, so it is carried as the nearest power of
+                    // The threat rescale, as ONE SHIFT: the two FTs are
+                    // quantised differently (HalfKA at FT_QUANT = 255,
+                    // FullThreats at the net's own `threat_quant`), and the
+                    // ratio is a GAIN on one eval channel, so exactness is
+                    // not required — it is carried as the nearest power of
                     // two, `256/threat_quant` (`sota_head::threat_shift_for`).
-                    // 255/64 = 3.984375 → 4 is a 0.39% systematic change; at a
-                    // QAT net's threat_quant 256, 255/256 = 0.996 → 1 is the
-                    // SAME 0.39% in the other direction, i.e. shift 0.
                     //
-                    // **The shift is a const generic and not a parameter for a
-                    // measured reason** (perf study 30 §5.3). With an immediate,
-                    // LLVM folds the accumulator load INTO the shift —
-                    // `vpsllw $0x2,(%rcx,%r8,2),%zmm3`. `vpsllw`'s
-                    // register-count form takes its memory operand as the
-                    // COUNT, not the data, so a runtime shift forces a separate
-                    // `vmovdqu64` per merge and costs the unroll: measured
-                    // **+34.48 instructions per node, +0.61%**, branches
-                    // unchanged. Monomorphising over the three legal shifts and
-                    // branching once per eval gives it back (+2.77 i/n).
+                    // NOTE: the shift is a const generic, not a runtime
+                    // parameter, so LLVM folds the accumulator load INTO the
+                    // shift — `vpsllw`'s register-count form takes its memory
+                    // operand as the COUNT, not the data, so a runtime shift
+                    // forces a separate load per merge. Do not make it
+                    // runtime, and do not rebase the stored weights into the
+                    // FT_QUANT frame at load (measured: i8 saturation, large
+                    // eval error), without re-measuring.
                     //
-                    // Measured on the 800-FEN battery against the exact form:
-                    // **74.0% of positions identical, mean |delta| 0.14 SF cp,
-                    // p99 0.97, max 2.42, Pearson r = 0.999999.** Two rejected
-                    // alternatives, both measured (perf study 8 §4.6): rebasing
-                    // the stored weights into the FT_QUANT frame at load — the
-                    // obvious fix — saturates 0.031% of them at i8 and measured
-                    // **max 205 SF cp**; and the exact `4t - t/64`
-                    // (`slli`/`srai`/`sub`) costs an extra op and is FOUR TIMES
-                    // LESS faithful (mean 0.55 SF cp), because `vpsraw` floors
-                    // and that asymmetry is noisier than the 0.39% of gain it
-                    // corrects.
-                    // The HalfKA rescale, as ONE MULTIPLY (perf study 32).
-                    //
-                    // The HalfKA table is stored i8 with a per-accumulator-lane
-                    // integer scale, so the accumulator lives in the reduced
-                    // frame `FT_QUANT / scale[j]` and has to be put back before
-                    // the clamp. `vpmullw` keeps the product in i16 lanes: the
-                    // result is the value the old FT_QUANT-frame accumulator
-                    // held, so it wraps exactly where that one wrapped, and the
-                    // scalar and avx2 backends pin the same width to agree.
-                    // The threat channel's `<< 2` is unchanged.
+                    // The HalfKA rescale, as ONE MULTIPLY: the table is i8
+                    // with a per-lane integer scale, so the accumulator lives
+                    // in the reduced frame `FT_QUANT / scale[j]` and
+                    // `vpmullw` puts it back before the clamp, in i16 lanes —
+                    // it wraps exactly where the old FT_QUANT-frame
+                    // accumulator wrapped, and the scalar and avx2 backends
+                    // pin the same width to agree.
                     let merge = |offset: usize, sv: __m512i| {
                         let pv = _mm512_loadu_si512(p.as_ptr().add(offset).cast());
                         let tv = _mm512_loadu_si512(t.as_ptr().add(offset).cast());
@@ -3540,41 +2742,17 @@ mod avx512 {
         bias: &[f32; L3],
     ) {
         // Two 16-lane accumulators = the L3=32 output row, seeded from the
-        // bias; per i one broadcast + two fused mul-adds (perf study #4 item
-        // #2a: 4096 FMAs/eval at D47 dims, previously autovectorized).
-        // j-lane order preserved and i-sequential per lane ⇒ bit-identical
-        // to the scalar reference. SAFETY: all loads/stores cover in-bounds
-        // 16-lane blocks of loader-validated storage.
+        // bias; per i one broadcast + two fused mul-adds. j-lane order
+        // preserved and i-sequential per lane ⇒ bit-identical to the scalar
+        // reference. SAFETY: all loads/stores cover in-bounds 16-lane blocks
+        // of loader-validated storage.
         //
-        // ## PERF STUDY 46: this IS an ILP deficit, and it was PRICED and
-        // ## REJECTED -- do not rebuild it without re-reading the number.
-        //
-        // Each accumulator carries a 16-deep FMA chain, and study 46 measured
-        // Zen 4's 512-bit FMA at 4-cycle latency / 1.00 op-per-cycle:
-        //
-        //   throughput floor (32 FMAs)        32 cycles
-        //   latency bound at 2 chains         64 cycles   <-- what this is
-        //   latency bound at 4 chains         32 cycles
-        //
-        // So this kernel runs at 2x its own throughput floor, exactly as study
-        // 21 §9.3 item 5 suspected. A 4-accumulator version measured -17.9
-        // cycles/call in isolation (`tools/perf46/kern.rs`; 8 accumulators
-        // measured WORSE than 4, re-confirming the knee).
-        //
-        // It is rejected on ARITHMETIC, not on difficulty. At the measured
-        // 0.43117 evals/node the prize is -17.9 x 0.43117 = -7.7 cycles/node =
-        // -0.185% of engine cycles -- below the paired panel's own resolution
-        // (se ~0.26% at n = 40), and it is NOT eval-bit-identical: a
-        // left-to-right float sum IS a serial dependency chain, so any
-        // reassociation changes the rounding. Landing it would move the eval
-        // hash and d13 pins and would have to change the scalar reference (the
-        // bit-exact contract), this AVX-512 backend AND the AVX2 backend
-        // below -- which carries the identical 2x deficit for the same reason
-        // (4 ymm accumulators over 4 DISJOINT output slices, each still 16
-        // deep, against a ymm knee of 8).
-        //
-        // Re-price it if `L2` ever grows: the chain deepens linearly with L2,
-        // so at the D47 `L2 = 128` this deficit would be ~8x larger.
+        // NOTE: each accumulator carries an L2-deep FMA chain — a real ILP
+        // deficit — and a 4-accumulator version was priced and REJECTED: the
+        // prize is below panel resolution and it is NOT eval-bit-identical
+        // (f32 reassociation changes the rounding), so it would move the eval
+        // hash and require changing the scalar reference and both SIMD
+        // backends. Re-price if `L2` ever grows; the chain deepens with L2.
         unsafe {
             let mut acc0 = _mm512_loadu_ps(bias.as_ptr());
             let mut acc1 = _mm512_loadu_ps(bias.as_ptr().add(16));
@@ -3610,7 +2788,7 @@ mod avx512 {
     /// `NNZ_IOTA` — the 16 u16 lane indices `0..16`, the vpcompressw source.
     const NNZ_IOTA: [u16; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
-    /// The 32-lane iota — the full-`zmm` `vpcompressw` source (perf study 21).
+    /// The 32-lane iota — the full-`zmm` `vpcompressw` source.
     const NNZ_IOTA32: [u16; 32] = {
         let mut t = [0u16; 32];
         let mut i = 0;
@@ -3630,32 +2808,14 @@ mod avx512 {
 
     #[target_feature(enable = "avx512f,avx512bw,avx512vl,avx512vbmi2")]
     unsafe fn find_nnz_vbmi2_inner(ft: &[u8; ACC], out: &mut [u16; ACC / 4]) -> usize {
-        // Sixteen 4-byte groups per iteration: one 64 B load, test the dwords
-        // against zero into a 16-bit mask, vpcompressw the constant iota to
-        // the mask's set positions (ascending), add the running group base —
-        // the same index set as the scalar scan and the AVX2 movemask+LUT
-        // form, at 20 iterations instead of 40 and no 4 KiB table
-        // (perf study #4 item #2d; Zen 4 / Ice Lake+ have vbmi2).
-        // SAFETY: each load reads 64 in-bounds FT bytes. Each store writes a
-        // full 16-lane row at `out[count]`: entering chunk c, count <= 16c <=
-        // ACC/4 - 16, so the row fits even when every group so far was
-        // nonzero; lanes past the popcount are dead padding overwritten by
-        // the next store or ignored via the returned count.
-        // PERF STUDY 21: THIRTY-TWO groups per iteration, not sixteen.
-        //
-        // `vpcompressw` is a full-`zmm` instruction — it compacts 32 u16 lanes
-        // under a `__mmask32`. The kernel above used only the 256-bit form, so
-        // it paid 20 iterations of test / kmov / popcnt / broadcast / add /
-        // store where 10 do the same work. The mask for a 32-group iteration
-        // is just the two 16-bit dword-test masks concatenated, and the two
-        // 64 B loads are independent.
-        //
-        // This also halves the length of the serial `count` chain, which is
-        // the loop's only loop-carried dependency (each store's address
-        // depends on every previous popcount).
-        //
-        // Bit-identical: same ascending index set, same count. The old
-        // 16-wide iota and the AVX2 movemask+LUT form remain the reference.
+        // THIRTY-TWO 4-byte groups per iteration: two independent 64 B loads,
+        // test the dwords against zero into two 16-bit masks concatenated
+        // into a `__mmask32`, `vpcompressw` the constant iota to the mask's
+        // set positions (ascending), add the running group base — the same
+        // index set as the scalar scan and the AVX2 movemask+LUT form, with
+        // no 4 KiB table. The full-zmm form also halves the serial `count`
+        // chain, the loop's only loop-carried dependency (each store's
+        // address depends on every previous popcount).
         // SAFETY: each iteration reads 128 in-bounds FT bytes. Each store
         // writes a full 32-lane row at `out[count]`: entering chunk c,
         // count <= 32c <= ACC/4 - 32, so the row fits even when every group so
@@ -3691,10 +2851,7 @@ mod avx512 {
     #[target_feature(enable = "avx512f")]
     unsafe fn l3_dot_inner(weights: &[f32; L3], l2: &[f32; L3]) -> f32 {
         // One 16-lane accumulator IS the scalar reference's 16 partial lanes,
-        // so the whole L3 = 32 dot is two `vfmadd231ps` and a four-step
-        // halving tree — against the sixteen 2-lane `vfmadd213ps` and sixteen
-        // `vmovsd` pair-loads LLVM produced for the autovectorized source
-        // (perf study 26 arm 3).
+        // so the whole L3 = 32 dot is two `vfmadd231ps` and the halving tree.
         // SAFETY: L3 = 32 is exactly two in-bounds 16-lane blocks.
         unsafe {
             let mut acc = _mm512_setzero_ps();
@@ -3756,24 +2913,14 @@ mod avx512 {
     #[target_feature(enable = "avx512f")]
     #[target_feature(enable = "avx512f,avx512bw,avx512vnni")]
     unsafe fn skip_dot_i8_inner(ft: &[u8], lane: &[i8]) -> i32 {
-        // `vpdpbusd` is the whole kernel: 64 u8 x i8 products accumulated into
-        // 16 i32 lanes per instruction. 1280 lanes = 20 loads + 20 multiply-adds
-        // where the f32 form needed 80 x (widen, convert, fma).
-        //
-        // PERF STUDY 21: FOUR accumulators, not one. `vpdpbusd` on Zen 4 is
-        // ~4-cycle latency at ~1-per-cycle throughput, so twenty of them
-        // chained into a single register cost 20 x 4 = 80 cycles of pure
-        // dependency for 20 cycles of work. Four independent chains put four
-        // in flight and bring that to ~20 + 4. The loads were never the
-        // problem; the accumulator was.
-        //
-        // Bit-identical, and this is a stated contract rather than an
-        // accident: the scalar reference's own doc fixes the reduction SHAPE
-        // (16 partial lanes + a halving tree) and leaves each backend free to
-        // reach it in any order, because i32 addition is associative. Every
-        // shipped ACC (768/1280/1536/2048) is a multiple of 256, so the 4-wide
-        // body covers the whole vector; the tail loop is kept for a future
-        // width, not because it runs today.
+        // `vpdpbusd` is the whole kernel: 64 u8 × i8 products accumulated into
+        // 16 i32 lanes per instruction. FOUR independent accumulator chains
+        // cover its ~4-cycle latency at ~1/cycle throughput; a single chain
+        // would serialise. Bit-identical by contract: i32 addition is
+        // associative, so each backend may reduce in any order. Every shipped
+        // ACC is a multiple of 256, so the 4-wide body covers the whole
+        // vector; the tail loop is kept for a future width, not because it
+        // runs today.
         // SAFETY: caller guarantees equal lengths, a multiple of 64.
         unsafe {
             let mut a0 = _mm512_setzero_si512();
@@ -3844,9 +2991,8 @@ mod avx512 {
 mod tests {
     use super::*;
 
-    /// The identity HalfKA scale (perf study 32): the kernel tests drive the
-    /// merge with weights that already sit in the FT_QUANT frame, so a scale of
-    /// 1 keeps them testing exactly what they tested before.
+    /// The identity HalfKA scale: the kernel tests drive the merge with
+    /// weights that already sit in the FT_QUANT frame.
     const UNIT_SCALE: [u8; ACC] = [1; ACC];
 
     /// A non-unit HalfKA scale, so the backends' `vpmullw` is actually
@@ -3856,10 +3002,9 @@ mod tests {
 
     #[test]
     fn dispatched_activate_matches_scalar_bitwise() {
-        // Option D gate: the i16 pipeline must equal the scalar reference
-        // on every lane, INCLUDING the negative half-cases (t ≡ 32 mod 64,
-        // t < 0) where the study's original recipe diverged, and values up
-        // to 4x the measured |t| bound.
+        // The i16 pipeline must equal the scalar reference on every lane,
+        // INCLUDING the negative half-cases (t ≡ 32 mod 64, t < 0) and
+        // values well past the |t| range real nets produce.
         let mut pst = [[0i16; ACC]; 2];
         let mut threat = [[0i16; ACC]; 2];
         for p in 0..2 {
@@ -3876,23 +3021,19 @@ mod tests {
             threat[p][4] = 1760;
             threat[p][5] = 0;
         }
-        // Every shift a container can ask for (perf study 30): 2 is what every
-        // CEN2 net means and what the backends used to hardcode, 0 is a QAT net
-        // at threat_quant 256, 1 the 128 midpoint. The extremes planted above
-        // are |t| = 1760, so `t << 2` = 7040 stays inside the i16 bound.
-        // Crossed with study 32's HalfKA scale, so the two rescales are
-        // exercised together rather than one at a time.
+        // Every shift a container can ask for: 2 = CEN2, 0 = QAT at
+        // threat_quant 256, 1 = the 128 midpoint. The planted extremes keep
+        // `t << 2` inside i16. Crossed with the HalfKA scale, so the two
+        // rescales are exercised together rather than one at a time.
         for threat_shift in [0u32, 1, 2] {
             for scale in [&UNIT_SCALE, &FOUR_SCALE] {
                 for stm in 0..2 {
-                    // POISONED with two DIFFERENT fills, not zeroed (D33 reviewer
-                    // C, T3). ~85-95% of activations are zero after the clamp, so
-                    // with both buffers starting at 0 a lane that NEITHER kernel
-                    // wrote compared equal and the test passed. Perf study 15 arm
-                    // 4 made `ft` a reused buffer, so an unwritten lane is now a
-                    // stale activation from the previous position rather than a
-                    // harmless zero — this test is what says every backend writes
-                    // all of it.
+                    // POISONED with two DIFFERENT fills, not zeroed: most
+                    // activations are zero after the clamp, so zeroed buffers
+                    // let a lane NEITHER kernel wrote compare equal. `ft` is a
+                    // reused buffer in the engine, so an unwritten lane is a
+                    // stale activation, not a harmless zero — this test is
+                    // what says every backend writes all of it.
                     let mut want = [0xABu8; ACC];
                     let mut got = [0x5Cu8; ACC];
                     scalar::activate(&mut want, &pst, &threat, scale, stm, threat_shift);
@@ -3909,14 +3050,8 @@ mod tests {
         // EXACTLY, whatever order it reduces in. Uses the real extremes — ft at
         // its 127 ceiling and weights at both i8 rails — so the avx2 backend's
         // `maddubs` no-saturation argument (2*127*127 < i16::MAX) is exercised.
-        //
-        // STALE FIXTURE, fixed by perf study 25: these were 768-lane vectors,
-        // hardcoded from the D47V era. At the shipping ACC = 1280 that
-        // exercised a width the engine never passes — and, worse, 768 is not a
-        // multiple of 256, so the fixture drove the avx512 backend's 64-wide
-        // TAIL loop while the real call drives only its 256-wide four-chain
-        // body. The four-accumulator split (study 21 arm B2) was therefore
-        // going untested against scalar on the one path that ships.
+        // Full-ACC vectors, so the avx512 four-chain body (not just its tail
+        // loop) is the path driven.
         let mut ft = vec![0u8; ACC];
         let mut lane = vec![0i8; ACC];
         for (i, v) in ft.iter_mut().enumerate() {
@@ -3961,15 +3096,10 @@ mod tests {
         assert_eq!(dispatched, reference);
     }
 
-    /// Perf study 65 — the narrow plane is BIT-EXACT, checked the only way that
-    /// proves it: fold the same rows twice, once from the 8-bit table and once
-    /// from a table where every row has been packed to six bits, and demand the
-    /// same accumulator.
-    ///
-    /// A mixed bitmap is deliberate — the whole design turns on the per-ROW
-    /// dispatch (only 9.99 % of folded rows live in an all-narrow fold), so a
-    /// test where every row is narrow would not exercise the branch that
-    /// matters.
+    /// The narrow plane is BIT-EXACT, checked the only way that proves it:
+    /// fold the same rows twice, once from the 8-bit table and once from a
+    /// packed table, and demand the same accumulator. A mixed narrow/wide map
+    /// is deliberate — the per-ROW dispatch is the branch that matters.
     #[test]
     #[cfg(feature = "narrow65")]
     fn narrow_rows_fold_bit_exactly() {
@@ -3986,8 +3116,8 @@ mod tests {
         let is_narrow = |r: usize| NARROW_ROWS.contains(&r);
         let mut buf = [0u8; super::NARROW_BYTES];
 
-        // Layout A — perf study 65: packed IN PLACE, 1280-byte stride kept, a
-        // dead 320-byte tail behind every narrow row.
+        // Layout A: packed IN PLACE, wide stride kept, a dead tail behind
+        // every narrow row.
         let mut slot = wide.clone();
         let mut slot_map = vec![0u32; ROWS];
         for r in 0..ROWS {
@@ -4005,9 +3135,9 @@ mod tests {
             slot_map[r] |= 1;
         }
 
-        // Layout B — perf study 66: COMPACTED, wide plane then narrow plane,
-        // no hole anywhere. The trailing pad absorbs the last narrow row's
-        // 8-byte tail overread, exactly as the loader's does.
+        // Layout B: COMPACTED, wide plane then narrow plane, no hole. The
+        // trailing pad absorbs the last narrow row's 8-byte tail overread,
+        // exactly as the loader's does.
         let n_wide = (0..ROWS).filter(|&r| !is_narrow(r)).count();
         let mut pack = vec![0i8; n_wide * ACC + (ROWS - n_wide) * super::NARROW_BYTES + 64];
         let mut pack_map = vec![0u32; ROWS];
@@ -4069,14 +3199,11 @@ mod tests {
 
     #[test]
     fn dispatched_i8_deltas_match_scalar_on_long_feature_lists() {
-        // The wrapping-extremes test above runs 5 adds / 4 subs, which is the
+        // The wrapping-extremes test above runs 5 adds / 4 subs, the
         // incremental-update shape. The Finny fold is the other caller and it
         // arrives with feature lists an order of magnitude longer, where the
-        // per-lane i16 wrapping has many more chances to diverge from the
-        // scalar reference — and where the `_into_` kernels chunk their
-        // hoisted offsets at 96, so any future hoist here (perf study 3's
-        // ranked item 10, prototyped on perf/i16-deltas-hoist) must stay
-        // bit-exact across that boundary. Sizes below straddle it.
+        // per-lane i16 wrapping has many more chances to diverge; sizes below
+        // straddle the retired 96-row chunk boundary in both directions.
         const ROWS: usize = 11;
         let mut weights = vec![0i8; ROWS * ACC];
         for (i, value) in weights.iter_mut().enumerate() {
@@ -4102,24 +3229,20 @@ mod tests {
         }
     }
 
-    /// Perf study 25 arm 1 gave `i8_deltas_into` four **shape-specialised**
-    /// instantiations — `(adds.len(), subs.len())` ∈ {1,2}² — because
-    /// `apply_dirty_directed` builds both lists in `[usize; 2]`. Those are the
-    /// shapes the engine actually executes, and until this test NOTHING covered
-    /// them: every other kernel test in this module runs 4-5 rows or 200+, all
-    /// of which land in the generic fallback.
+    /// The shape-specialised dispatch arms — `(adds.len(), subs.len())` ∈
+    /// {0..=2}² — are the shapes the engine actually executes; the module's
+    /// other kernel tests run 4-5 rows or 200+, which land in the generic
+    /// fallback.
     ///
-    /// Mutation it catches: a transposed `(NA, NS)` arm in the dispatch (which
-    /// would apply a sub as an add — an eval error of exactly two weight rows,
-    /// invisible to a node count and to every shape-agnostic test), a shaped
-    /// body that tiles short, or a dropped `return` that ran the generic pass a
-    /// second time on top of the shaped one.
+    /// Mutations it catches: a transposed `(NA, NS)` arm (which would apply a
+    /// sub as an add — invisible to a node count), a shaped body that tiles
+    /// short, or a dropped `return` that ran the generic pass on top of the
+    /// shaped one.
     ///
-    /// The empty shape is in the table on purpose: `sota_accumulator.rs`'s
-    /// forward fold deletes its own copy special-case and relies on
-    /// `apply_threat_deltas_into(dst, src, w, &[], &[])` being `dst = src` lane for
-    /// lane. A fast-path `return` on empty lists would be a silent stale-child
-    /// bug in release, and this asserts the copy behaviour directly.
+    /// The empty shape is in the table on purpose: the accumulator's forward
+    /// fold relies on `apply_threat_deltas_into(dst, src, w, &[], &[])` being
+    /// `dst = src` lane for lane; a fast-path `return` on empty lists would
+    /// be a silent stale-child bug in release.
     #[test]
     fn every_dispatched_i8_fold_shape_matches_scalar() {
         const ROWS: usize = 7;
@@ -4147,20 +3270,14 @@ mod tests {
     }
 
     /// The GENERIC fold — the threat channel's kernel — over the full 15×15
-    /// grid of `(adds.len(), subs.len())`, against the scalar reference.
+    /// grid of `(adds.len(), subs.len())`, against the scalar reference: the
+    /// short, UNEQUAL lengths that are the threat channel's actual working
+    /// range, which no other test walks.
     ///
-    /// Written for perf study 37's rejected pairing arm (see the ⚠ banner on
-    /// `i8_deltas_into_generic`) and kept after it was reverted, because the
-    /// coverage it adds is real and was missing: the module's other kernel tests
-    /// run either ≤2 rows (the shaped dispatch) or 200+ (one long list), so
-    /// **no test walked the short, UNEQUAL lengths that are the threat
-    /// channel's actual working range** — 18.66% of threat folds are exactly one
-    /// row, 59.10% are four or fewer, and the mean is 4.658.
-    ///
-    /// Mutation it catches: any future restructuring of the two row loops that
+    /// Mutations it catches: any restructuring of the two row loops that
     /// mis-slices the lists, drops the longer side's tail, or applies a sub as
-    /// an add. The index pools are disjoint and the weight table is dense, so a
-    /// dropped or mis-signed row cannot cancel coincidentally.
+    /// an add. The index pools are disjoint and the weight table is dense, so
+    /// a dropped or mis-signed row cannot cancel coincidentally.
     #[test]
     fn the_generic_fold_matches_scalar_at_every_short_length_pair() {
         const ROWS: usize = 29;
@@ -4184,8 +3301,8 @@ mod tests {
         }
     }
 
-    /// The two-destination Finny kernel (perf study 9 item 4) must equal
-    /// "fold in place, then copy" on BOTH of its homes, on every backend the
+    /// The two-destination Finny kernel must equal "fold in place, then copy"
+    /// on BOTH of its homes, on every backend the
     /// CPU offers. The point of the kernel is that the second destination is
     /// written from the fold's own registers, so a backend that wired the
     /// stores up wrongly would silently desync the search stack from the cache
@@ -4299,14 +3416,10 @@ mod tests {
         let seed: [i16; ACC] = std::array::from_fn(|i| (i as u16).wrapping_mul(49711) as i16);
         let adds = [0, 2, 2, 6, 1].map(RowOffset::of);
         let subs = [3, 5, 0, 3].map(RowOffset::of);
-        // LONG lists, run through EVERY backend (perf study 12, review C
-        // finding 9). The `_into` kernels used to chunk their feature lists at
-        // CAP = 96 and re-read `dst` as the source for each later chunk; the
-        // AVX-512 pair now applies every row in one pass. That equivalence is
-        // exactly what a >96-row list tests, and until now the only long-list
-        // test drove the DISPATCHED backend, so on any given box one of the two
-        // shapes went unexercised. These straddle the old boundary in both
-        // directions.
+        // LONG lists, run through EVERY backend: the `_into` kernels used to
+        // chunk their feature lists at 96 and re-read `dst` per chunk; the
+        // one-pass form must stay equivalent, which is exactly what a >96-row
+        // list tests. These straddle the old boundary in both directions.
         let long_adds: Vec<RowOffset> = (0..240).map(|i| RowOffset::of((i * 7 + 3) % 7)).collect();
         let long_subs: Vec<RowOffset> = (0..200).map(|i| RowOffset::of((i * 5 + 1) % 7)).collect();
 
@@ -4436,11 +3549,9 @@ mod tests {
                 "{name} policy_dot"
             );
 
-            // `l3_dot` (perf study 26 arm 3). EXACT f32 equality, on fixtures
-            // whose partial sums differ per lane so a reduction tree that
-            // pairs the lanes in the wrong ORDER is caught — associativity is
-            // the whole risk when a scalar halving loop becomes a shuffle
-            // chain, and magnitudes are spread over four decades so a
+            // `l3_dot`: EXACT f32 equality, on fixtures whose partial sums
+            // differ per lane so a reduction tree that pairs lanes in the
+            // wrong ORDER is caught; magnitudes spread over four decades so a
             // re-association actually changes the rounding.
             for scale in [1.0f32, 1e-3, 1e3, 1e6] {
                 let l3w: [f32; L3] =
@@ -4497,27 +3608,22 @@ mod tests {
 
     #[test]
     fn dispatched_activation_matches_scalar_for_full_i16_domain_sample() {
-        // CONTRACT NARROWED (study-2 option D): the i16 activate pipeline is
-        // bit-identical to the scalar reference for |threat lane| <= 8191 —
-        // the domain the debug assert in the kernel enforces (measured real
-        // nets: max |t| = 431, a 19x margin). Beyond it the saturating 4t
-        // form diverges BY DESIGN; the old full-i16-domain sweep therefore
-        // now samples the guaranteed domain. pst keeps the full domain
-        // (saturating add is exact post-clamp for ALL pst).
-        //
-        // The domain is `32767 >> threat_shift`, so a QAT net's shift 0 covers
-        // the WHOLE i16 range and the CEN2 shift 2 covers a quarter of it
-        // (perf study 30).
+        // CONTRACT NARROWED: the i16 activate pipeline is bit-identical to
+        // the scalar reference for |threat lane| <= 32767 >> shift — the
+        // domain the kernel's debug assert enforces (real nets sit far inside
+        // it). Beyond it the saturating form diverges BY DESIGN, so the sweep
+        // samples the guaranteed domain. pst keeps the full domain
+        // (saturating add is exact post-clamp for ALL pst). A QAT net's
+        // shift 0 covers the whole i16 range; the CEN2 shift 2 a quarter.
         for threat_shift in [0u32, 1, 2] {
             let bound = i32::from(i16::MAX >> threat_shift) + 1;
             for scale in [&UNIT_SCALE, &FOUR_SCALE] {
-                // The HalfKA half of the same narrowing (perf study 32). The
-                // reduced-frame accumulator represents `pst · scale` in the
-                // FT_QUANT frame, so "the full pst domain" is now the full
-                // domain REPRESENTABLE AT THAT SCALE — `32767 / scale`,
-                // exactly as the threat bound above is `32767 >> shift`.
-                // Beyond it the i16 multiply wraps, which every backend does
-                // identically and the kernel's debug tripwire flags.
+                // The HalfKA half of the same narrowing: the reduced-frame
+                // accumulator represents `pst · scale` in the FT_QUANT frame,
+                // so the full pst domain is the domain REPRESENTABLE AT THAT
+                // SCALE — `32767 / scale`, exactly as the threat bound is
+                // `32767 >> shift`. Beyond it the i16 multiply wraps, which
+                // every backend does identically.
                 let pst_bound = i32::from(i16::MAX) / i32::from(scale[0]) + 1;
                 let mut pst = [[0i16; ACC]; 2];
                 let mut threat = [[0i16; ACC]; 2];
@@ -4546,23 +3652,20 @@ mod tests {
         }
     }
 
-    /// 2026-08 originality audit, item 2 (00-synthesis.md §2): the scalar
-    /// `activate` and `find_nnz` bodies were RESTATED from the math. The SIMD
-    /// backends were deliberately left byte-for-byte untouched, so they are
-    /// the fixed points the pre-restatement scalar was already pinned to —
-    /// bitwise agreement between the new scalar and EVERY available backend
-    /// on randomized inputs is therefore the proof that the restatement
-    /// changed nothing. (The dispatched tests above only exercise the one
-    /// backend the running CPU selects; this one enumerates them.)
+    /// The scalar `activate` and `find_nnz` bodies were restated from the
+    /// math while the SIMD backends were left byte-for-byte untouched;
+    /// bitwise agreement between the scalar and EVERY available backend on
+    /// randomized inputs is the proof the restatement changed nothing. (The
+    /// dispatched tests above only exercise the backend the running CPU
+    /// selects; this one enumerates them.)
     ///
     /// Inputs are drawn inside the pipeline's contract domain, which the
-    /// kernels' own debug tripwires enforce: per-lane `|pst| <= 32767/scale`
-    /// (the value representable at that column's scale), `|threat| <=
-    /// 32767 >> shift` (the i16 activate bound), `scale` in the loader's
-    /// 1..=255. The bound edges are planted explicitly each round.
+    /// kernels' own debug tripwires enforce: per-lane `|pst| <= 32767/scale`,
+    /// `|threat| <= 32767 >> shift`, `scale` in the loader's 1..=255. The
+    /// bound edges are planted explicitly each round.
     #[test]
     fn restated_scalar_kernels_match_every_backend_on_random_inputs() {
-        // xorshift64* (Vigna) — deterministic; the seed is the audit date.
+        // xorshift64* — deterministic.
         let mut state: u64 = 0x2026_08_09_D40_u64 | 1;
         let mut rng = move || {
             state ^= state >> 12;
@@ -4620,7 +3723,7 @@ mod tests {
             }
 
             // activate: poison the two outputs differently so an unwritten
-            // lane cannot compare equal (the D33 reviewer-C lesson above).
+            // lane cannot compare equal.
             let mut want = [0xA7u8; ACC];
             scalar::activate(&mut want, &pst, &threat, &scale, stm, threat_shift);
             for (name, k) in &backends {

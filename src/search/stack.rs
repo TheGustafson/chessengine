@@ -5,25 +5,13 @@
 //! `ss+2` never leave the array:
 //!
 //! - `ss-7 … ss-1` padding below the root: continuation-history updates
-//!   for the move at `ss-1` read back to `ss-6`; one more slot of slack
-//!   matches Stockfish.
+//!   for the move at `ss-1` read back to `ss-6`, plus one slot of slack.
 //! - `ss+2` above: each node zeroes its grandchild's `cutoff_cnt` on entry.
 //!
-//! We do NOT mimic Stockfish's `Stack*` pointer walk. Search functions
-//! receive `ply` and index the worker-owned array directly — each access is
-//! a short-lived, bounds-checked borrow (design/07 §3.2.2; `get_unchecked`
-//! only after a profile justifies it, D14). Inside a node the common style
-//! hoists the slot index once:
-//!
-//! ```text
-//! let cur = ss(ply);
-//! self.stack[cur].in_check = in_check;
-//! let prev_move = self.stack[cur - 1].current_move;
-//! self.stack[cur + 2].cutoff_cnt = 0;
-//! ```
-//!
-//! PV storage is per-ply fixed lines ([`PvLine`]), worker-owned — option 3
-//! of design/07 §3.3 — spliced by the borrow-splitting [`update_pv`].
+//! Search functions receive `ply` and index the worker-owned array directly
+//! (no Stockfish-style `Stack*` pointer walk); each access is a short-lived,
+//! bounds-checked borrow. PV storage is per-ply fixed lines ([`PvLine`]),
+//! worker-owned, spliced by the borrow-splitting [`update_pv`].
 
 use crate::history::ContHistId;
 use crate::moves::Move;
@@ -45,18 +33,11 @@ pub const fn ss(ply: usize) -> usize {
     ply + SS_OFFSET
 }
 
-// The continuation-history key `ContHistId` — the `Copy`, one-load-resolvable
-// key resolving to one `[Piece × Square]` slab of the conthist tensor
-// (design/07 §3.2.3) — is owned by `crate::history` (design/09 §3.2) and
-// imported above. The stack only stores it, defaults it to the inert
-// `SENTINEL`, and compares it for equality.
-
 /// One ply's worth of search state (design/07 §3.2.3).
 ///
-/// Deliberately absent vs Stockfish: a `pv` pointer (per-ply [`PvLine`]s
-/// remove the need, §3.3) and killers (D17). There is also no separate
-/// `cont_corr_hist` field — the correction history's outer index is derived
-/// from `cont_hist` at its use sites (doc 09 §3.9).
+/// Deliberately absent: a `pv` pointer (per-ply [`PvLine`]s remove the need)
+/// and killers (D17). The correction history's outer index is derived from
+/// `cont_hist` at its use sites.
 ///
 /// Must stay `Copy` and small: ≤ 40 bytes, so the whole per-worker stack is
 /// ~10 KB (asserted below).
@@ -107,18 +88,13 @@ impl Default for Stack {
     }
 }
 
-/// Reset a worker's stack at the top of `iterative_deepening`
-/// (design/07 §3.2.4): default-fill everything, and install the inert
-/// continuation-history sentinel and "no eval" in the padding slots below
-/// the root. (Search code receives `ply` as an argument everywhere; the
-/// stack slot does not carry a copy.)
-///
-/// A single 10 KB fill per `go` — cheap, and never done inside the tree.
+/// Reset a worker's stack at the top of `iterative_deepening`: default-fill
+/// everything; padding slots below the root must read as inert (sentinel
+/// cont-hist, no eval). One 10 KB fill per `go`, never inside the tree.
 pub fn init_stack(stack: &mut [Stack; STACK_SIZE]) {
     stack.fill(Stack::default());
-    // Padding slots below the root: reads through them must be valid but
-    // inert. (`Default` already guarantees this; restated per the §3.2.4
-    // contract so it survives any future `Default` change.)
+    // Restated even though `Default` already guarantees it, so the padding
+    // contract survives any future `Default` change.
     for slot in &mut stack[..SS_OFFSET] {
         slot.cont_hist = ContHistId::SENTINEL;
         slot.static_eval = VALUE_NONE;

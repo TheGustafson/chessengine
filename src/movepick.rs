@@ -1,36 +1,17 @@
 //! Move ordering: the staged [`MovePicker`] and its scoring machinery
-//! (design/09 — move ordering: MovePicker and history tables).
+//! (design/09).
 //!
 //! The picker is a lazily staged, one-move-at-a-time generator driven by an
 //! explicit state machine over a single 256-slot [`ExtMove`] buffer. Most
-//! search nodes cut off on the TT move or the first good capture without ever
-//! generating quiets, so the staging property matters above all: a TT-move
-//! cutoff performs *zero* generation, scoring, and sorting.
-//!
-//! This module lands incrementally over design/09 §4:
-//!
-//! - **step 5:** [`ExtMove`] (the move + ordering score, §3.1) and
-//!   [`partial_insertion_sort`] (the limited descending sort, §3.8).
-//! - **step 6:** the [`MovePicker`] skeleton — the single owned
-//!   `[ExtMove; MAX_MOVES]` buffer carved into regions by *indices* (§3.1),
-//!   the branchless TT-stage skip (§3.5), the dedup [`select`](MovePicker)
-//!   scan (§3.6) — and the two capture-only pipelines it drives:
-//!   quiescence (`QsearchTt → QcaptureInit → Qcapture`) and ProbCut
-//!   (`ProbcutTt → ProbcutInit → Probcut` with the `see_ge(threshold)` gate).
-//! - **step 7 (here):** the main pipeline (`MainTt → CaptureInit →
-//!   GoodCapture → QuietInit → GoodQuiet → BadCapture → BadQuiet`): quiet
-//!   scoring (butterfly + pawn + continuation history, the check bonus, the
-//!   threat escape/entry term via [`threats_by_lesser`], low-ply history),
-//!   the score-dependent good/bad capture split with region swaps, the
-//!   good/bad quiet split, and [`skip_quiet_moves`](MovePicker::skip_quiet_moves).
-//! - **step 8 (here):** the evasion pipeline (`EvasionTt → EvasionInit →
-//!   Evasion`) with its capture-first scoring.
+//! search nodes cut off on the TT move or the first good capture without
+//! ever generating quiets, so the staging property matters above all: a
+//! TT-move cutoff performs *zero* generation, scoring, and sorting. Four
+//! pipelines: main, evasions, ProbCut, and quiescence (see [`Stage`]).
 //!
 //! Hot-path rules (design/09 §6): no heap allocation on any [`next_move`]
-//! path (generation uses a stack [`MoveList`], scoring writes into the owned
-//! buffer), and the picker holds no borrows — `&Board` and
-//! `&Histories` are passed into each call so the search can freely
-//! make/unmake and update histories between calls.
+//! path, and the picker holds no borrows — `&Board` and `&Histories` are
+//! passed into each call so the search can freely make/unmake and update
+//! histories between calls.
 //!
 //! [`next_move`]: MovePicker::next_move
 
@@ -47,38 +28,23 @@ use crate::search::params::{
 };
 use crate::types::{DEPTH_QS, Depth, PieceType, VALUE_ZERO, Value};
 
-/// A move paired with its ordering score (design/09 §3.1, D7).
+/// A move paired with its ordering score (design/09 §3.1, D7). Asserted
+/// below: exactly 8 bytes, `#[repr(C)]`, align 4. Ordered by `value` only —
+/// the move bits are payload, never a tiebreak.
 ///
-/// Scoring happens only inside the picker's own buffer; [`MoveList`] stays two
-/// bytes per move (doc 05). The representation contract is fixed in doc 02
-/// §3.8 and asserted below: exactly 8 bytes, `#[repr(C)]`, align 4. Two
-/// `ExtMove`s are ordered by `value` only — the move bits are payload, never a
-/// tiebreak (the `partial_insertion_sort` below compares `value`).
-///
-/// **The layout is `value` first and the padding is a FIELD (perf study 27
-/// arm 2).** Doc 02 §3.8 justified the 8-byte size with "8-byte elements move
-/// as single u64 register loads/stores" — and for four months they did not.
-/// The old order was `mv: Move` then an implicit 2-byte hole then `value`, and
-/// a hole makes a struct copy *illegal* to widen: the padding bytes are `undef`
-/// and LLVM may not read or write them, so `head[q] = head[q - 1]` in the
-/// insertion sort compiled to a 2-byte move plus a 4-byte move, two loads and
-/// two stores, per shift step. Naming the pad closes the hole; putting `value`
-/// at offset 0 means the one 8-byte load that copies the element ALSO carries
-/// the score in its low half, so the sort's compare is free of its own load.
-///
-/// The field order is not observable — nothing serialises an `ExtMove`, and
-/// `#[repr(C)]` still pins the size against silent growth, which is what doc
-/// 02 asked the attribute for.
+/// The layout is `value` first and the padding is a FIELD, deliberately: an
+/// implicit padding hole makes a struct copy illegal to widen (the pad bytes
+/// are `undef`), so the insertion sort's shifts compiled to two narrow moves
+/// per step. Naming the pad closes the hole — one 8-byte copy — and `value`
+/// at offset 0 lets that copy's load also feed the sort's compare.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub(crate) struct ExtMove {
-    /// The ordering score; sorted and filtered on this alone. At offset 0 so
-    /// it shares a load with the whole-element copy.
+    /// The ordering score; sorted and filtered on this alone.
     pub value: i32,
     /// The move (`u16`).
     pub mv: Move,
-    /// Explicit tail padding. Always zero — its only job is to make the type
-    /// hole-free so a copy is one 8-byte move instead of two narrow ones.
+    /// Explicit tail padding, always zero — it keeps the type hole-free.
     pad: u16,
 }
 
@@ -90,27 +56,21 @@ impl ExtMove {
     }
 }
 
-// design/09 §8 criterion 2 / doc 02 §3.8: 8 bytes, align 4. `#[repr(C)]` lays
-// out `value` (i32), `mv` (u16) and `pad` (u16) back to back — 8 bytes with NO
-// hole, and the alignment is the i32's 4.
+// design/09 §8 criterion 2 / doc 02 §3.8: 8 bytes, no hole, align 4.
 const _: () = assert!(size_of::<ExtMove>() == 8);
 const _: () = assert!(align_of::<ExtMove>() == 4);
 
 /// Descending, in-place, allocation-free partial sort with a `limit`
 /// (design/09 §3.8).
 ///
-/// After the pass the prefix `moves[0..=sorted_end]` is sorted descending and
-/// holds the original element 0 **plus every element scoring `>= limit`**; the
-/// tail is left unsorted and (bar that element-0 quirk) entirely below the
-/// limit. Sorting work therefore scales with what the search actually
-/// consumes: a cutoff usually arrives within the first few moves, so deep
-/// nodes sort a large `limit`-selected prefix while shallow nodes barely sort
-/// at all. A full `sort_unstable_by_key` of a 40-move quiet list at shallow
-/// depth is pure waste — do not substitute one.
-///
-/// Ties keep their relative order (the shift condition is a strict `<`), so
-/// the sort is stable among equal scores. Call sites: captures and evasions
-/// with `limit = i32::MIN` (a full sort); quiets with a depth-scaled limit.
+/// After the pass the prefix is sorted descending and holds the original
+/// element 0 **plus every element scoring `>= limit`**; the tail is left
+/// unsorted and (bar that element-0 quirk) entirely below the limit, so
+/// sorting work scales with what the search actually consumes — do not
+/// substitute a full sort. Ties keep their relative order (the shift
+/// condition is a strict `<`), so the sort is stable among equal scores.
+/// Call sites: captures and evasions with `limit = i32::MIN` (a full sort);
+/// quiets with a depth-scaled limit.
 pub(crate) fn partial_insertion_sort(moves: &mut [ExtMove], limit: i32) {
     if moves.is_empty() {
         return;
@@ -118,46 +78,24 @@ pub(crate) fn partial_insertion_sort(moves: &mut [ExtMove], limit: i32) {
     // Element 0 anchors the prefix: `sorted_end` is the last sorted index.
     let mut sorted_end = 0;
     for p in 1..moves.len() {
-        // One read of `moves[p]`, not two — the old form loaded `.value` for
-        // the test and then loaded the whole `ExtMove` again for `tmp`.
         let tmp = moves[p];
         if tmp.value < limit {
             continue;
         }
         sorted_end += 1;
-        // INVARIANT: `sorted_end <= p`. Before this iteration `sorted_end` is
-        // the number of insertions among `1..p`, which is at most `p - 1`, so
-        // after the increment it is at most `p`.
+        // INVARIANT: `sorted_end <= p` (at most one insertion per element).
         debug_assert!(sorted_end <= p, "partial sort prefix outran its scan");
-        // Perf study 20 arm 7 — spelled so LLVM can DISCHARGE the bounds
-        // checks rather than emit them. The old form indexed the full slice
-        // with `sorted_end` and `q`, neither of which the compiler can relate
-        // to `moves.len()`, so the shipped binary carried two `cmp`/`jae`
-        // pairs and two panic edges per INSERTED element (measured: the sort
-        // is 36% of `init_quiets`, itself 9.3% of all engine instructions).
-        //
-        // `head` has length `p + 1` — a length LLVM derives from the loop
-        // range — and every index touched below (`p`, `se`, `q <= se`) is
-        // provably inside it. `.min(p)` is a no-op by the invariant just
-        // asserted, and it is precisely the fact the compiler was missing: one
-        // `cmov` in place of a check plus a panic block.
+        // `.min(p)` is a no-op by the invariant just asserted; stating it is
+        // what lets LLVM discharge the bounds checks on `head` below.
         let se = sorted_end.min(p);
-        // Four branchless/reordered rewrites of the shift walk below have been
-        // built, measured, and REJECTED — `copy_within` (+91 i/n) and
-        // `partition_point` (+77.8 i/n) in study 23, the windowed branchless
-        // insertion in study 34/40 (+42.58 i/n for −1.088 mispredicts/node),
-        // and the single-load reorder in study 55 (+14.7 i/n on the shipped
-        // tree). The arms were deleted 2026-08-01 (simplification tier 0,
-        // item 0.15); the pricing rule survives in CLAUDE.md: a mispredict
-        // costs 9.13 cycles HERE, so a branchless rewrite may add at most
-        // ~22.4 instructions per mispredict removed. Details: studies 23 §6,
-        // 40 §3, 55.
+        // NOTE: branchless/reordered rewrites of the shift walk below have
+        // repeatedly lost; price added instructions against mispredict
+        // savings before trying again.
         let head = &mut moves[..=p];
         // Hole-punch: the element leaving the prefix edge goes to `p`.
         head[p] = head[se];
         // The TAIL permutation is observable — `BadQuiet` emits the unsorted
-        // remainder in buffer order — so no algorithm that reorders it can
-        // pass the node-identity gate (study 23 §6).
+        // remainder in buffer order — so no rewrite may reorder it.
         let mut q = se;
         while q > 0 && head[q - 1].value < tmp.value {
             head[q] = head[q - 1];
@@ -167,10 +105,9 @@ pub(crate) fn partial_insertion_sort(moves: &mut [ExtMove], limit: i32) {
     }
 }
 
-/// The per-piece-type facts `init_quiets`' scoring loop reads (perf study 23
-/// arm 4). One 32-byte row per type, so a quiet's five `pt`-indexed reads share
-/// a single scaled address and one cache line instead of four bases in four
-/// different objects. Built once per `init_quiets`, six rows, 192 bytes.
+/// The per-piece-type facts `init_quiets`' scoring loop reads: one 32-byte
+/// row per type, so a quiet's `pt`-indexed reads share a single scaled
+/// address and one cache line. Built once per `init_quiets`, six rows.
 #[derive(Clone, Copy)]
 struct PtRow {
     /// Squares attacked by an enemy piece strictly cheaper than this type.
@@ -184,21 +121,12 @@ struct PtRow {
     eq: Bitboard,
 }
 
-/// The P-ORD quiet prior's per-move bonus, kept OUT of `init_quiets`' scoring
-/// loop (perf study 23 arm 3).
-///
-/// `QuietPrior::bonus` is `#[inline]` and its body is a selected-row AVX-512
-/// dot product over `L2` floats plus a horizontal reduction: ~55 instructions
-/// of vector code that LLVM was splicing straight into the quiet-scoring loop.
-/// The prior is OFF in every shipped configuration (`CPL_ORD_W` defaults to 0,
-/// so `quiet_prior` is `None` and the branch is never taken), yet the loop paid
-/// for it three ways — 200-odd bytes of the loop's icache footprint, the
-/// register pressure of keeping the dot's live values schedulable (the loop
-/// carried visible spill/reload traffic around the block), and two
-/// `vzeroupper`s forced by the dirty AVX upper state.
-///
-/// `#[cold]` + `#[inline(never)]` says exactly that: the call is real when the
-/// experiment is switched on, and free when it is not.
+/// The P-ORD quiet prior's per-move bonus, kept OUT of `init_quiets`'
+/// scoring loop. The prior is OFF in every shipped configuration
+/// (`quiet_prior` is `None`), yet inlined, its ~55 instructions of vector
+/// code taxed the loop's icache footprint and register pressure. `#[cold]` +
+/// `#[inline(never)]` makes the call real when the experiment is on and free
+/// when it is not.
 #[cfg(feature = "sota")]
 #[cold]
 #[inline(never)]
@@ -206,22 +134,17 @@ fn quiet_prior_bonus(qp: &crate::eval::nnue::policy_head::QuietPrior, m: Move) -
     qp.bonus(m)
 }
 
-/// The "no victim" capture-history slot (design/09 §3.4): en passant and quiet
-/// queen promotions score a victim of 0 and share this slot, mirroring
-/// Stockfish's `NO_PIECE_TYPE` behaviour. Equals `VICTIM_NB - 1` in
-/// `history.rs`.
+/// The "no victim" capture-history slot (design/09 §3.4): en passant and
+/// quiet queen promotions score a victim of 0 and share this slot (SF's
+/// `NO_PIECE_TYPE`). Equals `VICTIM_NB - 1` in `history.rs`.
 const NO_VICTIM: usize = 6;
 
-/// The capture ordering score (design/09 §3.7): pure MVV plus capture history,
-/// `CAPTURE_MVV_FACTOR * victim_value + capture[pc][to][victim_slot]`.
-///
-/// Deliberately no attacker (LVA) term — the good/bad split's score-dependent
-/// `see_ge` gate (doc 09 §3.6, step 7/8) accounts for attacker risk. En
-/// passant and quiet queen promotions have no piece on `to`, so they score a
-/// victim of 0 and use the [`NO_VICTIM`] slot.
-/// `defended` is the recapture map: the squares on which a capture will be
-/// answered. It is [`Bitboard::EMPTY`] for the main pipeline (see
-/// [`recapture_map`]) so the term folds away to one `and`/`test`.
+/// The capture ordering score (design/09 §3.7): pure MVV plus capture
+/// history. Deliberately no attacker (LVA) term — the good/bad split's
+/// `see_ge` gate accounts for attacker risk. Moves with no piece on `to`
+/// score a victim of 0 and use the [`NO_VICTIM`] slot. `defended` is the
+/// recapture map: EMPTY for the main pipeline (see [`recapture_map`]), so
+/// the term folds away there.
 #[cfg_attr(not(feature = "arm70"), allow(unused_variables))]
 #[inline]
 fn score_capture(board: &Board, hist: &Histories, m: Move, defended: Bitboard) -> i32 {
@@ -232,13 +155,8 @@ fn score_capture(board: &Board, hist: &Histories, m: Move, defended: Bitboard) -
     let victim_value = victim.map_or(0, |p| p.piece_type.value());
     let victim_slot = victim.map_or(NO_VICTIM, |p| p.piece_type as usize);
     let cap_hist = hist.capture[pc.index()][m.to().idx()][victim_slot].get();
-    // MVV plus capture history, minus the recapture the victim's defender is
-    // about to make (perf study 70, quiescence only — see `recapture_map`).
-    // Pure MVV cannot tell RxN-for-free from RxN-and-lose-the-rook, and the
-    // quiescence pipeline has no SEE gate to find out: it emits every capture
-    // in this order, and `QS_LATE_MOVE_LIMIT` then skips everything past the
-    // second non-checking, non-recapture one. Mis-order the list and the
-    // winning capture is never searched at all.
+    // Minus the coming recapture (quiescence only): qsearch has no SEE gate,
+    // and `QS_LATE_MOVE_LIMIT` deletes mis-ordered captures outright.
     #[cfg(not(feature = "arm70"))]
     let qs_def = QS_CAPTURE_DEFENDED_NUM();
     #[cfg(feature = "arm70")]
@@ -246,8 +164,7 @@ fn score_capture(board: &Board, hist: &Histories, m: Move, defended: Bitboard) -
         -1 => QS_CAPTURE_DEFENDED_NUM(),
         v => v,
     };
-    // `mut` only for the study-70 arm bench below; the shipped build never
-    // reassigns it.
+    // `mut` only for the arm70 bench; the shipped build never reassigns it.
     #[allow(unused_mut)]
     let mut v = CAPTURE_MVV_FACTOR() * victim_value + cap_hist
         - qs_def * pc.piece_type.value() * i32::from(defended.contains(m.to())) / 16;
@@ -267,18 +184,11 @@ fn score_capture(board: &Board, hist: &Histories, m: Move, defended: Bitboard) -
 }
 
 /// The recapture map for a picker at `depth`: the enemy attack map in the
-/// quiescence/ProbCut pipelines, and EMPTY in the main one.
-///
-/// The main pipeline already prices attacker risk exactly, at the good/bad
-/// split's `see_ge(m, -score / GOOD_CAPTURE_SEE_DIVISOR)` gate; study 70
-/// measured this cheaper approximation as inert there (−0.01 pp of first-move
-/// cutoff rate against a ±0.15 pp null) and it is not paid for. Returning
-/// EMPTY rather than branching per move keeps the scoring loop straight-line:
-/// `Bitboard::contains` on EMPTY is one `and` and one `setcc`.
-///
-/// `Board::all_threats` is filled once per position and cached, and every node
-/// that reaches capture scoring has already been evaluated — which under
-/// `sota` has already filled it.
+/// quiescence/ProbCut pipelines, and EMPTY in the main one — the main
+/// pipeline already prices attacker risk exactly at its `see_ge` gate.
+/// Returning EMPTY rather than branching per move keeps the scoring loop
+/// straight-line; `Board::all_threats` is filled once per position and
+/// cached.
 #[inline]
 fn recapture_map(board: &Board, depth: Depth) -> Bitboard {
     if depth <= DEPTH_QS {
@@ -295,9 +205,7 @@ fn recapture_map(board: &Board, depth: Depth) -> Bitboard {
 
 /// The picker's explicit state machine (design/09 §3.5). Each pipeline is a
 /// contiguous run of variants, so the branchless TT skip is a single `+1` on
-/// the discriminant. Steps 05/06 implement the two capture-only pipelines
-/// (quiescence, ProbCut) plus the shared TT stages; the main and evasion
-/// pipelines land in doc 09 §4 steps 7-8.
+/// the discriminant.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 enum Stage {
@@ -351,28 +259,10 @@ impl Stage {
 
     /// The next stage in the pipeline (design/09 §3.6): the Rust replacement
     /// for Stockfish's `goto`/fallthrough between stages.
-    // perf study 55 (arm named on the cfg_attr below): study 54 measured -20.8 i/n from a helper
-    // becoming single-call-site, which let LLVM's last-call-to-static bonus
-    // inline it.  `search::<NT>` duplicates every search-body call site, so
-    // that bonus never applies here; this forces the same inline directly.
-    // perf study 55: `#[inline(always)]`, not `#[inline]`. `search::<NT>` is two
-    // out-of-line monomorphizations of one body, so every helper the search
-    // body calls has at least two machine call sites and can never earn LLVM's
-    // last-call-to-static bonus -- the bonus that let study 54 inline 2466 bytes
-    // of `make_move_with` into `do_move` for -20.8 i/n. A plain `#[inline]` was
-    // already here on some of these and was DECLINED. Forcing it measured
-    // -19.3 i/n for this group. Only SMALL bodies win: the same lever on
-    // `do_move` (3516 B) costs +25.7 i/n in spills -- see study 55 Sec 0.1.
-    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
-    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
-    // every helper the search body calls has at least two machine call sites and
-    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
-    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
-    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
-    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
-    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
-    // costs +25.7 i/n in spills. Do not extend this to a big function without
-    // measuring — study 55 §0.1 has the size curve.
+    // NOTE: `inline(always)` is deliberate; a plain `#[inline]` was measured
+    // and declined (search::<NT>'s two monomorphizations deny LLVM's
+    // single-call-site inline bonus). The lever inverts on large bodies —
+    // measure before extending it.
     #[inline(always)]
     fn bump(self) -> Stage {
         Stage::from_u8(self as u8 + 1)
@@ -381,17 +271,13 @@ impl Stage {
 
 /// A lazily staged, one-move-at-a-time move generator (design/09 §3.5).
 ///
-/// Holds no borrows: `&Board` and `&Histories` are passed into every
-/// [`next_move`](MovePicker::next_move) call, so the search can make/unmake
-/// and update histories between calls while the picker sits as plain owned
-/// data (~2.1 KiB) on the search stack. Construct it in place per node and
-/// never move or copy it (that would be a 2 KiB memcpy — doc 09 §6).
-///
-/// The single `[ExtMove; MAX_MOVES]` buffer is carved into regions by the
-/// index cursors below rather than pointers (borrow-checker-friendly, equally
-/// fast — doc 09 §3.1): `[0, end_bad_captures)` bad captures, `[end_bad_captures,
-/// end_captures)` captures, `[end_captures, end_generated)` quiets, with
-/// `[cur, end_cur)` the live emission window over one of them.
+/// Holds no borrows (~2.1 KiB of plain owned data on the search stack);
+/// construct it in place per node and never move or copy it. The single
+/// `[ExtMove; MAX_MOVES]` buffer is carved into regions by index cursors
+/// rather than pointers: `[0, end_bad_captures)` bad captures,
+/// `[end_bad_captures, end_captures)` captures, `[end_captures,
+/// end_generated)` quiets, with `[cur, end_cur)` the live emission window
+/// over one of them.
 pub struct MovePicker {
     stage: Stage,
     tt_move: Move,
@@ -407,85 +293,42 @@ pub struct MovePicker {
     end_bad_captures: usize,
     end_captures: usize,
     end_generated: usize,
-    /// Where `BadQuiet` resumes the quiet region (perf study 34 §5).
-    ///
-    /// `GoodQuiet` and `BadQuiet` partition the quiet region by the SAME
-    /// predicate, so between them they used to inspect every quiet TWICE:
-    /// `GoodQuiet` walked to the end of the region and threw its position
-    /// away, and `BadQuiet` then restarted at `end_captures` and re-rejected
-    /// every above-threshold element `GoodQuiet` had just emitted. Once
-    /// [`sorted_covers`](Self::sorted_covers) holds, the split point is a
-    /// single index — the sorted prefix's first sub-threshold element — so
-    /// `GoodQuiet` stops there and `BadQuiet` starts there. Both stages
-    /// emit exactly what they emitted before, in the same order.
+    /// Where `BadQuiet` resumes the quiet region: once
+    /// [`sorted_covers`](Self::sorted_covers) holds, the good/bad split
+    /// point is this single index and neither stage scans the other's half.
     bad_quiet_start: usize,
     /// True when the quiet sort's `limit` is at or below
     /// `GOOD_QUIET_THRESHOLD`, i.e. when the sorted prefix is guaranteed to
-    /// contain every above-threshold quiet (perf study 34 §5).
-    ///
-    /// The sort places element 0 plus everything scoring `>= limit` in a
-    /// descending prefix and leaves the rest — all strictly below `limit` —
-    /// in the tail. So if `limit <= GOOD_QUIET_THRESHOLD`, every tail element
-    /// is below the threshold as well, and within the prefix descending order
-    /// means the sub-threshold elements are a contiguous suffix. The whole
-    /// "good" set is then the prefix `[end_captures, bad_quiet_start)` and the
-    /// whole "bad" set is `[bad_quiet_start, end_generated)`.
-    ///
-    /// `limit = QUIET_SORT_DEPTH_FACTOR * depth` (-3560·depth by default) and
-    /// the threshold is -14000, so this holds from depth 4 up. It is computed
-    /// rather than assumed because both are SPSA-tunable under `tune`; at
-    /// depths 1-3 the flag is false and both stages take the old full scan,
-    /// which is what keeps shallow nodes bit-identical.
+    /// contain every above-threshold quiet. Holds from depth 4 up with the
+    /// default constants; computed rather than assumed because both values
+    /// are SPSA-tunable. At depths 1-3 both stages take the full scan.
     sorted_covers: bool,
-    /// The quiet-ordering seam for a learned policy head: a per-node prior the
-    /// search MAY attach via [`set_quiet_prior`](MovePicker::set_quiet_prior).
-    /// `None` ⇒ pure history stack (the default; nothing sets it in production
-    /// since the D47/D41 plumbing was deleted 2026-08-01 — the seam stays for
-    /// the future specialised-head layer).
+    /// The quiet-ordering seam for a learned policy head, attached via
+    /// [`set_quiet_prior`](MovePicker::set_quiet_prior). `None` ⇒ pure
+    /// history stack (the default; nothing sets it in production).
     #[cfg(feature = "sota")]
     quiet_prior: Option<crate::eval::nnue::policy_head::QuietPrior>,
-    /// Perf study #2 option C: UNINITIALISED buffer — the old
-    /// `[ExtMove::NULL; MAX_MOVES]` zeroed 2 KB per node (plus the
-    /// constructor's return copy) for slots no stage ever reads.
+    /// UNINITIALISED buffer (zeroing 2 KB per node was measured waste).
     ///
-    /// SAFETY ARGUMENT (the D14a-style exemption this module carries):
-    /// every read goes through [`Self::slot`] / [`Self::slots_mut`] /
+    /// SAFETY ARGUMENT (the D14a-style exemption this module carries): every
+    /// read goes through [`Self::slot`] / [`Self::slots_mut`] /
     /// [`Self::swap_slots`], and the region-index invariant — reads only
-    /// ever address `[0, end_generated)` (emission windows, sorts, swaps),
-    /// which is exactly the union of the fill loops' written prefixes —
-    /// is machine-checked in debug builds by the `written` tracker below
-    /// (the `assert_consistent` precedent): every `set_slot` marks, every
-    /// read asserts. Release compiles the tracker out.
+    /// ever address `[0, end_generated)`, exactly the union of the fill
+    /// loops' written prefixes — is machine-checked in debug builds by the
+    /// `written` tracker: every `set_slot` marks, every read asserts.
     buf: [core::mem::MaybeUninit<ExtMove>; MAX_MOVES],
     #[cfg(debug_assertions)]
     written: [bool; MAX_MOVES],
 }
 
-/// Perf study 55 mechanism B: `MAX_MOVES` is a power of two and the region-index
-/// invariant on `buf` proves every access lands in `[0, end_generated)` with
-/// `end_generated <= MAX_MOVES` -- but `i` arrives as a struct field (`self.cur`)
-/// or `base + i`, neither of which LLVM can bound, so each access carried a
-/// `cmp`/`jae` and a panic edge. The mask states the fact the invariant already
-/// guarantees, so it cannot change which slot is touched. Same mechanism as
-/// `attacks.rs`'s `TABLE_MASK` (study 53's `magic53`, -22.3 loads/node) and
-/// `history.rs`'s `CONT_MASK`.
+/// The region-index invariant on `buf` proves every access is in bounds, but
+/// LLVM cannot see that, so each access carried a bounds check. The mask
+/// states the fact the invariant already guarantees — it cannot change which
+/// slot is touched.
 const BUF_MASK: usize = MAX_MOVES - 1;
 const _: () = assert!(MAX_MOVES.is_power_of_two());
 
-/// The buffer index, masked.
-///
-/// **Perf study 55 — the single largest arm of the perf series, −84.6
-/// instructions/node from three characters on three lines.** The mask cannot
-/// change which slot is touched: the region-index invariant on `buf` already
-/// guarantees every access lands in `[0, end_generated)` and `end_generated <=
-/// MAX_MOVES`. What it changes is what LLVM can PROVE — the index arrives here
-/// as a struct field (`self.cur`) or `base + i`, so before this every one of the
-/// ~50–80 buffer touches per node carried a `cmp`/`jae` and a panic block. The
-/// binary is 3576 bytes SMALLER with the mask in.
-///
-/// Same mechanism as `attacks.rs`'s `TABLE_MASK` (study 53's `magic53`) and
-/// `history.rs`'s `CONT_MASK`; this funnel — which every move in every stage of
-/// every node passes through — was simply the one nobody had applied it to.
+/// The buffer index, masked — the funnel every buffer access passes through.
 #[inline(always)]
 fn bi(i: usize) -> usize {
     i & BUF_MASK
@@ -542,10 +385,7 @@ impl MovePicker {
     /// Main search (`depth > 0`), quiescence (`depth <= 0`), and evasions
     /// (side to move in check) — one constructor, like Stockfish
     /// (design/09 §3.5). `cont_hist` are the six predecessor continuation-
-    /// history keys the quiet scorer reads (step 7).
-    ///
-    /// The base stage is `EvasionTt` when in check, else `MainTt` for
-    /// `depth > 0`, else `QsearchTt`; the branchless TT skip then advances
+    /// history keys the quiet scorer reads. The branchless TT skip advances
     /// past the `*Tt` stage exactly when the TT move is unusable.
     pub fn new(
         board: &Board,
@@ -567,21 +407,11 @@ impl MovePicker {
         MovePicker::with_base(base, tt_move, depth, ply, VALUE_ZERO, cont_hist, usable)
     }
 
-    /// ProbCut (design/09 §3.5): captures clearing `see_ge(threshold)`, where
-    /// `threshold = probcut_beta - static_eval` is computed by the caller
-    /// (doc 10). The TT move is usable only if it is additionally a capture or
-    /// queen promotion (`capture_stage`).
-    ///
-    /// The `depth`/`ply`/`cont_hist` fields are inert placeholders on this
-    /// pipeline (DEPTH_QS / 0 / SENTINEL): ProbCut scores captures only, and
-    /// capture scoring never reads them.
-    // perf study 55 (arm named on the cfg_attr below): study 54 measured -20.8 i/n from a helper
-    // becoming single-call-site, which let LLVM's last-call-to-static bonus
-    // inline it.  `search::<NT>` duplicates every search-body call site, so
-    // that bonus never applies here; this forces the same inline directly.
-    // Perf study 67 §3: 307 bytes of `search::<NonPv>` for 0.1 % of its ops —
-    // ProbCut runs at a small minority of nodes and PGO inlined the whole
-    // constructor anyway.
+    /// ProbCut (design/09 §3.5): captures clearing `see_ge(threshold)`. The
+    /// TT move is usable only if it is additionally a capture or queen
+    /// promotion. The `depth`/`ply`/`cont_hist` fields are inert
+    /// placeholders on this pipeline: capture scoring never reads them.
+    // icold67: outlined — ProbCut runs at a small minority of nodes.
     #[cfg_attr(feature = "icold67", inline(never))]
     pub fn new_probcut(board: &Board, tt_move: Move, threshold: Value) -> Self {
         let usable = tt_move.is_ok() && board.pseudo_legal(tt_move) && board.capture_stage(tt_move);
@@ -639,46 +469,33 @@ impl MovePicker {
         self.quiet_prior = Some(prior);
     }
 
-    /// Emit one pseudo-legal move per call, `None` once the active pipeline is
-    /// exhausted (design/09 §3.6). The caller checks legality only on the move
-    /// it actually plays. Idempotent after exhaustion: further calls keep
-    /// returning `None`.
+    /// Emit one pseudo-legal move per call, `None` once the active pipeline
+    /// is exhausted (design/09 §3.6). The caller checks legality only on the
+    /// move it actually plays. Idempotent after exhaustion.
     ///
-    /// **Every fall-through assigns a LITERAL stage, never `self.stage.bump()`
-    /// (perf study 27 arm 3).** The two are identical in behaviour, and the
-    /// `bump()` spelling reads better, but it hides the destination behind
-    /// arithmetic on a value LLVM loaded from memory — so each `continue` had
-    /// to go back through the 16-entry jump table (`movslq (%r13,%rcx,4); add
-    /// %r13,%rcx; jmp *%rcx`) to reach a block the source already names. With
-    /// a literal the back-edge is a direct jump. That is also why the shared
+    /// **Every fall-through assigns a LITERAL stage, never
+    /// `self.stage.bump()`.** The two behave identically, but `bump()` hides
+    /// the destination behind arithmetic on a loaded value, sending each
+    /// `continue` back through the 16-entry jump table; with a literal the
+    /// back-edge is a direct jump. That is also why the shared
     /// `CaptureInit | ProbcutInit | QcaptureInit` arm is split into three
     /// copies of one line: the bodies are the same, the successors are not.
-    // `inline(always)`, not `inline` -- perf study 27 arm 5 measured the
-    // difference at -37.6 instructions and -6.2 branches per node, and study 23
-    // left the same change on the table for want of an instrument. What made it
-    // look expensive was `L1-dcache-load-misses` rising; measuring the
-    // DENOMINATOR settles that -- total L1d LOADS fall 4.1/node, so this is less
-    // memory work at a marginally worse hit rate, not more work.
-    // Perf study 67 arm B — the DEDUPLICATION arm, a different mechanism from
-    // `icold67`'s: PGO emits this body **four times** (10,871 B across
-    // `search::<{Pv,NonPv}>` and `qsearch::<{Pv,NonPv}>`) and it is EXECUTED in
-    // at least two of them. One out-of-line copy would let both callers fetch
-    // the same lines.
+    // The default `inline(always)` was measured better than plain
+    // `#[inline]`; `icold67b` is the deduplication arm (PGO otherwise emits
+    // this body four times across the search/qsearch monomorphizations).
     #[cfg_attr(not(feature = "icold67b"), inline(always))]
     #[cfg_attr(feature = "icold67b", inline(never))]
     pub fn next_move(&mut self, board: &Board, hist: &Histories) -> Option<Move> {
         loop {
             match self.stage {
-                // §3.6 item 1: the whole point of staging — a TT-move cutoff
-                // costs zero generation and scoring. The branchless skip in
-                // the constructor guarantees `tt_move` is usable here.
+                // §3.6 item 1: a TT-move cutoff costs zero generation. The
+                // constructor's skip guarantees `tt_move` is usable here.
                 Stage::MainTt | Stage::EvasionTt | Stage::ProbcutTt | Stage::QsearchTt => {
                     self.stage = self.stage.bump();
                     return Some(self.tt_move);
                 }
 
                 // §3.6 item 2: generate + score captures, full sort, advance.
-                // Main search, ProbCut, and quiescence share this init verbatim.
                 Stage::CaptureInit => {
                     self.init_captures(board, hist);
                     self.stage = Stage::GoodCapture;
@@ -702,9 +519,8 @@ impl MovePicker {
                 }
 
                 // §3.6 stage 3: the score-dependent good/bad split. A capture
-                // clears the SEE bar `-value / 18` (a high ordering score buys
-                // slack) to be *good*; failures are swapped down into the
-                // bad-captures region for later and skipped here.
+                // clears the SEE bar `-value / 18` (a high ordering score
+                // buys slack) to be *good*; failures are parked for later.
                 Stage::GoodCapture => {
                     while self.cur < self.end_cur {
                         let ext = self.slot(self.cur);
@@ -717,9 +533,8 @@ impl MovePicker {
                             self.cur += 1;
                             return Some(ext.mv);
                         }
-                        // Bad: park it in `[0, end_bad_captures)`. The stale,
-                        // already-emitted element it displaces goes to `cur`,
-                        // which `cur += 1` then steps past.
+                        // Bad: park it in `[0, end_bad_captures)`; the stale
+                        // element it displaces is stepped past.
                         self.swap_slots(self.end_bad_captures, self.cur);
                         self.end_bad_captures += 1;
                         self.cur += 1;
@@ -727,8 +542,7 @@ impl MovePicker {
                     self.stage = Stage::QuietInit;
                 }
 
-                // §3.6 stage 4: generate + score quiets (unless skipping),
-                // laying them out just past the captures region.
+                // §3.6 stage 4: generate + score quiets (unless skipping).
                 Stage::QuietInit => {
                     if !self.skip_quiets {
                         self.init_quiets(board, hist);
@@ -736,18 +550,11 @@ impl MovePicker {
                     self.stage = Stage::GoodQuiet;
                 }
 
-                // §3.6 stage 5: quiets scoring above the threshold, then rewind
-                // the emission window to the bad-captures region.
-                //
-                // Spelled as its own loop rather than a `select` closure
-                // (perf study 34 §5) for the one thing a closure cannot say:
-                // BREAK. Under `sorted_covers` the first sub-threshold element
-                // ends the stage — the prefix is descending and the tail is
-                // entirely below the limit, so nothing after it can pass — and
-                // the index it stops at is exactly where `BadQuiet` must
-                // resume. The old form ran on to the end of the region
-                // rejecting every remaining element, then discarded the
-                // position it had reached.
+                // §3.6 stage 5: quiets above the threshold, then rewind to
+                // the bad-captures region. Its own loop rather than a
+                // `select` closure for the one thing a closure cannot say:
+                // BREAK — under `sorted_covers` the first sub-threshold
+                // element ends the stage where `BadQuiet` resumes.
                 Stage::GoodQuiet => {
                     if !self.skip_quiets {
                         while self.cur < self.end_cur {
@@ -766,10 +573,9 @@ impl MovePicker {
                             }
                         }
                     }
-                    // Without the sorted-prefix guarantee the good and bad sets
-                    // interleave, so `BadQuiet` still has to rescan the region
-                    // from the top — the depth-1..3 path, bit-identical to the
-                    // pre-study behaviour.
+                    // Without the sorted-prefix guarantee the good and bad
+                    // sets interleave, so `BadQuiet` rescans the region from
+                    // the top (the depth-1..3 path).
                     self.bad_quiet_start = if self.sorted_covers {
                         self.cur
                     } else {
@@ -780,8 +586,7 @@ impl MovePicker {
                     self.stage = Stage::BadCapture;
                 }
 
-                // §3.6 stage 6: the deferred bad captures (in swap order), then
-                // rewind to the quiet region for the sub-threshold quiets.
+                // §3.6 stage 6: the deferred bad captures, then rewind.
                 Stage::BadCapture => {
                     if let Some(m) = self.select(board, |_, _| true) {
                         return Some(m);
@@ -791,8 +596,7 @@ impl MovePicker {
                     self.stage = Stage::BadQuiet;
                 }
 
-                // §3.6 stage 7: the exact complement of GoodQuiet (`value <=
-                // threshold`), so the two passes partition the quiet region.
+                // §3.6 stage 7: the exact complement of GoodQuiet.
                 Stage::BadQuiet => {
                     if self.skip_quiets {
                         return None;
@@ -800,8 +604,7 @@ impl MovePicker {
                     return self.select(board, |_, e| e.value <= GOOD_QUIET_THRESHOLD());
                 }
 
-                // Evasion pipeline (§3.6): generate + score all evasions
-                // (captures lifted above quiets), full sort, emit every one.
+                // Evasions (§3.6): captures lifted above quiets, full sort.
                 Stage::EvasionInit => {
                     self.init_evasions(board, hist);
                     self.stage = Stage::Evasion;
@@ -812,16 +615,11 @@ impl MovePicker {
     }
 
     /// Generate captures into the buffer, score them (§3.7), lay out the
-    /// captures region, and full-sort it (design/09 §3.6 item 2). Generation
-    /// uses a stack [`MoveList`]; the scored moves are copied into the owned
-    /// buffer — no heap allocation.
-    // OUTLINED (perf-impl-1). These three run at most once per stage per node;
-    // `select` and the stage machine around them run per emitted move. Inlined,
-    // they fused into one 2,665-instruction `next_move` whose register pressure
-    // cost ~1.5 G spill/reload loads over a 5 M-node bench. Splitting them out
-    // is pure code layout -- node counts are bit-identical -- and buys 6.2%
-    // fewer instructions and 8.4% fewer L1d loads. See
-    // docs/research/perf-impl-1-*.md.
+    /// captures region, and full-sort it (design/09 §3.6 item 2).
+    // OUTLINED: the three `init_*` run at most once per stage per node while
+    // `select` and the stage machine run per emitted move; inlined they fused
+    // into one huge `next_move` with heavy register-spill traffic. Pure code
+    // layout — node counts are bit-identical.
     #[inline(never)]
     fn init_captures(&mut self, board: &Board, hist: &Histories) {
         let mut list = MoveList::new();
@@ -832,8 +630,7 @@ impl MovePicker {
             let value = score_capture(board, hist, m, recapture);
             self.set_slot(i, ExtMove::new(m, value));
         }
-        // Captures occupy `[0, n)`; nothing has been swapped into the
-        // bad-captures region and no quiets exist yet.
+        // Captures occupy `[0, n)`; no bad captures or quiets exist yet.
         self.cur = 0;
         self.end_bad_captures = 0;
         self.end_captures = n;
@@ -842,14 +639,9 @@ impl MovePicker {
         partial_insertion_sort(self.slots_mut(0..n), i32::MIN);
     }
 
-    /// Perf study 70's census hook: the `Stage` discriminant as the caller
-    /// observes it right after `next_move` returned. It identifies the
-    /// emitting stage uniquely without any extra state, because the two
-    /// stages that `return` do so *before* and *after* the bump respectively:
-    /// the four `*Tt` arms bump first (so the caller reads `CaptureInit`,
-    /// `EvasionInit`, `ProbcutInit`, `QcaptureInit` — none of which ever
-    /// returns a move itself), while every `select`-driven stage returns with
-    /// its own discriminant still live.
+    /// The census hook: the `Stage` discriminant right after `next_move`
+    /// returned. Identifies the emitting stage uniquely — the `*Tt` arms
+    /// bump BEFORE returning, every `select`-driven stage after.
     #[cfg(feature = "census70")]
     #[inline]
     pub fn stage_id(&self) -> u8 {
@@ -857,21 +649,16 @@ impl MovePicker {
     }
 
     /// Late-move pruning (design/09 §3.5): abandon quiet generation and
-    /// emission — bad captures still come. Idempotent and callable
-    /// mid-iteration; if set before `QuietInit` no quiets are ever generated,
-    /// if set during `GoodQuiet` the remaining quiets are simply not emitted.
+    /// emission — bad captures still come. Idempotent, callable
+    /// mid-iteration.
     pub fn skip_quiet_moves(&mut self) {
         self.skip_quiets = true;
     }
 
     /// Generate quiets into `buf[end_captures..]`, score them (§3.7), and
-    /// partial-sort only the promising prefix (limit `-3560 * depth`; deeper
-    /// nodes sort more — design/09 §3.6 stage 4 / §3.8).
-    ///
-    /// The five continuation-history slabs, the pawn-history slot, the
-    /// butterfly/low-ply planes, and the threat sets are resolved **once**
-    /// here, not per move (design/09 §6): each move then costs a handful of
-    /// array reads.
+    /// partial-sort only the promising prefix (a depth-scaled limit; deeper
+    /// nodes sort more). Every plane and threat set is resolved ONCE here,
+    /// not per move: each move then costs a handful of array reads.
     #[inline(never)]
     fn init_quiets(&mut self, board: &Board, hist: &Histories) {
         let mut list = MoveList::new();
@@ -879,21 +666,15 @@ impl MovePicker {
         let n = list.len();
 
         let us = board.side_to_move();
-        // Escape/entry tiers from the Wave-G threat map (D30): squares attacked
-        // by an enemy piece strictly cheaper than each of our types (cumulative
-        // union — the same structure the old local `threats_by_lesser`
-        // produced, now read O(1) from the precomputed per-node map).
-        // ONE fill check for all five reads (perf study 13 §4.2): the four
-        // `piece_threats` calls and the `all_threats` below were five separate
-        // `ensure_threats` calls, of which four could only ever find the cache
-        // already filled.
+        // Escape/entry tiers from the precomputed per-node threat map:
+        // squares attacked by an enemy piece strictly cheaper than each of
+        // our types (cumulative union). ONE fill check covers all the reads.
         let (all_threats, by_type) = board.threat_map();
         let by_pawn = by_type[PieceType::Pawn as usize];
         let by_minor =
             by_pawn | by_type[PieceType::Knight as usize] | by_type[PieceType::Bishop as usize];
         let by_rook = by_minor | by_type[PieceType::Rook as usize];
-        // Study 71's `qeq` arm: the EQUAL-or-lesser tiers, built from the same
-        // cumulative unions. Only constructed for the arm bench.
+        // The arm70 bench's EQUAL-or-lesser tiers; only built for the arm.
         #[cfg(feature = "arm70")]
         let threat_eq: [Bitboard; 6] = [
             by_pawn,
@@ -911,12 +692,6 @@ impl MovePicker {
             by_rook,         // Queen
             Bitboard::EMPTY, // King
         ];
-        // The D30 offense term (the "create a threat" counterpart of the
-        // threat tier — reverse fans onto undefended enemies; an ARCHON
-        // original, SF's score<QUIETS> has no analogue) was removed by
-        // basket A of the simplification plan, 2026-08-01: `offensew=0`
-        // read +0.07 pp fhf, inside the census null, and it was the last
-        // `attacks()` work in this hot symbol.
         let main_plane = &hist.main[us as usize];
         let pawn_plane = hist.pawn_slot(board.pawn_key());
         // Offsets 1,2,3,4,6 → cont_hist[0,1,2,3,5]; offset 5 is not read for
@@ -929,33 +704,23 @@ impl MovePicker {
         let ply = self.ply;
         let low_ply_plane = (ply < LOW_PLY_SIZE).then(|| &hist.low_ply[ply]);
 
-        // One `st()` for all ~30 scored quiets (perf study 13 §4.4) instead of
-        // one per quiet: `pt` varies per move, so the query cannot be hoisted
-        // at the call site.
+        // One `st()` for all scored quiets: `pt` varies per move, so the
+        // query cannot be hoisted at the call site.
         let check_squares = board.check_squares_all();
 
-        // Perf study 23 arm 4 — ONE per-piece-type row instead of four parallel
-        // arrays. The loop below reads five `pt`-indexed facts per quiet, and
-        // before this they lived in four different places with four different
-        // bases (two stack arrays, the board's `StateInfo`, and the `PIECE_VALUES`
-        // table) plus a two-instruction `imul`/`lea` chain to turn the piece
-        // value into the threat and offense weights. Interleaved into a 32-byte
-        // row they share ONE `pt << 5` address, sit in one cache line, and the
-        // weights are premultiplied once per call (6 multiplies) instead of once
-        // per quiet (~23). Pure code shape: the arithmetic is unchanged, so the
-        // scores — and therefore the tree — are bit-identical.
-        // Spelled as a literal, not `array::from_fn`: the closure form left a
-        // real six-iteration loop with four bounds checks in it (measured
-        // +326 instructions per call), while the literal is six independent
-        // 32-byte stores LLVM folds into vector moves.
+        // ONE per-piece-type row instead of four parallel arrays: the loop
+        // below reads several `pt`-indexed facts per quiet, and interleaved
+        // into a 32-byte row they share one address and one cache line, with
+        // the weights premultiplied once per call instead of once per quiet.
+        // Spelled as a literal, not `array::from_fn` — the closure form left
+        // a real six-iteration loop with bounds checks in it.
         #[cfg(not(feature = "arm70"))]
         let row_of = |i: usize| PtRow {
             threat: threat[i],
             check: check_squares[i],
             threat_w: PieceType::ALL[i].value() * QUIET_THREAT_FACTOR(),
         };
-        // Study 70's arm bench folds its per-16ths weights into the same
-        // premultiplied row, so the scoring loop is untouched.
+        // The arm70 bench folds its per-16ths weights into the same rows.
         #[cfg(feature = "arm70")]
         let row_of = |i: usize| {
             let a = crate::arm70::arm();
@@ -976,14 +741,9 @@ impl MovePicker {
         ];
         let base = self.end_captures;
 
-        // The per-quiet scoring body, shared verbatim by the two loop shapes
-        // below. A `macro_rules!` rather than a closure or a method because
-        // the body both reads `self.quiet_prior` and calls `self.set_slot`:
-        // any binding that holds a borrow of `*self` across the body collides
-        // with the store, and a
-        // free function would need fifteen parameters. Expanding the body
-        // twice costs nothing in the shipped binary — exactly one of the two
-        // loops is compiled.
+        // The per-quiet scoring body. A `macro_rules!` rather than a closure
+        // or method: any binding that borrows `*self` across the body would
+        // collide with the `set_slot` store.
         macro_rules! score_quiet {
             ($m:expr, $i:expr, $row:expr, $pci:expr) => {{
                 let m = $m;
@@ -1026,34 +786,22 @@ impl MovePicker {
                     value += QUIET_LOW_PLY_WEIGHT() * lp[raw].get() / (1 + ply as i32);
                 }
 
-                // Perf study 71 — the quiet SEE penalty. Two guards, both of
-                // them free: `all_threats` is the enemy attack map
-                // `init_quiets` already built for the threat tiers, and a quiet
-                // landing on a square no enemy attacks passes `see_ge(m, 0)`
-                // trivially; and a quiet already below `GOOD_QUIET_THRESHOLD`
-                // is emitted after the bad captures whatever else happens to
-                // it. Together they leave 0.155 `see_ge` calls per scored
-                // quiet.
-                //
-                // Placed LAST on purpose — after the threat term,
-                // so the second guard reads the finished score. That is not
-                // just cheaper, it is the non-redundant order: the threat tier
-                // has already sunk "queen onto a square a rook attacks" below
-                // the threshold, and this term should be paying for the cases
-                // the tier is BLIND to (equal-valued attackers; a pawn, whose
-                // tier is literally `Bitboard::EMPTY`).
+                // The quiet SEE penalty, both guards free (`all_threats` is
+                // already built; a sub-threshold quiet is emitted late
+                // anyway). Placed LAST so the second guard reads the
+                // finished score: the term pays only for cases the threat
+                // tier is BLIND to (equal-valued attackers; pawns).
                 #[cfg(not(feature = "arm70"))]
                 if QUIET_SEE_PENALTY() != 0
                     && value > GOOD_QUIET_THRESHOLD()
                     && all_threats.contains(m.to())
                     && !board.see_ge(m, 0)
                 {
-                    // CLAMPED at the threshold: the term REORDERS inside the
-                    // good pile and can never push a quiet into the bad one,
-                    // where it would be emitted after the bad captures and
-                    // become a candidate for late-move pruning. That is not a
-                    // detail — see the constant's doc comment: the unclamped
-                    // form's node win is pile-crossing, and it LOST games.
+                    // CLAMPED at the threshold: the term may only REORDER
+                    // inside the good pile. An ordering change that can push
+                    // a quiet across GOOD_QUIET_THRESHOLD is a pruning change
+                    // (late-move pruning can then drop it) — the unclamped
+                    // form won every cheap instrument and LOST games.
                     value = (value - QUIET_SEE_PENALTY()).max(GOOD_QUIET_THRESHOLD() + 1);
                 }
                 #[cfg(feature = "arm70")]
@@ -1126,38 +874,13 @@ impl MovePicker {
             }};
         }
 
-        // Perf study 54 — RUN-HOISTING. **-21.3 instructions/node**
-        // (-0.350 %, 20/20, se 0.000), node-identical.
-        //
-        // `generate_all` emits quiets in piece-type order: the whole pawn set
-        // in one batch, then knights, bishops, rooks, queens, then the king
-        // (castling is a king move, so it joins that run). So `pt` is very
-        // nearly a step function of `i`, and so is everything the loop derives
-        // from it — `pc.index()`, `&rows[pt]`, and the `expect` panic edge that
-        // comes with reading a piece out of a mailbox byte.
-        //
-        // The run state is therefore carried ACROSS iterations: the mailbox is
-        // read only when the from-square leaves the current piece's bitboard,
-        // which on a piece-type-ordered list is ~6 times per call instead of
-        // once per quiet (3.93 quiets/node, study 23). `Bitboard::EMPTY` seeds
-        // it so the first move always misses and fills.
-        //
-        // **It does not ASSUME the grouping.** The run is discovered, not
-        // asserted: an ungrouped list simply refills more often and degenerates
-        // to exactly the previous cost. That matters because the grouping is
-        // `movegen`'s emission order — an implementation detail no doc pins,
-        // and not one this loop may silently depend on. Emission order, scores
-        // and slots are untouched, so the tree is bit-identical.
-        //
-        // **The shape matters more than the idea, and the first shape LOST.**
-        // The same hoisting written as a nested `while i < n` over runs
-        // measured **+9.4 i/node and +11.4 load dispatches/node** (0/24, se
-        // 0.000) — because that form indexes `list[i]` twice per move, once as
-        // the element and once in the continuation test, and every one is a
-        // bounds-checked slice index where `list.iter()` has none. It paid two
-        // indexed loads and two compares to save one mailbox load. Keeping the
-        // iterator is what turns +9.4 into -21.3; a future rewrite here should
-        // re-measure rather than assume the idea carries.
+        // RUN-HOISTING, node-identical. `generate_quiets` emits quiets in
+        // piece-type batches, so the mailbox is read only when the
+        // from-square leaves the current piece's bitboard (~6 refills per
+        // call; `Bitboard::EMPTY` seeds the first miss). It does not ASSUME
+        // the grouping — an ungrouped list just refills more often. NOTE:
+        // keep the iterator form; an indexed nested-while version of this
+        // hoisting measured slower (bounds-checked double reads).
         let mut run = crate::bitboard::Bitboard::EMPTY;
         let mut row = &rows[0];
         let mut pci = 0usize;
@@ -1193,9 +916,9 @@ impl MovePicker {
         partial_insertion_sort(self.slots_mut(base..base + n), sort_limit);
     }
 
-    /// Generate + score check evasions into `buf[0..n]`, full-sort, and set the
-    /// emission window over the whole region (design/09 §3.6/§3.7). Capturing
-    /// evasions are lifted above every quiet evasion by [`EVASION_CAPTURE_BONUS`].
+    /// Generate + score check evasions, full-sort, and set the emission
+    /// window over the whole region (design/09 §3.6/§3.7). Capturing
+    /// evasions are lifted above quiet ones by [`EVASION_CAPTURE_BONUS`].
     #[inline(never)]
     fn init_evasions(&mut self, board: &Board, hist: &Histories) {
         let mut list = MoveList::new();
@@ -1207,26 +930,17 @@ impl MovePicker {
         let c1 = hist.cont_ref(self.cont_hist[0]);
 
         // Deliberately NO recapture discount here, unlike the capture
-        // pipeline: measured, not assumed. Applying it to evasions cuts the
-        // in-check first-move cutoff gain this function's other change buys
-        // from +0.76 pp to +0.41 pp (perf study 70, ±0.11 pp null). The
-        // mechanism is that an evasion list is short and forced — "will I be
-        // recaptured" competes with "or I could just move the king", and the
-        // capture is often right anyway.
+        // pipeline — measured worse: an evasion list is short and forced,
+        // "will I be recaptured" competes with "or just move the king", and
+        // the capture is often right anyway.
         let recapture = Bitboard::EMPTY;
         for (i, &m) in list.iter().enumerate() {
             let value = if board.capture_stage(m) {
                 // The SAME capture score the main pipeline uses — MVV *and*
                 // capture history — lifted above every quiet evasion by the
-                // bonus (perf study 70). This used to be the raw victim value
-                // alone, i.e. capture history was consulted for every capture
-                // in the engine EXCEPT the ones played while in check, which
-                // are 27% of all NonPV cutoffs. Measured: +0.76 pp of
-                // in-check first-move cutoff rate against a ±0.20 pp null.
-                //
-                // The bonus is 2^28 and the score is bounded by
-                // `7·2538 + CAPT_D` in magnitude, so no capture can ever fall
-                // below a quiet evasion.
+                // bonus. The bonus is 2^28 and the score is bounded by
+                // `7·2538 + CAPT_D` in magnitude, so no capture can ever
+                // fall below a quiet evasion.
                 {
                     #[cfg(feature = "arm70")]
                     if crate::arm70::arm().evasion_mvv {
@@ -1243,9 +957,8 @@ impl MovePicker {
                 #[allow(unused_mut)]
                 let mut v =
                     main_plane[m.raw16() as usize].get() + c1[pc.index()][m.to().idx()].get();
-                // Study 70: give quiet evasions the SAME history stack the
-                // main pipeline gives quiets (pawn history + the deeper
-                // continuation planes), instead of main + cont1 only.
+                // arm70: give quiet evasions the full main-pipeline history
+                // stack instead of main + cont1 only.
                 #[cfg(feature = "arm70")]
                 if crate::arm70::arm().evasion_full {
                     let q = crate::history::piece_to(pc.index(), m.to().idx());
@@ -1269,33 +982,11 @@ impl MovePicker {
         partial_insertion_sort(self.slots_mut(0..n), i32::MIN);
     }
 
-    /// Scan the emission window `buf[cur..end_cur]` for the next element passing
-    /// `ok`, skipping any equal to the already-emitted TT move (design/09 §3.6
-    /// shared select semantics). Advances `cur` past every element it inspects.
-    /// The closure sees the whole [`ExtMove`] so value-filtered stages (good/
-    /// bad quiets) can test the ordering score directly.
-    // perf study 55 (arm named on the cfg_attr below): study 54 measured -20.8 i/n from a helper
-    // becoming single-call-site, which let LLVM's last-call-to-static bonus
-    // inline it.  `search::<NT>` duplicates every search-body call site, so
-    // that bonus never applies here; this forces the same inline directly.
-    // perf study 55: `#[inline(always)]`, not `#[inline]`. `search::<NT>` is two
-    // out-of-line monomorphizations of one body, so every helper the search
-    // body calls has at least two machine call sites and can never earn LLVM's
-    // last-call-to-static bonus -- the bonus that let study 54 inline 2466 bytes
-    // of `make_move_with` into `do_move` for -20.8 i/n. A plain `#[inline]` was
-    // already here on some of these and was DECLINED. Forcing it measured
-    // -19.3 i/n for this group. Only SMALL bodies win: the same lever on
-    // `do_move` (3516 B) costs +25.7 i/n in spills -- see study 55 Sec 0.1.
-    // Perf study 55: `inline(always)`, deliberately, and NOT a plain `#[inline]`.
-    // `search::<NT>` is two out-of-line 16 KB monomorphizations of one body, so
-    // every helper the search body calls has at least two machine call sites and
-    // can never earn LLVM's last-call-to-static bonus — the bonus that let study
-    // 54 fold 2466 bytes of `make_move_with` into `do_move` for −20.8 i/n. Some
-    // of these already carried `#[inline]` and were DECLINED anyway. Forcing it
-    // measured −19.3 i/n (small search-body helpers) and −12.6 (board/TT ones).
-    // The lever INVERTS on large bodies: the same change on `do_move` (3516 B)
-    // costs +25.7 i/n in spills. Do not extend this to a big function without
-    // measuring — study 55 §0.1 has the size curve.
+    /// Scan the emission window for the next element passing `ok`, skipping
+    /// any equal to the already-emitted TT move (design/09 §3.6). Advances
+    /// `cur` past every element it inspects; the closure sees the whole
+    /// [`ExtMove`] so value-filtered stages can test the score directly.
+    // NOTE: `inline(always)` is deliberate — see the note on `Stage::bump`.
     #[inline(always)]
     fn select(
         &mut self,
@@ -1473,9 +1164,8 @@ mod tests {
         Board::from_fen(fen).unwrap_or_else(|e| panic!("bad test FEN {fen:?}: {e}"))
     }
 
-    // FEN fixtures with captures available and the side to move NOT in check
-    // (in-check qsearch takes the evasion pipeline, step 8). Startpos is
-    // included as the no-captures degenerate case.
+    // FEN fixtures with captures available and the side to move NOT in
+    // check; startpos is the no-captures degenerate case.
     const FIXTURES: &[&str] = &[
         crate::fen::START_FEN,
         // Kiwipete: many captures, promotions, and en-passant-free tactics.
@@ -1490,8 +1180,7 @@ mod tests {
         "8/2P1P3/3K4/8/8/3k4/2p1p3/8 w - - 0 1",
     ];
 
-    // The captures the generator produces, as a dedup set (the generator emits
-    // each once, so a set is faithful and doubles as a duplicate check).
+    // The generator's captures as a set (doubles as a duplicate check).
     fn capture_set(b: &Board) -> HashSet<Move> {
         let mut list = MoveList::new();
         generate_captures(b, &mut list);
@@ -1598,8 +1287,7 @@ mod tests {
 
     #[test]
     fn probcut_neg_infinity_threshold_emits_all_captures() {
-        // A threshold below any real SEE — every capture clears it — must
-        // reproduce the whole capture set (design/09 §5).
+        // A threshold below any real SEE must reproduce the capture set.
         const NEG_INF: Value = -30_000;
         for &fen in FIXTURES {
             let b = board(fen);
@@ -1632,8 +1320,7 @@ mod tests {
 
     #[test]
     fn probcut_threshold_matches_see_ge_filter() {
-        // With no TT move the probcut emission set is exactly the captures
-        // passing `see_ge(threshold)` — verified directly against `see_ge`.
+        // The probcut emission set is verified directly against `see_ge`.
         for &fen in FIXTURES {
             let b = board(fen);
             let captures = capture_set(&b);
@@ -1682,9 +1369,8 @@ mod tests {
         (((lcg_next(state) >> 40) as i64) % (2 * bound as i64 + 1) - bound as i64) as i16
     }
 
-    // Poke pseudo-random values into every table the quiet + capture scorers
-    // read (main, low-ply, capture, pawn, continuation). Ordering must change
-    // freely while the *emitted set* stays invariant (design/09 §5).
+    // Poke pseudo-random values into every table the scorers read: ordering
+    // may change freely while the *emitted set* stays invariant.
     fn randomize_ordering(hist: &mut Histories, seed: u64) {
         let mut s = seed;
         for row in hist.main.iter_mut() {
@@ -1778,8 +1464,7 @@ mod tests {
 
     #[test]
     fn main_pipeline_emits_full_pseudo_legal_set() {
-        // One fresh and one fully-randomized history, reused across fixtures:
-        // the emission set must be identical (ordering-invariant, design/09 §5).
+        // Fresh vs fully-randomized history: the emission set must match.
         let fresh = Histories::new();
         let mut rand = Histories::new();
         randomize_ordering(&mut rand, 0x0DDF_00D5_u64);
@@ -1815,9 +1500,8 @@ mod tests {
             assert!(!b.checkers().is_empty(), "fixture {fen} must be in check");
             let all = evasion_set(&b);
             for hist in [&*fresh, &*rand] {
-                // Without a TT move the pipeline is EvasionInit → Evasion, fully
-                // sorted: every capturing evasion (score ≥ 2^28) precedes every
-                // quiet one, and the emitted set is exactly the generator's.
+                // Every capturing evasion (score ≥ 2^28) precedes every quiet
+                // one, and the emitted set is exactly the generator's.
                 let emitted = drain(MovePicker::new(&b, Move::NULL, 8, 0, sentinels()), &b, hist);
                 assert_eq!(
                     emitted.iter().copied().collect::<HashSet<_>>(),
@@ -1833,8 +1517,7 @@ mod tests {
                     }
                 }
 
-                // A usable TT evasion is emitted first and exactly once; the set
-                // is unchanged.
+                // A usable TT evasion comes first, once; the set is unchanged.
                 let tt = *all.iter().next().unwrap();
                 let emitted = drain(MovePicker::new(&b, tt, 8, 0, sentinels()), &b, hist);
                 assert_eq!(emitted[0], tt, "usable TT evasion must come first in {fen}");
@@ -1848,14 +1531,10 @@ mod tests {
     }
 
     // design/09 §5 / §8 criterion 1: the four-pipeline emission-completeness
-    // sweep over the FULL perft FEN suite (design/06), not merely the
-    // hand-picked FIXTURES above. For every position and each pipeline, the
-    // emitted multiset must equal the corresponding generator's — in check the
-    // evasion pipeline; otherwise the main pipeline (all pseudo-legal moves),
-    // quiescence (captures), and probcut with a −∞ threshold (captures) — with
-    // the usable TT move emitted first and exactly once (criterion 3). Run
-    // against both fresh and fully-randomized histories: ordering may change
-    // freely, the emitted SET may not.
+    // sweep over the FULL perft FEN suite. For every position and pipeline
+    // the emitted multiset must equal the corresponding generator's, TT move
+    // first and exactly once, under fresh AND fully-randomized histories —
+    // ordering may change freely, the emitted SET may not.
     const PERFT_SUITE: &str = include_str!("../tests/data/perft.epd");
 
     // The FEN of each non-comment, non-blank EPD line is everything before the
@@ -1941,8 +1620,7 @@ mod tests {
 
     #[test]
     fn capture_history_flips_good_to_bad() {
-        // An equal rook trade (SEE exactly 0): the black rook a2 is defended
-        // only by its king on b3, so Rxa2 then Kxa2 nets zero.
+        // An equal rook trade (SEE exactly 0): Rxa2 then Kxa2 nets zero.
         let b = board("8/8/8/8/8/1k6/r7/R6K w - - 0 1");
         assert!(b.checkers().is_empty());
         let rxa2 = Move::normal(Square::A1, Square::A2);
@@ -1974,9 +1652,8 @@ mod tests {
             );
         }
 
-        // Terrible capture history drives `value` negative, so `-value/18`
-        // becomes a positive material demand the even trade cannot meet → BAD,
-        // emitted after every (good) quiet.
+        // Terrible capture history makes `-value/18` a positive material
+        // demand the even trade cannot meet → BAD, emitted after the quiets.
         let mut poked = Histories::new();
         poked.capture[Piece::new(Color::White, PieceType::Rook).index()][Square::A2.idx()]
             [PieceType::Rook as usize] = crate::history::StatEntry::new(-10692);
@@ -1998,10 +1675,9 @@ mod tests {
         }
     }
 
-    // Drive a picker's capture+quiet init directly and read one quiet's score
-    // out of the buffer (region order is irrelevant — we search the whole quiet
-    // region for the move). Fresh histories make every table cell its init
-    // value, so scores are hand-computable.
+    // Drive a picker's capture+quiet init directly and read one quiet's
+    // score out of the buffer. Fresh histories make every table cell its
+    // init value, so scores are hand-computable.
     fn quiet_score(b: &Board, hist: &Histories, m: Move, ply: usize) -> i32 {
         let mut mp = MovePicker::new(b, Move::NULL, 8, ply, sentinels());
         mp.init_captures(b, hist);
@@ -2013,27 +1689,23 @@ mod tests {
             .value
     }
 
-    /// Perf study 71 — `QUIET_SEE_PENALTY`, both guards and the ordering that
-    /// makes the second one non-redundant.
+    /// `QUIET_SEE_PENALTY`: both guards, and the ordering that makes the
+    /// second one non-redundant.
     #[test]
     fn quiet_see_penalty_fires_only_on_a_losing_quiet_the_threat_tier_misses() {
         const BASE: i32 = 2 * -5 + 2 * -1262 + 5 * -552; // −5294, as above
         let fresh = Histories::new();
 
-        // (a) The case the shipped threat tier is BLIND to: rook to a square an
-        //     enemy ROOK attacks. `threat[Rook]` is "attacked by a pawn, knight
-        //     or bishop", so an equal-valued attacker scores nothing, and the
-        //     destination is undefended — SEE alone catches it.
+        // (a) The case the threat tier is BLIND to: rook to a square an
+        //     enemy ROOK attacks (equal-valued attacker) — SEE alone catches it.
         let b = board("3r3k/8/8/8/8/8/8/K3R3 w - - 0 1");
         let rd1 = Move::normal(Square::E1, Square::D1);
         assert!(
             b.all_threats().contains(Square::D1),
             "the black rook must attack d1 or the cheap guard skips the test"
         );
-        // The unclamped score `BASE - QUIET_SEE_PENALTY()` is well past the
-        // threshold, so the CLAMP catches it and the move stays the worst
-        // GOOD quiet instead of becoming a bad one. That clamp is the whole
-        // difference between an ordering change and a pruning change.
+        // The unclamped score is well past the threshold, so the CLAMP binds
+        // and the move stays the worst GOOD quiet instead of becoming bad.
         assert!(
             BASE - QUIET_SEE_PENALTY() < GOOD_QUIET_THRESHOLD(),
             "this case must be one the clamp actually binds on"
@@ -2058,12 +1730,9 @@ mod tests {
             BASE
         );
 
-        // (d) NON-REDUNDANCY with the threat tier. A queen stepping onto a
-        //     rook-attacked square is already sunk below GOOD_QUIET_THRESHOLD
-        //     by the tier, so the second guard declines to pay for SEE at all
-        //     and the score is the tier's alone — see the (d) case of
-        //     `quiet_scoring_matches_hand_computed_values`, which pins exactly
-        //     that value.
+        // (d) NON-REDUNDANCY: a queen stepping onto a rook-attacked square is
+        //     already sunk below the threshold by the tier, so the second
+        //     guard declines to pay for SEE and the score is the tier's alone.
         let b = board("3rk3/8/8/8/8/8/8/Q3K3 w - - 0 1");
         let qd1 = Move::normal(Square::A1, Square::D1);
         assert_eq!(
@@ -2129,8 +1798,7 @@ mod tests {
         assert_eq!(expect, 4768); // 7·781 − 699
 
         // Quiescence: the same capture with d5 defended loses
-        // `QS_CAPTURE_DEFENDED_NUM/16` of the ATTACKER's value — the pawn's,
-        // not the knight's (perf study 70).
+        // `QS_CAPTURE_DEFENDED_NUM/16` of the ATTACKER's value (the pawn's).
         let defended = board("4k3/8/2b5/3n4/4P3/8/8/4K3 w - - 0 1");
         assert!(
             recapture_map(&defended, DEPTH_QS).contains(Square::D5),
@@ -2159,8 +1827,7 @@ mod tests {
         let quiets = quiet_set(&b);
         assert!(!captures.is_empty() && !quiets.is_empty());
 
-        // Skip before QuietInit: no quiet is ever generated, yet every capture
-        // (good and bad) still comes out.
+        // Skip before QuietInit: no quiet is generated, all captures come.
         let mut mp = MovePicker::new(&b, Move::NULL, 8, 0, sentinels());
         mp.skip_quiet_moves();
         let emitted = drain(mp, &b, &hist);
@@ -2169,8 +1836,7 @@ mod tests {
         }
         assert_eq!(emitted.iter().copied().collect::<HashSet<_>>(), captures);
 
-        // Skip mid-GoodQuiet: quiets already emitted stay, no further quiets
-        // appear, and the bad captures still follow.
+        // Skip mid-GoodQuiet: no further quiets, bad captures still follow.
         let mut mp = MovePicker::new(&b, Move::NULL, 8, 0, sentinels());
         let mut got = Vec::new();
         let mut seen = HashSet::new();

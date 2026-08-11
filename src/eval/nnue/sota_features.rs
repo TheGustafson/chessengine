@@ -1,33 +1,14 @@
 //! The SOTA net's **SF-faithful feature front-end** (design/11 §12.1-12.2, D40):
-//! the two feature-index functions (HalfKAv2_hm + FullThreats) and the
-//! from-scratch accumulator refresh that fills the `pst`/`threat` pair the
-//! Reckless-shaped [`super::sota_head`] consumes.
+//! [`halfka_index`] (the 22,528-dim HalfKAv2_hm index), [`threat_index`] (the
+//! 60,720-dim FullThreats index), and [`refresh_pst`] / [`refresh_threat`] /
+//! [`refresh_both`] — from-scratch accumulator builds over weight slices.
 //!
-//! This is a **reimplementation of the index math** in Stockfish's
-//! `half_ka_v2_hm.{h,cpp}` and `full_threats.{h,cpp}` — the arithmetic and the
-//! constant tables (OrientTBL, KingBuckets, PieceSquareIndex, the threat LUTs)
-//! are transcribed, but no GPLv3 code is copied (D27): the loops, types, and
-//! structure are our own idiomatic Rust. Correctness is pinned by the tests at
-//! the bottom, which hand-compute the SF `make_index` for known tuples.
+//! A **reimplementation of the index math** in Stockfish's `half_ka_v2_hm` and
+//! `full_threats`: the arithmetic and the constant tables are transcribed, but
+//! no GPLv3 code is copied (D27). Correctness is pinned by the tests at the
+//! bottom, which hand-compute the SF `make_index` for known tuples.
 //!
-//! Behind the `sota` cargo feature; the default build never compiles it, so the
-//! depth-6 bench stays 548978.
-//!
-//! # What this increment covers
-//! - [`halfka_index`]: the 22,528-dim HalfKAv2_hm index.
-//! - [`threat_index`]: the 60,720-dim FullThreats index.
-//! - [`refresh_pst`] / [`refresh_threat`] / [`refresh_both`]: from-scratch
-//!   accumulator builds (format-agnostic — they take weight slices, like
-//!   [`super::sota_head`]).
-//!
-//! # TODO — later #29 increments (deliberately NOT here)
-//! - Incremental (dirty) HalfKA updates on the `MakeMoveHooks` seam (§3.4.4):
-//!   ≤2 sub / ≤2 add per move from `DirtyPiece`.
-//! - The HalfKA "Finny table" accumulator cache keyed by `(perspective,
-//!   king-bucket, mirror)` (§12.2).
-//! - The FullThreats dirty-diff observer (≤80 add/remove threat events per
-//!   move, the x-ray ripple) — the one genuinely heavy new machine.
-//! - The CENN-v2 net loader (§12.6) that fills real weights from disk.
+//! Behind the `sota` cargo feature; the default build never compiles it.
 
 use crate::attacks::{attacks, king_attacks, knight_attacks, pawn_attacks, pseudo_attacks};
 use crate::bitboard::Bitboard;
@@ -35,8 +16,8 @@ use crate::board::Board;
 use crate::types::{Color, Piece, PieceType, Square};
 use std::sync::LazyLock;
 
-/// Accumulator width per perspective — must equal the SOTA head's `L1` (768) so
-/// the refresh output feeds [`super::sota_head::SotaHead::forward`] directly.
+/// Accumulator width per perspective — must equal the SOTA head's `L1`, so the
+/// refresh output feeds [`super::sota_head::SotaHead::forward`] directly.
 pub const ACC: usize = super::sota_head::L1;
 const _: () = assert!(
     ACC == super::sota_head::L1,
@@ -56,10 +37,9 @@ const PS_KING: usize = 640;
 pub const HALFKA_DIMS: usize = 22528;
 
 /// King-bucket number for each square (SF `KingBuckets / PS_NB`), indexed by the
-/// oriented king square (`ksq ^ 56·persp`). 32 distinct buckets; the table is
-/// horizontally symmetric (each row is a palindrome), which is why the index
-/// does **not** need a horizontal mirror — only the vertical `^56` flip.
-/// Reading order is square index 0 = a1 … 63 = h8.
+/// oriented king square (`ksq ^ 56·persp`), square index 0 = a1 … 63 = h8.
+/// 32 buckets; each row is a palindrome, which is why the index needs no
+/// horizontal mirror — only the vertical `^56` flip.
 #[rustfmt::skip]
 const KING_BUCKETS: [u16; 64] = [
     28, 29, 30, 31, 31, 30, 29, 28,
@@ -73,9 +53,8 @@ const KING_BUCKETS: [u16; 64] = [
 ];
 
 /// HalfKA square orientation: a **file mirror** so the king ends up on files
-/// e-h. `7` (XOR flips the file) for a king on files a-d, else `0`. This is the
-/// polarity that normalizes the king to the kingside; FullThreats uses the
-/// *opposite* polarity (see [`orient_threats`]) — the documented fidelity trap.
+/// e-h — `7` for a king on files a-d, else `0`. FullThreats uses the *opposite*
+/// polarity ([`orient_threats`]); that asymmetry is a known fidelity trap.
 #[inline]
 fn orient_halfka(ksq: Square) -> u8 {
     if ksq.file() <= 3 { 7 } else { 0 }
@@ -83,7 +62,7 @@ fn orient_halfka(ksq: Square) -> u8 {
 
 /// Cache key for a HalfKAv2_hm king state: 32 bucket ids × two horizontal
 /// orientations. Moving the king without changing this key leaves every
-/// non-king feature's index stable, so a dirty-piece update is sufficient.
+/// non-king index stable, so a dirty-piece update suffices.
 #[inline]
 pub(crate) fn halfka_king_key(perspective: Color, king_sq: Square) -> usize {
     let flip = 56 * perspective as u8;
@@ -91,13 +70,12 @@ pub(crate) fn halfka_king_key(perspective: Color, king_sq: Square) -> usize {
     bucket * 2 + usize::from(orient_halfka(king_sq) != 0)
 }
 
-/// The piece-slot offset within a 704-block (SF `PieceSquareIndex`).
-///
-/// From `persp`'s point of view own pieces occupy the "white" even slots
-/// (`0,128,…,512`) and enemy pieces the "black" odd slots (`64,192,…,576`);
-/// kings share [`PS_KING`]. So a black-perspective refresh swaps which color's
-/// pieces land in the white slots — the §3.4.2 symmetry that makes the two
-/// accumulators exchange roles under a color flip.
+/// The piece-slot offset within a 704-block (SF `PieceSquareIndex`). From
+/// `persp`'s view own pieces occupy the "white" even slots (`0,128,…,512`) and
+/// enemy pieces the "black" odd slots (`64,192,…,576`); kings share
+/// [`PS_KING`]. So a black-perspective refresh swaps which colour's pieces land
+/// in the white slots — the symmetry that makes the two accumulators exchange
+/// roles under a colour flip.
 #[inline]
 fn piece_square_index(persp: Color, piece: Piece) -> usize {
     if matches!(piece.piece_type, PieceType::King) {
@@ -113,29 +91,14 @@ fn piece_square_index(persp: Color, piece: Piece) -> usize {
 }
 
 /// A feature's **element offset into a feature-transformer weight table** —
-/// `feature * ACC` — as consumed by every `apply_*_deltas*` fold kernel.
+/// `feature * ACC` — as consumed by every `apply_*_deltas*` fold kernel. Scaled
+/// ONCE at the producer, because the kernels walk their row list once per TILE
+/// (8 tiles at `ACC = 1280`, `REGS = 5`) and would otherwise rescale per tile.
 ///
-/// # Why this is a type and not a bare `usize` (perf study 57)
-///
-/// The fold kernels walk their row list once per TILE, and at the shipped
-/// `REGS = 5` (perf study 44) an `ACC = 1280` accumulator is **8 tiles**. The
-/// scaling `feature * ACC` therefore used to be recomputed 8 times per row —
-/// `lea (%r,%r,4)` + `shl $0x8` sitting in the innermost loop, 2 of its 6
-/// scalar instructions per row per tile, read off the shipped disassembly.
-/// Scaling ONCE at the producer and handing the kernel a pre-scaled offset
-/// deletes 16 instructions per folded row and shortens each weight-row load's
-/// address dependency by two ALU ops.
-///
-/// Perf study 37 §5 named this "the best-priced remaining candidate" and
-/// priced it at −8 i/n **when the fold was 2 tiles wide**; study 44 then made
-/// the walk 4× wider without anyone re-pricing it.
-///
-/// The newtype is the whole safety argument: the two channels' producers and
-/// five kernels have to agree on the unit, and a silent disagreement is an
-/// arbitrarily wrong evaluation that still benches. A `usize` cannot catch
-/// that; this can, at compile time. PSQ1 indexing keeps using the plain
-/// feature index — its rows are `BUCKETS` wide, not `ACC` — so the two units
-/// coexist and must not be confused.
+/// **The newtype is the safety argument**: producers and kernels must agree on
+/// the unit, and a silent disagreement is an arbitrarily wrong evaluation that
+/// still benches. PSQ1 indexing keeps the plain feature index — its rows are
+/// `BUCKETS` wide, not `ACC` — so the two units coexist and must not be mixed.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct RowOffset(pub usize);
 
@@ -146,20 +109,18 @@ impl RowOffset {
         Self(feature * ACC)
     }
 
-    /// Recover the feature index. Only instrumentation and tests need this —
-    /// the hot path never divides.
+    /// Recover the feature index — instrumentation and tests only.
     #[inline]
     pub const fn feature(self) -> usize {
         self.0 / ACC
     }
 }
 
-/// The HalfKAv2_hm feature index of `piece` on `sq`, as seen from `perspective`
-/// with the own king on `king_sq` (design/11 §12.1).
-///
+/// The HalfKAv2_hm feature index of `piece` on `sq` as seen from `perspective`
+/// with the own king on `king_sq`:
 /// `index = (sq ^ orient(ksq) ^ 56·persp) + piece_square_index + king_bucket`,
-/// exactly SF's `make_index`. The oriented square (0-63) plus the piece slot
-/// (a multiple of 64, ≤640) stays inside one `PS_NB`-block; the king bucket adds
+/// exactly SF's `make_index`. The oriented square (0-63) plus the piece slot (a
+/// multiple of 64, ≤640) stays inside one `PS_NB`-block; the king bucket adds
 /// `bucket·704`. Range: `[0, 22528)`.
 #[inline]
 pub fn halfka_index(perspective: Color, piece: Piece, sq: Square, king_sq: Square) -> usize {
@@ -167,16 +128,9 @@ pub fn halfka_index(perspective: Color, piece: Piece, sq: Square, king_sq: Squar
 }
 
 /// The part of [`halfka_index`] that depends only on `(perspective, piece,
-/// king_sq)` — i.e. everything a whole BITBOARD of one piece type shares.
-///
-/// Split out because the Finny set-diff refresh walks one piece type's added
-/// and removed squares as two separate bitboard loops, and recomputed the
-/// slot + bucket base inside each of them: nine instructions
-/// (`shl`/`test`/`lea`/`cmove`/`cmp`/`mov`/`cmove`/`add`) per differing piece
-/// type per direction, for a value that cannot change across either loop.
-/// Hoisting it is a source-level change LLVM will not make for you, because
-/// `piece_square_index`'s two `cmove`s make the expression look cheap enough
-/// to sink.
+/// king_sq)` — everything a whole BITBOARD of one piece type shares. Hoisted
+/// out by hand for the Finny set-diff refresh's two per-type loops; LLVM will
+/// not do it (`piece_square_index`'s two `cmove`s look cheap enough to sink).
 #[inline]
 pub fn halfka_row_base(perspective: Color, piece: Piece, king_sq: Square) -> usize {
     let flip = 56 * perspective as u8;
@@ -184,11 +138,10 @@ pub fn halfka_row_base(perspective: Color, piece: Piece, king_sq: Square) -> usi
     piece_square_index(perspective, piece) + bucket * PS_NB
 }
 
-/// The per-square half of [`halfka_index`]: `sq` mirrored into the king's
-/// half of the board, `0..64`.
-///
-/// `& 63` is a no-op on the value (both operands are 6-bit) and a range fact
-/// for the optimizer — the same move as [`ThreatResolver::index_decoded`].
+/// The per-square half of [`halfka_index`]: `sq` mirrored into the king's half
+/// of the board, `0..64`. `& 63` is a no-op on the value (both operands are
+/// 6-bit) and a range fact for the optimizer, as in
+/// [`ThreatResolver::index_decoded`].
 #[inline]
 pub fn halfka_oriented(perspective: Color, sq: Square, king_sq: Square) -> usize {
     let flip = 56 * perspective as u8;
@@ -202,19 +155,13 @@ pub fn halfka_oriented(perspective: Color, sq: Square, king_sq: Square) -> usize
 /// FullThreats feature-space dimension.
 pub const THREAT_DIMS: usize = 60720;
 
-/// A learned re-coding of the FullThreats index space (the Recode POC,
-/// `docs/research/learned-feature-code-study-2026-07-30.md` §6.1 mode (ii)):
-/// a surjection from the 60,720 geometric relation codes onto the net's actual
-/// threat row space (`SotaNetwork::threat_rows` rows). Carried by the net
-/// (CENN `TRM1` section), applied at the single resolver chokepoint
-/// ([`ThreatResolver::index_decoded`]) that both the from-scratch and
-/// incremental paths share — so the two cannot drift. `None` everywhere means
-/// the identity code (every net before this change).
-///
-/// `u16` fits because `THREAT_DIMS < 65536` and the target row space is never
-/// larger than the source. The loader validates every entry `< threat_rows`,
-/// which is what lets the fold paths index the weight table without a per-event
-/// bounds check.
+/// A learned re-coding of the FullThreats index space: a surjection from the
+/// 60,720 geometric relation codes onto the net's actual threat row space.
+/// Carried by the net (CENN `TRM1` section), applied at the single resolver
+/// chokepoint ([`ThreatResolver::index_decoded`]) both the from-scratch and
+/// incremental paths share, so the two cannot drift. `None` = identity code.
+/// `u16` fits because `THREAT_DIMS < 65536`; the loader validates every entry
+/// `< threat_rows`, which is what lets the fold paths skip a per-event check.
 pub type ThreatRemap = [u16; THREAT_DIMS];
 
 /// SF piece code: white P..K = 1..6, black P..K = 9..14 (color = bit 3). The
@@ -229,9 +176,9 @@ pub(crate) const fn sf_code(piece: Piece) -> usize {
 /// bases (`cumulativeOffset`), so it must not be reordered.
 const ALL_PIECES: [usize; 12] = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14];
 
-/// `numValidTargets[code]` = 2 × (count of victim piece-types this attacker may
-/// threaten). Pawn 6 (P/N/R), knight 10 (P/N/B/R/Q), bishop 8 (P/N/B/R),
-/// rook 8, queen 10, king 0. Indexed by SF piece code (16-wide, gaps unused).
+/// `numValidTargets[code]` = 2 × (victim piece-types this attacker may
+/// threaten): pawn 6 (P/N/R), knight 10 (P/N/B/R/Q), bishop 8, rook 8, queen
+/// 10, king 0. Indexed by SF piece code (16-wide, gaps unused).
 #[rustfmt::skip]
 const NUM_VALID_TARGETS: [usize; 16] = [
     0, 6, 10, 8, 8, 10, 0, 0,
@@ -239,9 +186,9 @@ const NUM_VALID_TARGETS: [usize; 16] = [
 ];
 
 /// `map[attacker_type-1][attacked_type-1]` (types PAWN..KING = 1..6): the dense
-/// victim-relation ordinal for a legal attacker→victim type pair, or `-1` when
-/// the pair is excluded. Kings attack nothing; pawns threaten only P/N/R;
-/// bishops/rooks skip Q & K; knights/queens include Q.
+/// victim-relation ordinal for a legal attacker→victim type pair, `-1` when
+/// excluded. Kings attack nothing, pawns threaten only P/N/R, bishops/rooks
+/// skip Q & K, knights/queens include Q.
 #[rustfmt::skip]
 const MAP: [[i8; 6]; 6] = [
     [ 0,  1, -1,  2, -1, -1], // pawn
@@ -253,28 +200,22 @@ const MAP: [[i8; 6]; 6] = [
 ];
 
 /// Is the attacker→victim TYPE pair one `threat_index` keeps? Derived from
-/// [`MAP`] — the single source of truth — so the observer's push-time filter
-/// (perf study §6-T2: drop events at generation instead of buffering +
-/// resolving them twice and dropping at fold) can never diverge from the
-/// fold-time drop set. The pawn-PUSH asymmetry (push onto N/R would be kept
-/// by MAP but is never a threat) is guarded at the recording site, not here.
+/// [`MAP`], the single source of truth, so the observer's push-time filter
+/// cannot diverge from the fold-time drop set. The pawn-PUSH asymmetry (a push
+/// onto N/R is kept by MAP but is never a threat) is guarded at the recording
+/// site, not here.
 #[inline]
 pub(crate) fn threat_pair_kept(attacker: PieceType, victim: PieceType) -> bool {
-    // Our PieceType is 0-based (Pawn=0..King=5); MAP is indexed the same way
-    // (its doc's "1..6" refers to SF's piece codes, not the array index).
+    // Our PieceType is 0-based and MAP is indexed the same way (its doc's
+    // "1..6" refers to SF's piece codes, not the array index).
     MAP[attacker as usize][victim as usize] >= 0
 }
 
 /// [`threat_pair_kept`] as a per-attacker **bit set over victim types**, so the
-/// incremental observer can turn "which victims count?" into a bitboard mask
-/// instead of a per-square predicate call — the same shape
-/// [`for_each_threat`]'s `pawn_targets` / `minor_slider_targets` /
-/// `queen_targets` already use on the from-scratch side.
-///
-/// Built from [`MAP`] in a `const` block (Rust's `const` blocks allow `while`
-/// but not `for`, hence the index loops), so it is materialised at compile time
-/// and cannot drift from the predicate; `kept_victim_masks_match_predicate`
-/// pins the two together for all 36 pairs.
+/// incremental observer turns "which victims count?" into a bitboard mask
+/// instead of a per-square predicate call. Built from [`MAP`] in a `const`
+/// block (which allows `while` but not `for`, hence the index loops), so it
+/// cannot drift; `kept_victim_masks_match_predicate` pins all 36 pairs.
 pub(crate) const KEPT_VICTIMS: [u8; PieceType::COUNT] = {
     let mut out = [0u8; PieceType::COUNT];
     let mut att = 0;
@@ -291,18 +232,17 @@ pub(crate) const KEPT_VICTIMS: [u8; PieceType::COUNT] = {
     out
 };
 
-/// FullThreats square orientation — the **opposite polarity** to HalfKA:
-/// `0` for a king on files a-d, `7` for files e-h (design/11 §12.1, the
-/// "a1/h1 polarity" fidelity trap: HalfKA's OrientTBL is a1→SQ_H1, threats' is
-/// a1→SQ_A1).
+/// FullThreats square orientation — the **opposite polarity** to HalfKA: `0`
+/// for a king on files a-d, `7` for files e-h. (The "a1/h1 polarity" trap:
+/// HalfKA's OrientTBL is a1→SQ_H1, threats' is a1→SQ_A1.)
 #[inline]
 fn orient_threats(ksq: Square) -> u8 {
     if ksq.file() <= 3 { 0 } else { 7 }
 }
 
-/// Empty-board attack geometry of an SF piece code on `from` — the same sets SF
-/// builds its threat LUTs from. Pawns use *push-or-attacks* (single push |
-/// both diagonal captures); everything else is the plain pseudo-attack set.
+/// Empty-board attack geometry of an SF piece code on `from` — the sets SF
+/// builds its threat LUTs from. Pawns use *push-or-attacks*; everything else is
+/// the plain pseudo-attack set.
 fn geom_attacks(code: usize, from: Square) -> Bitboard {
     let color = if code < 8 { Color::White } else { Color::Black };
     match code & 7 {
@@ -317,8 +257,8 @@ fn geom_attacks(code: usize, from: Square) -> Bitboard {
 }
 
 /// SF `PawnPushOrAttacks[c][from]` — the pawn's single push square unioned with
-/// its two diagonal capture squares (all masked to the board). A pawn's "threat"
-/// includes the pawn it is blocked by / about to push into, hence the push bit.
+/// its two diagonal captures. A pawn's "threat" includes the pawn it is about
+/// to push into, hence the push bit.
 fn pawn_push_or_attacks(color: Color, from: Square) -> Bitboard {
     let mut bb = pawn_attacks(color, from);
     if let Some(push) = from.shifted(color.pawn_push()) {
@@ -331,37 +271,24 @@ fn pawn_push_or_attacks(color: Color, from: Square) -> Bitboard {
 /// few KiB — all indexed by SF piece code (16-wide, gap entries unused).
 struct ThreatTables {
     /// `piece_offset[code]` = total empty-board attack edges for the attacker
-    /// (SF `cumulativePieceOffset`; the per-attacker geometry size). Folded into
-    /// `lut1` for the index, but kept explicitly: the table-invariant test reads
-    /// it, and the coming incremental threats observer (§12.2) needs it.
+    /// (SF `cumulativePieceOffset`). Folded into `lut1` for the index, but kept
+    /// explicitly for the table-invariant test and the threats observer.
     #[allow(dead_code)]
     piece_offset: [u32; 16],
     /// `cumulative_offset[code]` = the attacker-block base (SF `cumulativeOffset`).
     /// Kept for the same reasons as `piece_offset`.
     #[allow(dead_code)]
     cumulative_offset: [u32; 16],
-    /// `lut2[code][from][to]` = popcount of the attacker's attack bits strictly
-    /// below `to` (the dense ordinal of `to` among `from`'s targets), **plus**
-    /// `offsets[code][from]` — the two terms of the index that share a key.
+    /// `from_to[code][from][to]` = popcount of the attacker's attack bits
+    /// strictly below `to` (the dense ordinal of `to` among `from`'s targets)
+    /// PRE-ADDED to the from-square prefix base — the two terms of the index
+    /// that share a key, fused at build time into one load and one add.
     ///
-    /// PERF STUDY 59, arm `lutp`. `index_decoded` used to compute
-    /// `offsets[att][from_o] + lut2[att][from_o][to_o]`, which is two loads,
-    /// two address computations and two adds for a sum whose *both* operands are
-    /// functions of the same `(att, from_o)` prefix. IBS put the line that does
-    /// it at **9.56 % of `at_full`'s sampled ops = 0.90 % of the whole engine**,
-    /// the largest single source line in the symbol. Pre-adding at build time
-    /// makes it one load and one add.
-    ///
-    /// The sum fits `u16` **structurally, not by luck**: `offsets[code][from]`
-    /// is a prefix sum bounded by the attacker's total empty-board edge count
-    /// (`piece_offset`, at most 1456 for a queen) and the ordinal is bounded by
-    /// the same quantity, so the sum is under 2·1456. `build_threat_tables`
-    /// asserts it, and `threats_from_to_fits_u16` sweeps every entry.
-    ///
-    /// The cost is the table: 64 KiB of `u8` becomes 128 KiB of `u16`. It is
-    /// paid in address space, not in touched lines — a lookup reads ONE
-    /// `to`-ordinal, so a 128-byte row costs the same single cache line a
-    /// 64-byte row did.
+    /// The sum fits `u16` **structurally, not by luck**: both terms are bounded
+    /// by the attacker's total empty-board edge count (`piece_offset`, ≤1456 for
+    /// a queen), so the sum is under 2·1456. `build_threat_tables` asserts it
+    /// and a test sweeps every entry. The cost is 128 KiB of `u16` for 64 KiB of
+    /// `u8`, paid in address space, not touched lines: a lookup reads ONE entry.
     from_to: Box<[[[u16; 64]; 64]; 16]>,
     /// `lut1[attacker][attacked][from<to]` = the block+sub-block feature base, or
     /// [`THREAT_DIMS`] (an out-of-range sentinel → dropped) for an excluded or
@@ -375,7 +302,7 @@ fn build_threat_tables() -> ThreatTables {
     let mut from_to = Box::new([[[0u16; 64]; 64]; 16]);
 
     // Per-attacker geometry: the `to`-ordinal LUT, pre-added to the prefix-sum
-    // from-square base (perf study 59 — see `ThreatTables::from_to`).
+    // from-square base (see `ThreatTables::from_to`).
     let mut cumulative = 0u32;
     for &code in &ALL_PIECES {
         let is_pawn = code & 7 == 1;
@@ -386,10 +313,9 @@ fn build_threat_tables() -> ThreatTables {
             // Fill the ordinal LUT for every from-square (SF builds it for all
             // 64, even rank 1/8 pawns that never occur in play).
             let bits = attacks.to_u64();
-            // The from-square base this row is folded onto. `assert` and not
-            // `debug_assert`: the whole arm rests on the sum fitting `u16`, the
-            // table is built once at startup, and a silent wrap here is an
-            // arbitrarily wrong evaluation that still benches.
+            // `assert`, not `debug_assert`: the fused table rests on this sum
+            // fitting `u16`, it is built once at startup, and a silent wrap is
+            // an arbitrarily wrong evaluation that still benches.
             let base = cum_piece + attacks.count();
             assert!(
                 base <= u16::MAX as u32,
@@ -423,10 +349,9 @@ fn build_threat_tables() -> ThreatTables {
             let att_t = attacker & 7; // 1..=6
             let atd_t = attacked & 7; // 1..=6
             let map = MAP[att_t - 1][atd_t - 1];
-            // Same-type threats are symmetric (A attacks B ⟺ B attacks A) for
-            // every non-pawn and for opposite-color pawns, so one direction is
-            // dropped to avoid double counting. Same-color pawn→pawn (a push)
-            // is directional and kept.
+            // Same-type threats are symmetric for every non-pawn and for
+            // opposite-colour pawns, so one direction is dropped to avoid
+            // double counting; same-colour pawn→pawn (a push) is directional.
             let semi_excluded = att_t == atd_t && (same_type_diff_color || att_t != 1);
             let excluded = map < 0;
 
@@ -461,25 +386,17 @@ fn build_threat_tables() -> ThreatTables {
 
 static THREAT_TABLES: LazyLock<ThreatTables> = LazyLock::new(build_threat_tables);
 
-/// Perf study 66 — the FullThreats index space as a list of attacker BLOCKS:
-/// `(base, num_subs, geom)` for each attacker code in [`ALL_PIECES`] order.
+/// The FullThreats index space as a list of attacker BLOCKS: `(base, num_subs,
+/// geom)` per attacker code in [`ALL_PIECES`] order, derived from the same
+/// `THREAT_TABLES` the resolver uses so it cannot drift from the real layout.
 ///
-/// The index is `base + sub · geom + ft`, with `sub ∈ [0, num_subs)` selecting
-/// the victim relation (colour × type ordinal) and `ft ∈ [0, geom)` the
-/// `(from, to)` geometry ordinal. So **the victim relation is the SLOWEST axis
-/// and the geometry the fastest**, which is what makes two rows of one fold
-/// that share `(attacker, from)` but differ in victim sit `geom` rows apart —
-/// 336 rows (430 KB) for a knight, 1456 (1.8 MB) for a queen. Study 66's
-/// `FOLDREDUND` census measured the consequence: the modal threat fold spans
-/// **2²⁶ bytes**, i.e. the whole 77.7 MB table.
-///
-/// Transposing each block (`base + ft · num_subs + sub`) is a pure permutation
-/// of the row space, so it can be applied to the weight table at load and is
-/// **bit-exact by construction** — the accumulator sums the same vectors. It
-/// is what `ARCHON_PERM=1` builds.
-///
-/// Derived from the same `THREAT_TABLES` the resolver uses, so it cannot drift
-/// from the real layout; `threat_blocks_tile_the_space` pins that.
+/// The index is `base + sub · geom + ft`, `sub` the victim relation (colour ×
+/// type ordinal) and `ft` the `(from, to)` geometry ordinal — so the victim
+/// relation is the SLOWEST axis, and two rows of one fold sharing `(attacker,
+/// from)` sit `geom` rows apart (1456 rows / 1.8 MB for a queen). Transposing a
+/// block to `base + ft · num_subs + sub` is a pure permutation of the row space,
+/// so it can be applied to the weight table at load and is bit-exact by
+/// construction; `ARCHON_PERM=1` builds it.
 pub(crate) fn threat_blocks() -> Vec<(usize, usize, usize)> {
     let t = &*THREAT_TABLES;
     ALL_PIECES
@@ -501,11 +418,10 @@ pub(crate) fn threat_blocks() -> Vec<(usize, usize, usize)> {
 /// an illegal attacker→victim type) or semi-excluded (the dropped direction of a
 /// symmetric same-type threat) — SF's `push_back_if_lt(index, Dimensions)`.
 ///
-/// `index = lut1[att][atd][from<to] + from_to[att][from][to]`, where the second
-/// term is the from-square prefix base plus the `to`-ordinal, pre-added at
-/// build time (perf study 59),
-/// all with the squares file/rank-oriented by `OrientTBL[ksq] ^ 56·persp` and
-/// the piece codes color-swapped by `^ 8·persp`. Range when `Some`: `[0, 60720)`.
+/// `index = lut1[att][atd][from<to] + from_to[att][from][to]`, the second term
+/// being the from-square prefix base plus the `to`-ordinal, pre-added at build
+/// time — all with the squares file/rank-oriented by `OrientTBL[ksq] ^ 56·persp`
+/// and the piece codes color-swapped by `^ 8·persp`. `Some` range: `[0, 60720)`.
 #[inline]
 pub fn threat_index(
     perspective: Color,
@@ -518,20 +434,17 @@ pub fn threat_index(
     ThreatResolver::new(perspective, ksq).index(attacker, from, to, attacked)
 }
 
-/// The per-(perspective, king) state of [`threat_index`], hoisted (perf study
-/// #4 item #3): the `THREAT_TABLES` `LazyLock` deref — round 2's single
-/// hottest instruction — plus the orientation and color-swap derivation were
-/// re-run per event; a resolve loop builds one of these per fold and pays
-/// them once. [`index`](Self::index) is the same arithmetic as
-/// [`threat_index`] (which now delegates here), so the two cannot drift.
+/// The per-(perspective, king) state of [`threat_index`], hoisted: the
+/// `THREAT_TABLES` `LazyLock` deref plus the orientation and colour-swap
+/// derivation, otherwise re-run per event. [`index`](Self::index) is the same
+/// arithmetic as [`threat_index`], which delegates here, so the two cannot drift.
 pub(crate) struct ThreatResolver<'r> {
     tables: &'static ThreatTables,
     orientation: u8,
     swap: usize,
     /// The net's threat re-coding, or `None` for the identity code. `Option`
-    /// rather than a static identity table so a remap-less net pays a
-    /// predicted branch per event instead of a 121 KB table's worth of new
-    /// data traffic (see [`ThreatRemap`]).
+    /// rather than a static identity table so a remap-less net pays a predicted
+    /// branch per event instead of 121 KB of new data traffic.
     remap: Option<&'r ThreatRemap>,
 }
 
@@ -588,15 +501,12 @@ impl<'r> ThreatResolver<'r> {
         to: Square,
     ) -> Option<usize> {
         let t = self.tables;
-        // `& 63` is a NO-OP on the value and a RANGE FACT for the optimizer.
-        // Both operands are already 6-bit — `Square::index() < 64` by the
-        // newtype's constructor assert, and `orientation` is
-        // `orient_threats(ksq) ^ 56·p ∈ {0, 7, 56, 63}` — but LLVM only sees
-        // `u8 ^ u8 → 0..=255`, so every `from_to[att][from_o][to_o]` index
-        // carried a `cmp $63` / `ja panic` pair it could not hoist (the bound
-        // depends on the loaded event).
-        // This is perf study 8 §4.1's `l1_dot` shape in the resolver: the
-        // loop is ~40 instructions and runs once per event per perspective.
+        // `& 63` is a NO-OP on the value and a RANGE FACT for the optimizer:
+        // both operands are already 6-bit (`Square::index() < 64` by the
+        // newtype's constructor assert, `orientation ∈ {0, 7, 56, 63}`), but
+        // LLVM only sees `u8 ^ u8 → 0..=255`, so without it every
+        // `from_to[att][from_o][to_o]` index carries an unhoistable
+        // `cmp $63` / `ja panic` pair.
         let from_o = ((from.index() ^ self.orientation) & 63) as usize;
         let to_o = ((to.index() ^ self.orientation) & 63) as usize;
         let att = attacker_code ^ self.swap;
@@ -610,10 +520,9 @@ impl<'r> ThreatResolver<'r> {
         let idx = (base + t.from_to[att][from_o][to_o] as u32) as usize;
         // The Recode chokepoint: one table lookup re-codes the geometric index
         // into the net's row space. `.min(THREAT_DIMS - 1)` is a NO-OP on the
-        // value (the tiling test pins `base + piece_offset <= THREAT_DIMS`, so
-        // `idx < THREAT_DIMS` always) and a range fact for the optimizer — the
-        // same move as the `& 63` above, discharging the bounds check against
-        // the fixed-size [`ThreatRemap`] array without a panic edge.
+        // value (the tiling test pins `idx < THREAT_DIMS`) and a range fact for
+        // the optimizer, discharging the [`ThreatRemap`] bounds check without a
+        // panic edge — same move as the `& 63` above.
         match self.remap {
             Some(remap) => Some(usize::from(remap[idx.min(THREAT_DIMS - 1)])),
             None => Some(idx),
@@ -644,27 +553,20 @@ pub fn for_each_halfka(board: &Board, perspective: Color, mut f: impl FnMut(usiz
 
 /// The 74-byte **bitboard** snapshot of a position that the FullThreats feature
 /// space reads: occupancy split by piece type and by colour, the all-occupancy
-/// union, and both king squares. It carries exactly what [`for_each_threat_at`]
-/// (the from-scratch enumeration) and [`super::sota_threats`]'s incremental
-/// generator/resolver read — nothing else.
+/// union, and both king squares — exactly what [`for_each_threat_at`] and
+/// [`super::sota_threats`]'s incremental generator/resolver read, nothing else.
 ///
-/// Two consumers, one definition:
+/// One definition, two consumers:
+/// [`super::sota_threats::ThreatContext::apply_at`] captures it at push time so
+/// fold-time regeneration runs against the post-move geometry even after a
+/// sibling has destroyed the live [`Board`] in place; and the from-scratch
+/// refresh runs off the *same* struct, which is what lets a king-cross rebuild
+/// be **deferred** to the ply that actually evaluates.
 ///
-/// * [`super::sota_threats::ThreatContext::apply_at`] captures it at push time,
-///   so fold-time (re)generation runs against the post-move geometry even after
-///   a sibling has destroyed the live [`Board`] in place; and
-/// * the from-scratch refresh runs off the *same* struct, which is what lets a
-///   king-cross rebuild be **deferred** to the ply that actually evaluates
-///   (perf study 18 §3) instead of paid eagerly at push.
-///
-/// # Why bitboards and not the mailbox (perf-impl-1)
-/// The original form snapshotted `board.mailbox` and asked "is the piece on
-/// this square a rook or a queen?" one square at a time — up to eight identity
-/// resolutions per touched square just to discover the zero-to-two sliders that
-/// actually x-ray it, and the same again for knights and pawns. The
-/// from-scratch enumeration never did that: it intersects with victim-type
-/// bitboards. Carrying the type/colour boards instead lets the incremental
-/// generator use exactly the same trick.
+/// Bitboards and not the mailbox because the incremental generator then finds
+/// the zero-to-two sliders x-raying a touched square by intersecting with
+/// victim-type boards — the same trick the from-scratch enumeration uses —
+/// instead of up to eight per-square identity resolutions.
 #[derive(Clone, Copy)]
 pub(super) struct ThreatPosition {
     /// Occupancy per piece type, indexed by `PieceType as usize`.
@@ -681,14 +583,9 @@ impl ThreatPosition {
     /// # Precondition
     /// **Both** kings must be on the board. `Board` documents king-less
     /// positions as a supported class and `Board::king_square` is a
-    /// `debug_assert` with a release fallback, so a one-king board that used to
-    /// work in a debug build will now trip here: the three `&Board` entry
-    /// points ([`for_each_threat`], [`refresh_threat_into`] and
-    /// `sota_threats::refresh_psqt_threat`) used to read only
-    /// `king_square(perspective)` and now route through this (D33 reviewer A,
-    /// A6). Release is unaffected -- only `kings[perspective]` is ever read.
-    /// The search path already carried this precondition through
-    /// `ThreatContext::apply_at`; the `pub` datagen callers in
+    /// `debug_assert` with a release fallback, so a one-king board trips here in
+    /// debug even though only `kings[perspective]` is ever read. The search path
+    /// already carries this precondition; the `pub` datagen callers in
     /// `tools/nnue/bullet/` are the ones this note is for.
     #[inline]
     pub(super) fn from_board(board: &Board) -> Self {
@@ -736,8 +633,8 @@ impl ThreatPosition {
     }
 
     /// Flip `piece`'s presence at `sq`. XOR is its own inverse, so this one
-    /// primitive serves both passes of the generic replay: "undo every edit to
-    /// recover the pre-move position", then "redo them one at a time".
+    /// primitive serves both passes of the generic replay — undo every edit to
+    /// recover the pre-move position, then redo them one at a time.
     #[inline]
     pub(super) fn toggle(&mut self, piece: Piece, sq: Square) {
         let b = Bitboard::from_square(sq);
@@ -749,10 +646,9 @@ impl ThreatPosition {
     /// The colour of the piece on `sq`; `sq` must be occupied.
     #[inline]
     pub(super) fn color_on(&self, sq: Square) -> Color {
-        // Same tripwire as `piece_on`'s. This used to be reachable only THROUGH
-        // `piece_on`, which asserts first; the pawn-push branch of
-        // `for_each_threat_at` now calls it directly, guarded only by a pawn
-        // mask (D33 reviewer A, A8). An empty square silently reads as Black.
+        // Same tripwire as `piece_on`'s: the pawn-push branch of
+        // `for_each_threat_at` calls this directly, guarded only by a pawn
+        // mask, and an empty square silently reads as Black.
         debug_assert!(self.occ.contains(sq), "color_on an empty square");
         if self.colored(Color::White).contains(sq) {
             Color::White
@@ -761,10 +657,9 @@ impl ThreatPosition {
         }
     }
 
-    /// The whole piece on `sq`; `sq` must be occupied. Five type tests, versus
-    /// the mailbox form's one byte load — which is why both the generator and
-    /// [`for_each_threat_at`] are structured so this is reached only where the
-    /// victim's type is *not* already a loop constant.
+    /// The whole piece on `sq`; `sq` must be occupied. Five type tests against
+    /// the mailbox form's one byte load, which is why callers are structured so
+    /// this is reached only where the victim's type is not a loop constant.
     #[inline]
     pub(super) fn piece_on(&self, sq: Square) -> Piece {
         debug_assert!(self.occ.contains(sq), "piece_on an empty square");
@@ -800,20 +695,18 @@ impl Default for ThreatPosition {
 }
 
 /// Call `f` with the FullThreats index of every active directed threat on the
-/// board, from `perspective`. Mirrors SF `append_active_indices`: every piece of
-/// both colors is an attacker; victim sets are pre-filtered to the legal types;
-/// excluded / semi-excluded relations are skipped ([`threat_index`] returns
-/// `None`).
+/// board, from `perspective` — SF's `append_active_indices`: every piece of
+/// both colours is an attacker, victim sets are pre-filtered to the legal
+/// types, and excluded / semi-excluded relations are skipped.
 pub fn for_each_threat(board: &Board, perspective: Color, f: impl FnMut(usize)) {
     for_each_threat_at(&ThreatPosition::from_board(board), perspective, None, f);
 }
 
 /// [`for_each_threat`] over a [`ThreatPosition`] snapshot rather than a live
-/// [`Board`] — the form the deferred king-cross rebuild needs, since the board
-/// that produced the crossing ply is long gone by the time it is evaluated.
-/// `remap` is the net's threat re-coding (`None` = identity; [`ThreatRemap`]) —
-/// the engine's accumulator/psqt refresh paths pass the net's table so the
-/// from-scratch build speaks the same row space as the incremental fold.
+/// [`Board`] — the form the deferred king-cross rebuild needs. `remap` is the
+/// net's threat re-coding ([`ThreatRemap`]; `None` = identity), passed by the
+/// refresh paths so the from-scratch build speaks the incremental fold's row
+/// space.
 pub(super) fn for_each_threat_at(
     pos: &ThreatPosition,
     perspective: Color,
@@ -877,8 +770,7 @@ pub(super) fn for_each_threat_at(
                 }
             }
         }
-        // Kings are never attackers (whole row of `map` is -1), so they are
-        // deliberately not looped.
+        // Kings are never attackers (their whole `MAP` row is -1), so no loop.
     }
 }
 
@@ -887,8 +779,8 @@ pub(super) fn for_each_threat_at(
 // ===========================================================================
 
 /// Add the `ACC`-wide column at feature `index` of a feature-major weight slice
-/// into `acc`, using wrapping i16 math (the quantized accumulator wraps, exactly
-/// like [`super::sota_head`]'s FT sum). `W` is `i16` for HalfKA, `i8` for threats.
+/// into `acc` with wrapping i16 math (the quantized accumulator wraps, exactly
+/// like the head's FT sum). `W` is `i16` for HalfKA, `i8` for threats.
 #[inline]
 fn add_column<W: Copy + Into<i16>>(acc: &mut [i16; ACC], weights: &[W], index: usize) {
     let col = &weights[index * ACC..index * ACC + ACC];
@@ -897,10 +789,10 @@ fn add_column<W: Copy + Into<i16>>(acc: &mut [i16; ACC], weights: &[W], index: u
     }
 }
 
-/// Perf study 65 — [`add_column`] for the FullThreats table, which may store a
-/// row in the packed 6-bit form. The from-scratch rebuild is 0.0196 calls/node,
-/// so this is a correctness path and not a speed one: it decodes lane by lane
-/// with the SAME scalar reference the SIMD kernel's tests are checked against.
+/// [`add_column`] for the FullThreats table, which may store a row in the
+/// packed 6-bit form. A correctness path, not a speed one (the from-scratch
+/// rebuild is ~0.02 calls/node): it decodes lane by lane with the SAME scalar
+/// reference the SIMD kernel's tests are checked against.
 #[inline]
 fn add_threat_column(acc: &mut [i16; ACC], weights: &[i8], row_map: &[u32], index: usize) {
     let (base, narrow) = super::sota_simd::row_entry(row_map, index * ACC);
@@ -917,9 +809,8 @@ fn add_threat_column(acc: &mut [i16; ACC], weights: &[i8], row_map: &[u32], inde
 }
 
 /// Build the HalfKA accumulator for `perspective` from scratch: seed with the FT
-/// bias, then add the weight column of every active HalfKA feature (§12.2).
-/// `halfka_weights` is feature-major (`[HALFKA_DIMS · ACC]` i16), `ft_bias` is
-/// `ACC`-wide.
+/// bias, then add the weight column of every active feature. `halfka_weights` is
+/// feature-major (`[HALFKA_DIMS · ACC]`), `ft_bias` is `ACC`-wide.
 pub fn refresh_pst(
     halfka_weights: &[i8],
     ft_bias: &[i16],
@@ -941,14 +832,9 @@ pub fn refresh_pst(
 }
 
 /// Build the threats accumulator for `perspective` from scratch: seed with zero,
-/// then add the weight column of every active threat feature (§12.2).
-/// `threat_weights` is feature-major (`[THREAT_DIMS · ACC]` i8).
-///
-/// **Test-only.** Every production caller uses [`refresh_threat_into`]: this
-/// wrapper zeroes `acc` and then `refresh_threat_into` zeroes it again, which
-/// is 2 x 2560 bytes of `memset` per call (D33 reviewer C, P4). It survives
-/// because the assertions in this module and in `sota_threats` read more
-/// clearly against a returned value.
+/// then add the weight column of every active threat feature. `threat_weights`
+/// is feature-major (`[THREAT_DIMS · ACC]` i8). **Test-only** — production
+/// callers use [`refresh_threat_into`] and skip the doubled zeroing.
 #[cfg(test)]
 pub fn refresh_threat(threat_weights: &[i8], board: &Board, perspective: Color) -> [i16; ACC] {
     let mut acc = [0i16; ACC];
@@ -956,18 +842,10 @@ pub fn refresh_threat(threat_weights: &[i8], board: &Board, perspective: Color) 
     acc
 }
 
-/// [`refresh_threat`] writing through a caller-owned destination.
-///
-/// The by-value form returns 2560 bytes, so `entry.acc[p] = refresh_threat(..)`
-/// builds the accumulator in a stack local and then copies it into the entry —
-/// a libc `memcpy` the `LD_PRELOAD` census counted at **0.0357 calls/node,
-/// 91 bytes/node**, the largest surviving copy in the engine after perf study
-/// 14 (perf study 15 §8 item 3, `docs/research/perf-artifacts-16/memspy-baseline.txt`).
-/// Writing in place is what [`super::sota_accumulator::HalfkaContext`]'s
-/// `finny_refresh_into` already does for the HalfKA twin.
-///
-/// `dst` is fully overwritten (zeroed first, then accumulated into), so a
-/// caller may pass a stale buffer.
+/// [`refresh_threat`] writing through a caller-owned destination, so the
+/// accumulator is not built in a stack local and `memcpy`d — the same shape as
+/// `HalfkaContext::finny_refresh_into`. `dst` is fully overwritten (zeroed
+/// first, then accumulated into), so a caller may pass a stale buffer.
 pub fn refresh_threat_into(
     dst: &mut [i16; ACC],
     threat_weights: &[i8],
@@ -987,12 +865,12 @@ pub fn refresh_threat_into(
 }
 
 /// [`refresh_threat_into`] over a [`ThreatPosition`] snapshot — what the
-/// deferred king-cross rebuild calls (perf study 18 §3), since by the time the
-/// crossing ply is evaluated the live board has moved on.
+/// deferred king-cross rebuild calls, since by the time the crossing ply is
+/// evaluated the live board has moved on.
 pub(super) fn refresh_threat_into_at(
     dst: &mut [i16; ACC],
     threat_weights: &[i8],
-    // Perf study 65's narrow-plane bitmap; empty ⇒ every row is 8-bit.
+    // The narrow-plane bitmap; empty ⇒ every row is 8-bit.
     threat_rowmap: &[u32],
     pos: &ThreatPosition,
     perspective: Color,
@@ -1002,11 +880,10 @@ pub(super) fn refresh_threat_into_at(
     if threat_weights.is_empty() {
         return;
     }
-    // Perf study 66: a COMPACTED table is not whole `ACC`-byte rows any more —
-    // narrow rows are 960 B and the planes carry a trailing pad — so the shape
-    // checks below only apply to the flat layout. When a row map is present it
-    // IS the shape statement, and the loader built it from the table it also
-    // built, so there is nothing left here to disagree about.
+    // A COMPACTED table is not whole `ACC`-byte rows any more (narrow rows are
+    // 960 B and the planes carry a trailing pad), so the shape checks below
+    // apply only to the flat layout: when a row map is present it IS the shape
+    // statement, built by the loader from the table it also built.
     if threat_rowmap.is_empty() {
         match remap {
             // Identity code: the weight table spans the full geometric space.
@@ -1015,9 +892,9 @@ pub(super) fn refresh_threat_into_at(
                 THREAT_DIMS * ACC,
                 "FullThreats transformer has the wrong size"
             ),
-            // Re-coded net: the table spans `threat_rows` rows; the loader has
-            // validated every remap entry against that row count, so whole-rows
-            // is the only shape left to check here.
+            // Re-coded net: the table spans `threat_rows` rows and the loader
+            // validated every remap entry against that count, so whole-rows is
+            // the only shape left to check.
             Some(_) => assert_eq!(
                 threat_weights.len() % ACC,
                 0,
@@ -1025,20 +902,6 @@ pub(super) fn refresh_threat_into_at(
             ),
         }
     }
-    // Perf study 39: count the COLUMNS this from-scratch rebuild folds. Fusion
-    // makes the threat channel inherit HalfKA's refresh trigger, so this row
-    // count times the extra refresh rate IS fusion's cost side — quoted by
-    // studies 29 and 31 from an assumption, measured here.
-    #[cfg(feature = "foldcount")]
-    {
-        let mut rows = 0usize;
-        for_each_threat_at(pos, perspective, remap, |idx| {
-            rows += 1;
-            add_threat_column(dst, threat_weights, threat_rowmap, idx);
-        });
-        super::foldcount::THR_REFRESH.hit(rows);
-    }
-    #[cfg(not(feature = "foldcount"))]
     for_each_threat_at(pos, perspective, remap, |idx| {
         add_threat_column(dst, threat_weights, threat_rowmap, idx)
     });
@@ -1056,9 +919,8 @@ pub fn refresh_both(
 ) -> ([[i16; ACC]; 2], [[i16; ACC]; 2]) {
     let mut pst = [[0i16; ACC]; 2];
     let mut threat = [[0i16; ACC]; 2];
-    // One snapshot for both perspectives, the same hoist `ThreatContext::refresh`
-    // makes (D33 reviewer A, A9). Cold path -- the root refresh and the
-    // debug-assertion oracle -- so this is tidiness, not speed.
+    // One snapshot for both perspectives, the same hoist
+    // `ThreatContext::refresh` makes. Cold path, so this is tidiness.
     let pos = ThreatPosition::from_board(board);
     for (i, &persp) in Color::ALL.iter().enumerate() {
         pst[i] = refresh_pst(halfka_weights, ft_bias, board, persp);
@@ -1091,8 +953,7 @@ mod tests {
 
     // -------- HalfKAv2_hm --------------------------------------------------
 
-    /// The index reproduces SF `make_index` hand-computed from the formula for
-    /// several (piece, sq, ksq, perspective) tuples.
+    /// The index reproduces SF `make_index`, hand-computed from the formula.
     #[test]
     fn halfka_hand_computed() {
         // White king on e1 (file e ⇒ orient 0), the king itself as a feature.
@@ -1107,9 +968,8 @@ mod tests {
             halfka_index(Color::White, wp(), Square::A1, Square::A1),
             19719
         );
-        // Black perspective: WHITE pawn on a2, BLACK king on e8.
-        // orient(e8)=0, flip=56 ⇒ sq 8^56=48; enemy pawn ⇒ PS_B_PAWN(64);
-        // KingBuckets[60^56 = 4](=31)·704. = 48 + 64 + 21824 = 21936.
+        // Black perspective, WHITE pawn a2, BLACK king e8: orient 0, flip 56 ⇒
+        // sq 8^56=48; enemy pawn ⇒ PS_B_PAWN(64); KingBuckets[4]=31 ·704.
         assert_eq!(
             halfka_index(Color::Black, wp(), Square::A2, Square::E8),
             21936
@@ -1117,8 +977,7 @@ mod tests {
     }
 
     /// Horizontal mirror symmetry: a queenside king setup and its kingside
-    /// mirror map to the *same* index (the point of the file-mirror orient +
-    /// palindromic KingBuckets).
+    /// mirror map to the SAME index (the point of the file-mirror orient).
     #[test]
     fn halfka_mirror_symmetry() {
         // King b1 + knight c1  vs  mirror King g1 + knight f1.
@@ -1151,9 +1010,8 @@ mod tests {
 
     // -------- FullThreats --------------------------------------------------
 
-    /// The empty-board geometry sizes match SF's documented per-attacker edge
-    /// counts (P 132, N 336, B 560, R 896, Q 1456, K 420) and the blocks tile
-    /// exactly 60,720.
+    /// The empty-board geometry sizes match SF's per-attacker edge counts
+    /// (P 132, N 336, B 560, R 896, Q 1456, K 420) and tile exactly 60,720.
     #[test]
     fn threats_geometry_and_tiling() {
         let t = &*THREAT_TABLES;
@@ -1182,15 +1040,10 @@ mod tests {
         }
     }
 
-    /// Perf study 59, arm `lutp` — the fused `from_to` table IS the old
-    /// `offsets[code][from] + lut2[code][from][to]`, entry for entry, and every
-    /// entry fits `u16`.
-    ///
-    /// The two summands are re-derived here from the SAME definitions
-    /// `build_threat_tables` used (the prefix sum of `geom_attacks` counts, and
-    /// the popcount of the attack bits strictly below `to`) rather than read
-    /// back out of the table, so this is an independent recomputation and not a
-    /// tautology. 65,536 entries; runs in well under a second.
+    /// The fused `from_to` table IS `offsets[from] + lut2[from][to]` entry for
+    /// entry, and every entry fits `u16`. Both summands are re-derived from
+    /// their DEFINITIONS rather than read back out of the table, so this is an
+    /// independent recomputation and not a tautology.
     #[test]
     fn threats_from_to_is_the_fused_sum() {
         let t = &*THREAT_TABLES;
@@ -1218,10 +1071,9 @@ mod tests {
         }
     }
 
-    /// A hand-computed threat index for one simple geometry:
-    /// White knight b1 → black pawn c3, white king a1 (orient 0), white view.
-    /// lut1[Nw][Pb][from<to] = 792 + (1·5 + 0)·336 = 2472;
-    /// from_to[Nw][b1][c3] = 2 (knight a1 has 2 edges) + 2 (the `to`-ordinal).
+    /// Hand-computed: white knight b1 → black pawn c3, white king a1 (orient
+    /// 0), white view. lut1 = 792 + (1·5 + 0)·336 = 2472; from_to[Nw][b1][c3] =
+    /// 2 (knight a1 has 2 edges) + 2 (the `to`-ordinal).
     #[test]
     fn threats_hand_computed() {
         let idx = threat_index(
@@ -1263,8 +1115,7 @@ mod tests {
             ),
             None
         );
-        // Same-type rook→rook: the `from < to` direction is dropped, the other
-        // kept (symmetric-threat dedup).
+        // Same-type rook→rook: `from < to` is dropped, the other kept.
         let rw = Piece::new(Color::White, PieceType::Rook);
         let rb = Piece::new(Color::Black, PieceType::Rook);
         assert_eq!(
@@ -1279,8 +1130,8 @@ mod tests {
         );
     }
 
-    /// On real positions, every active threat index is in range and — crucially
-    /// — the active indices are all distinct (the index math is collision-free).
+    /// On real positions every active threat index is in range and DISTINCT —
+    /// the index math is collision-free.
     #[test]
     fn threats_active_in_range_and_distinct() {
         let fens = [
@@ -1302,8 +1153,7 @@ mod tests {
 
     // -------- Refresh ------------------------------------------------------
 
-    /// A tiny synthetic HalfKA weight set: all-ones columns, so an accumulator
-    /// neuron equals `bias + (#active features)` — and #active == piece count.
+    /// All-ones columns, so a neuron equals `bias + #active` = bias + pieces.
     fn ones_halfka() -> (Vec<i8>, Vec<i16>) {
         let weights = vec![1i8; HALFKA_DIMS * ACC];
         let bias: Vec<i16> = (0..ACC).map(|j| (j % 5) as i16).collect();
@@ -1325,10 +1175,10 @@ mod tests {
     }
 
     /// Stride check: with all weights zero except the white king's own feature
-    /// column set to a ramp `col[j] = j`, the white-perspective accumulator must
-    /// be exactly `bias[j] + j` — proving the `index·ACC + j` layout, that the
-    /// king is an active feature, and bias seeding, all at once. A transposed
-    /// index would read a zero column and fail.
+    /// column set to a ramp, the accumulator must be exactly `bias[j] +
+    /// ramp[j]` — pinning the `index·ACC + j` layout, that the king is an
+    /// active feature, and bias seeding at once. A transposed index reads a
+    /// zero column and fails.
     #[test]
     fn refresh_pst_stride_and_king_feature() {
         let board = Board::from_fen(crate::fen::START_FEN).unwrap();
@@ -1337,10 +1187,8 @@ mod tests {
 
         let ksq = board.king_square(Color::White);
         let king_feat = halfka_index(Color::White, wk(), ksq, ksq);
-        // A per-lane ramp that still fits i8 — the point of the test is that
-        // lane `j` of the king row lands in lane `j` of the accumulator (the
-        // row STRIDE), and `j % 127` is as distinguishing as `j` was while
-        // staying inside the i8 table the transformer now holds.
+        // A per-lane ramp that fits i8: the point is that lane `j` of the king
+        // row lands in lane `j` of the accumulator (the row STRIDE).
         for j in 0..ACC {
             w[king_feat * ACC + j] = (j % 127) as i8;
         }
@@ -1366,8 +1214,7 @@ mod tests {
         }
     }
 
-    /// Refresh is deterministic and both perspectives run without panic; the
-    /// `refresh_both` pair agrees with the single-perspective builders.
+    /// Refresh is deterministic and `refresh_both` agrees with the singles.
     #[test]
     fn refresh_deterministic_and_consistent() {
         let board =
@@ -1387,8 +1234,7 @@ mod tests {
         assert_eq!(threat[1], refresh_threat(&tw, &board, Color::Black));
     }
 
-    /// End-to-end wiring: the refresh output feeds `SotaHead::forward` (types
-    /// line up, runs, finite result). Trivial synthetic head — not a strength net.
+    /// End-to-end wiring: the refresh output feeds `SotaHead::forward`.
     #[test]
     fn refresh_feeds_sota_head() {
         use super::super::sota_head::{BUCKETS, L1, L2, L3, SotaHead};
@@ -1429,12 +1275,9 @@ mod tests {
     }
 
     /// The incremental observer filters victims with [`KEPT_VICTIMS`] where the
-    /// fold's `DeltaBuf::push` filters them with [`threat_pair_kept`]. If those
-    /// two ever disagreed, the incremental accumulator would silently keep (or
-    /// drop) a relation the from-scratch refresh does not — the exact class of
-    /// bug the replay oracle exists to catch, caught here at compile-time cost
-    /// instead. Both derive from `MAP`; this pins that they still do, for all
-    /// 36 ordered type pairs.
+    /// fold's `DeltaBuf::push` uses [`threat_pair_kept`]; a disagreement makes
+    /// the incremental accumulator silently keep or drop a relation the
+    /// from-scratch refresh does not. Both derive from `MAP`; this pins it.
     #[test]
     fn kept_victim_masks_match_predicate() {
         for attacker in PieceType::ALL {
@@ -1449,9 +1292,9 @@ mod tests {
         }
     }
 
-    /// `KEPT_VICTIMS` is indexed by `PieceType as usize`, and so is `MAP`; the
-    /// observer's per-type loops walk `PieceType::ALL`. All three only line up
-    /// if `ALL` is in discriminant order.
+    /// `KEPT_VICTIMS` and `MAP` are indexed by `PieceType as usize` while the
+    /// observer's loops walk `PieceType::ALL`; all three line up only if `ALL`
+    /// is in discriminant order.
     #[test]
     fn piece_type_all_is_in_discriminant_order() {
         for (i, pt) in PieceType::ALL.iter().enumerate() {
