@@ -77,7 +77,42 @@ OUTPUT_BUCKETS_LAYOUT = bucket_layout_from_ceilings(LEGACY_BUCKET_CEILINGS)
 ARCHON_OUTPUT_BUCKETS_LAYOUT = bucket_layout_from_ceilings(ARCHON_BUCKET_CEILINGS)
 assert OUTPUT_BUCKETS_LAYOUT.shape == (33,)
 BUCKET_LAYOUTS = {"legacy": OUTPUT_BUCKETS_LAYOUT,
-                  "archon": ARCHON_OUTPUT_BUCKETS_LAYOUT}
+                  "archon": ARCHON_OUTPUT_BUCKETS_LAYOUT,
+                  "archon-qsplit": None}  # filled below (needs bucket_layout_c)
+
+PIECE_COUNT_BINS = 33
+QUEEN_CLASSES = 3
+PIECE_BUCKETS = 8
+
+
+def bucket_layout_c(ceilings) -> np.ndarray:
+    """Layout C: the 2-D (piece_count, queen_class) map, flattened row-major
+    as `pc * QUEEN_CLASSES + qclass`, mirroring sota_head.rs `layout_c`.
+
+    Q>=2 (class 0) and Q==0 (class 2) each take all eight piece bins; Q==1
+    (class 1) takes two, split at 15/16 pieces. Chosen 2026-08-11 from the
+    measured cell occupancy: Q==1 is 3.7 % of positions and falls to 0.02 %
+    in the top piece bin, so eight bins for it would fit noise — but it is a
+    material imbalance and keeps its own weights rather than folding into
+    Q>=2. Bucket ids: 0..8 = Q>=2 by bin, 8..16 = Q==0 by bin, 16 = Q==1 with
+    <=15 pieces, 17 = Q==1 with >=16.
+    """
+    base = bucket_layout_from_ceilings(ceilings)
+    out = np.zeros(PIECE_COUNT_BINS * QUEEN_CLASSES, dtype=np.int32)
+    for count in range(PIECE_COUNT_BINS):
+        b = int(base[count])
+        out[count * QUEEN_CLASSES + 0] = b                     # Q>=2
+        out[count * QUEEN_CLASSES + 1] = 16 if count <= 15 else 17  # Q==1
+        out[count * QUEEN_CLASSES + 2] = PIECE_BUCKETS + b     # Q==0
+    return out
+
+
+ARCHON_QSPLIT_BUCKETS_LAYOUT = bucket_layout_c(ARCHON_BUCKET_CEILINGS)
+assert ARCHON_QSPLIT_BUCKETS_LAYOUT.shape == (PIECE_COUNT_BINS * QUEEN_CLASSES,)
+assert int(ARCHON_QSPLIT_BUCKETS_LAYOUT.max()) == 17
+
+BUCKET_LAYOUTS["archon-qsplit"] = ARCHON_QSPLIT_BUCKETS_LAYOUT
+
 
 # ---------------------------------------------------------------------------
 # Targets / loss (d40 lines 219-220, 796-801, 877-879)

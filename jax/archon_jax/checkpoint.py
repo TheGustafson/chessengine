@@ -348,6 +348,7 @@ def dis_section_len(sec: bytes) -> int:
 # layout; absent => the engine's implied legacy default, so every existing
 # net and byte-parity check is untouched.
 BUCKETS_MAGIC = b"OBL1"
+BUCKETS2_MAGIC = b"OBL2"
 
 
 def skip_section_bytes(params: dict[str, np.ndarray], arch) -> bytes:
@@ -358,13 +359,37 @@ def skip_section_bytes(params: dict[str, np.ndarray], arch) -> bytes:
 
 
 def bucket_section_bytes(arch) -> bytes:
+    """Emit the net's output-bucket layout section. A 1-D (piece-count only)
+    layout writes OBL1 exactly as before; a 2-D (piece_count, queen_class)
+    layout writes OBL2. Engine mirror: sota_loader.rs, which parses both and
+    expands OBL1 queen-blind so pre-queen-split nets are bit-identical."""
     import struct as _s
     layout = np.asarray(arch.bucket_layout_array())
-    assert layout.shape == (33,), layout.shape
     assert 0 <= layout.min() and layout.max() < arch.num_buckets, layout
+    if layout.size == 33 * 3:
+        return bucket2_section_bytes(layout)
+    assert layout.shape == (33,), layout.shape
     return (BUCKETS_MAGIC + _s.pack("<I", layout.size)
             + layout.astype(np.uint8).tobytes())
 
+
+
+def bucket2_section_bytes(layout) -> bytes:
+    """OBL2 — the 2-D (piece_count, queen_class) layout section:
+    b"OBL2" | u32 bins (= 33) | u32 classes (= 3) | u8[bins*classes],
+    row-major by piece count. Contract mirror: sota_loader.rs BUCKETS2_MAGIC
+    and parse_bucket2_section. Emitted only for a genuinely 2-D layout; a
+    queen-blind map still writes OBL1 so pre-queen-split nets are unchanged.
+    """
+    import struct as _s
+    import numpy as _np
+    arr = _np.asarray(layout, dtype=_np.uint8).ravel()
+    bins, classes = 33, 3
+    if arr.size != bins * classes:
+        raise ValueError(f"OBL2 layout must be {bins*classes} entries, got {arr.size}")
+    if int(arr.max()) > 255:
+        raise ValueError("OBL2 entries must fit u8")
+    return BUCKETS2_MAGIC + _s.pack("<II", bins, classes) + arr.tobytes()
 
 def psqt_section_bytes(params: dict[str, np.ndarray], arch) -> bytes:
     from .spec import HALFKA_DIMS, THREAT_DIMS

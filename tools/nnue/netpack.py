@@ -294,6 +294,14 @@ def _split_psq1_trailer(raw: bytes, stream_end: int):
         if len(tail) < 8 + bins:
             return None
         tail = tail[8 + bins:]
+    # OBL2: the 2-D (piece_count, queen_class) layout — same passthrough rule
+    # (engine: sota_loader.rs BUCKETS2_MAGIC).
+    elif len(tail) >= 12 and tail[:4] == b"OBL2":
+        bins = int.from_bytes(tail[4:8], "little")
+        classes = int.from_bytes(tail[8:12], "little")
+        if len(tail) < 12 + bins * classes:
+            return None
+        tail = tail[12 + bins * classes:]
     if tail:
         return None
     return bytes(rest)
@@ -563,6 +571,9 @@ def pack_d40(quantised_path: str, out_path: str, network_scale: int = None,
     if psq1 and b"OBL1" == psq1[-41:][:4]:
         print(f"  buckets     OBL1 output-bucket layout passed through "
               f"({list(psq1[-33:])})")
+    if psq1 and b"OBL2" == psq1[-111:][:4]:
+        print(f"  buckets     OBL2 2-D layout passed through "
+              f"(33x3, max bucket {max(psq1[-99:])})")
 
     # D47: emit the .cpol companion (policy rows OUTSIDE the CENN so every
     # value-net tool — scale-check, gates, loaders — is untouched).

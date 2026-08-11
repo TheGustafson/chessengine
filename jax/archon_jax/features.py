@@ -212,6 +212,10 @@ class DecodedBatch:
         self.kings = kings
         self.mailbox_code = mailbox
         self.piece_count = counts.astype(np.int64)
+        # Total queens on the board (both colours), the second output-bucket
+        # axis on the queen-split archs. `pt == 4` is the queen code; see the
+        # engine's `queen_class` for the 0/1/2+ binning the layout indexes by.
+        self.queen_count = np.bincount(row[pt == 4], minlength=n).astype(np.int64)
 
 
 # ===========================================================================
@@ -602,7 +606,15 @@ def map_batch(recs: np.ndarray, *, wdl: float, score_multiplier: float,
     # TrainConfig.bucket_layout); None keeps the legacy module default so
     # every existing caller is byte-identical.
     layout = OUTPUT_BUCKETS_LAYOUT if bucket_layout is None else bucket_layout
-    bucket = layout[np.minimum(dec.piece_count, 32)]
+    pc = np.minimum(dec.piece_count, 32)
+    if layout.size == PIECE_COUNT_BINS * QUEEN_CLASSES:
+        # 2-D layout: (piece_count, queen_class) flattened row-major, matching
+        # the engine's `SotaHead::output_bucket`. Queen class 0 = Q>=2,
+        # 1 = Q==1, 2 = Q==0 — the same order as `queen_class` in Rust.
+        qc = np.where(dec.queen_count >= 2, 0, np.where(dec.queen_count == 1, 1, 2))
+        bucket = layout[pc * QUEEN_CLASSES + qc]
+    else:
+        bucket = layout[pc]
     # Richer-representation study: king-region-conditioned OUTPUT buckets (the
     # head-side, refresh-free form of context refinement). Bits are read from
     # the STM perspective; each named bit doubles the bucket space. The arch's

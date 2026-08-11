@@ -1456,3 +1456,20 @@ mod layout_c_tests {
         }
     }
 }
+
+#[cfg(all(test, feature = "arch-hka128"))]
+mod layout_c_parity {
+    use super::*;
+
+    /// Dump the whole 99-entry layout so the TRAINER's `bucket_layout_c` can be
+    /// diffed against it. A silent disagreement here trains every bucket's
+    /// weights against positions the engine will route elsewhere — the exact
+    /// class of bug that is invisible until games are already lost.
+    #[test]
+    fn print_layout_c_for_trainer_parity() {
+        let l = ARCHON_BUCKET_LAYOUT;
+        let flat: Vec<String> = l.iter().map(|b| b.to_string()).collect();
+        println!("LAYOUT_C {}", flat.join(","));
+        assert_eq!(l.len(), PIECE_COUNT_BINS * QUEEN_CLASSES);
+    }
+}
