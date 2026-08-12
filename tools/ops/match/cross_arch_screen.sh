@@ -99,12 +99,17 @@ else
   log "CROSS-ARCH SCREEN: $TAG vs $(basename "$REF_NET") — $GAMES games @ ${NODES}n conc=$CONC"
 fi
 OUT="$ARCHON_D49/xarch-${TAG}-${TC:-${NODES}n}.out"
+# Record the GAMES, not just the score. Every match before 2026-08-12 threw the
+# moves away, so ~10k games of loss-forensics material was lost -- and the
+# tunables question cannot be answered without positions to walk.
+PGN="$ARCHON_D49/xarch-${TAG}-${TC:-${NODES}n}.pgn"
 "$FASTCHESS" \
   -engine cmd="$CAND_BIN" name=cand proto=uci option.EvalFile="$CAND_NET" \
   -engine cmd="$REF_BIN"  name=ref  proto=uci option.EvalFile="$REF_NET" \
   -each "${MODE[@]}" \
   -openings file="$BOOK" format=epd order=random \
   -games 2 -rounds $((GAMES / 2)) -repeat -concurrency "$CONC" \
+  -pgnout file="$PGN" nodes=true \
   -recover -ratinginterval 100 > "$OUT" 2>&1
 
 { echo "=== CROSS-ARCH $TAG vs $(basename "$REF_NET") (${NODES}n) ==="
