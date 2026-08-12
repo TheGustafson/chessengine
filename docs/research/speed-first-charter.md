@@ -101,3 +101,38 @@ name`, docs) and should happen in ONE commit, before any public release:
    separately, so the frozen PGO binary + canonical net stays the reference).
 6. Simplification ladder, then stage-B SPSA on the new eval.
 7. Rename, license, release prep.
+
+---
+
+## 5. The frame problem, measured (2026-08-11, T1 @ sb32)
+
+The first real scale check on the fast arch, against canonical:
+
+| check | median | band | verdict |
+|---|---|---|---|
+| relative to canonical | **0.796** (IQR 0.66–1.01, slope 0.751) | 0.85–1.18 | FAIL |
+| absolute vs the SF internal frame | **0.445** (slope 0.373) | 0.80–1.25 | FAIL |
+
+**sign-agree 97.4 %** — the net is learning real evaluations; only the
+MAGNITUDE is wrong. In this net's units the transcribed cp constants are
+**2.68× too large**, which is the owner's "the tunables are meant for a
+bigger, more accurate, more stable NNUE" with a number attached.
+
+Three things follow:
+
+1. **`network_scale` is a pack-time HEADER field, not a training property.**
+   The 600→ promotion precedent (`859a442`) changed four header bytes with the
+   payload byte-identical. So the frame can be corrected on any checkpoint
+   without retraining — cheap, and it should be re-derived once the net is
+   converged, NOT now at sb32 where the magnitude is still growing.
+2. **Do not chase SF parity.** 6000 games established that the shipped frame
+   IS the optimum and that SF parity costs ~18 Elo
+   (`eval-frame-0538-sf-internal`). The target is CANONICAL's frame
+   (the 0.796 number), not the absolute 0.445 one.
+3. **The scale check is ADVISORY in the gate script** — it prints and the
+   match runs anyway. So a mis-scaled net produces a real-looking Elo number
+   that is actually a units artifact. Any T1 rung must be read with the scale
+   line next to it, or it will be misattributed to eval quality.
+
+Re-derive at sb100+ with `tools/nnue/calibrate_network_scale.sh`, then pack
+the gate nets with the corrected scale.
