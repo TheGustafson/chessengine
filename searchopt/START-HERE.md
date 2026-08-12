@@ -1,5 +1,24 @@
 # START HERE — fresh session
 
+## ⛔⛔ THE AXIOM BELOW IS NO LONGER TRUE (2026-08-12)
+
+**This folder's core premise — "eval is at par with Stockfish or better" — was
+measured and correct for the ARCHON-era 768/1280-wide nets. It is FALSE for
+TEMPO.** The speed-first charter deliberately replaced the eval with a net ~10x
+smaller (arch-hka128: HalfKA-only, 128 accumulator, 2.9M FT params vs 17.3M, no
+threat channel). Measured against canonical: **-334 Elo at fixed nodes, -216 at
+equal time**, and the absolute frame sits at ~0.48 of the SF units the search
+constants were transcribed for.
+
+So on TEMPO:
+- Eval IS weaker, by design, and by a known amount. "Blame eval" is no longer
+  the expensive mistake — assuming eval is FINE is.
+- The actionable question has changed from "why is our search worse" to
+  **"which transcribed tunables are wrong for a smaller, noisier, faster
+  eval?"** 223 tunables, 60 ever in an SPSA campaign, 163 on faith.
+- The anti-blame-eval discipline below still applies to SEARCH BUGS. Keep it
+  for that. Do not use it to argue the eval is fine.
+
 ## ⛔ DO NOT BLAME EVAL. READ THIS FIRST — IT IS THE MOST EXPENSIVE MISTAKE IN THIS FOLDER.
 
 **Eval is an axiom. It is at par with Stockfish or better. It is measured. It is not your
