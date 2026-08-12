@@ -174,6 +174,7 @@ def build_cfg(spec: dict, start_sb: int) -> TrainConfig:
             (float(a), float(b)) for a, b in spec.get("lr_ramp", [])),
         export_every=int(spec.get("export_every", 10)),
         lr=spec["lr"], lr_end_superbatch=spec["lr_end_superbatch"],
+        lr_anneal_sb=int(spec.get("lr_anneal_sb", 0)),
         superbatches=spec["superbatches"], pol_lambda=spec["pol_lambda"],
         ft_sparsity_lambda=spec["ft_sparsity_lambda"],
         scale=float(spec.get("scale", TrainConfig().scale)),

@@ -503,6 +503,7 @@ class TrainConfig:
     superbatches: int = 240          # D40_SUPERBATCHES
     lr: float = 0.001                # D40_LR
     lr_end_superbatch: int = 240     # D40_LR_END_SB
+    lr_anneal_sb: int = 0            # final linear anneal to 0, in superbatches
     wdl: float = DEFAULT_WDL         # D40_WDL
     scale: float = DEFAULT_SCALE     # D40_EVAL_TARGET_SCALE
     score_multiplier: float = 1.0    # D40_SCORE_MULTIPLIER
@@ -669,9 +670,29 @@ class TrainConfig:
 def cosine_lr(cfg: TrainConfig, superbatch: int) -> float:
     """The d40 LR schedule (d40:1251-1259): cosine from lr to lr*0.3^3,
     parameterized by the 1-based superbatch index only (constant within a
-    superbatch)."""
+    superbatch).
+
+    `lr_anneal_sb > 0` adds a FINAL LINEAR ANNEAL TO ZERO over the last
+    `lr_anneal_sb` superbatches of the run (owner, 2026-08-11). The cosine
+    alone bottoms out at `0.027 x lr` and stays there, which leaves the net
+    still taking real steps at the end; a true anneal to 0 lets the last
+    superbatches settle. The cosine is compressed into the superbatches
+    BEFORE the anneal window so the two phases meet continuously — at the
+    handover the anneal starts from whatever the cosine last returned, and
+    it reaches exactly 0 at `superbatches`.
+    """
     initial, end_sb = cfg.lr, cfg.lr_end_superbatch
     final = initial * 0.3 ** 3
+    anneal = int(getattr(cfg, "lr_anneal_sb", 0) or 0)
+    total = int(getattr(cfg, "superbatches", 0) or 0)
+    if anneal > 0 and total > anneal:
+        handover = total - anneal
+        if superbatch > handover:
+            # linear from the cosine's value at the handover down to 0
+            t_h = min(max((handover - 1.0) / max(end_sb - 1.0, 1.0), 0.0), 1.0)
+            lr_h = final + 0.5 * (initial - final) * (1.0 + np.cos(np.pi * t_h))
+            frac = (superbatch - handover) / float(anneal)
+            return max(lr_h * (1.0 - min(frac, 1.0)), 0.0)
     if end_sb <= 1:
         return initial
     t = min(max((superbatch - 1.0) / (end_sb - 1.0), 0.0), 1.0)
