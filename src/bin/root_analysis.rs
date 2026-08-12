@@ -23,7 +23,7 @@
 //! reserved for high-value positions.
 //!
 //! Arm modes: `searchmoves` restricts the root search to one move (spec
-//! shape; ARCHON supports it). `child` searches the position AFTER the move
+//! shape; TEMPO supports it). `child` searches the position AFTER the move
 //! at the same budget and NEGATES the score — fully independent child
 //! searches for engines that silently ignore searchmoves (Reckless). The
 //! mode is pinned in provenance.search_config; arms from different modes
@@ -63,7 +63,7 @@ const MATE_BASE: i32 = 31_000;
 
 #[derive(Clone, Copy, PartialEq)]
 enum ArmMode {
-    /// `go nodes N searchmoves <m>` — requires engine support (ARCHON has it).
+    /// `go nodes N searchmoves <m>` — requires engine support (TEMPO has it).
     Searchmoves,
     /// Search the position AFTER the move and negate: fully independent
     /// child searches, for engines that ignore searchmoves (Reckless does —
@@ -569,7 +569,7 @@ fn run(config: &Config) -> Result<String, String> {
         "cold ucinewgame per go; arm-mode {mode_text}; nodes tiers {nodes_text}; \
          options [{options_text}]"
     );
-    // The searching engine's net identity (D33 round 1): an ARCHON arm
+    // The searching engine's net identity (D33 round 1): an TEMPO arm
     // selects its net via `--uci-option EvalFile=…`, which must surface in
     // the §3.4 net_version field, not only inside the config string.
     let net_version = config

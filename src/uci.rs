@@ -35,7 +35,7 @@ use std::time::Instant;
 
 /// Public engine name plus manifest version; the Cargo package and binary
 /// retain their internal `chessengine` identifiers.
-const NAME: &str = concat!("ARCHON ", env!("CARGO_PKG_VERSION"));
+const NAME: &str = concat!("TEMPO ", env!("CARGO_PKG_VERSION"));
 /// `id author` text, from the manifest `authors` field.
 const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
 
@@ -1714,7 +1714,7 @@ mod tests {
     #[test]
     fn uci_handshake() {
         let out = session("uci\nquit\n");
-        assert!(out.contains("id name ARCHON "), "{out}");
+        assert!(out.contains("id name TEMPO "), "{out}");
         assert!(out.contains("id author "), "{out}");
         let id_at = out.find("id name").unwrap();
         let uciok_at = out.find("uciok\n").unwrap();

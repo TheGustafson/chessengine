@@ -229,7 +229,7 @@ impl Drop for ObsRecorder {
     fn drop(&mut self) {
         // The final game (no trailing `ucinewgame` before `quit`) flushes here.
         if let Err(error) = self.flush_game() {
-            eprintln!("ARCHON obs capture: final flush failed: {error}");
+            eprintln!("TEMPO obs capture: final flush failed: {error}");
         }
     }
 }

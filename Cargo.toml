@@ -5,7 +5,7 @@ version = "0.1.0"
 authors = ["TheGustafson"]
 edition = "2024"
 license = "GPL-3.0-or-later"
-description = "ARCHON — a UCI chess engine with an NNUE evaluation trained on its own data pipeline"
+description = "TEMPO — a UCI chess engine with an NNUE evaluation trained on its own data pipeline"
 repository = "https://github.com/TheGustafson/chessengine"
 
 [dependencies]
@@ -73,11 +73,11 @@ arch-hka2048 = []
 # at the width the fold kernels were originally written for. Mutually exclusive
 # with every other arch-* feature. Quality cost UNMEASURED; equal-time games decide.
 arch-hka768 = []
-# HalfKA-ONLY 128/8/8 (2026-08-11, owner-directed "go all in on being fast").
+# HalfKA-ONLY 128/16/16 (2026-08-11, owner-directed "go all in on being fast").
 # The FT working set falls to 22528 x 128 = 2.88 MB — small enough to live in
 # cache, which is the point: the fold is the measured memory wall and this is
 # the arch that removes it rather than nibbling at it. The head is bucketed on
-# piece count AND queen class (18 buckets, layout C), so it keeps per-regime
+# piece count AND queen class (16 buckets, layout C16), so it keeps per-regime
 # capacity while the trunk shrinks. Mutually exclusive with every other arch-*.
 arch-hka128 = []
 # Distribution-only: embed net-0 as the default eval so the engine plays NNUE

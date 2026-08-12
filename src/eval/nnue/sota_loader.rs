@@ -2297,7 +2297,7 @@ pub(crate) mod tests {
 
     /// The OBL1 contract: (a) a container without the section loads with
     /// [`sota_head::LEGACY_BUCKET_LAYOUT`] and its bytes are untouched;
-    /// (b) an ARCHON-layout net appends exactly the 41-byte trailer and loads
+    /// (b) an TEMPO-layout net appends exactly the 41-byte trailer and loads
     /// back equal; (c) the loaded head selects through its OWN map.
     #[test]
     fn obl1_round_trip_and_legacy_byte_identity() {
@@ -2338,7 +2338,7 @@ pub(crate) mod tests {
         assert_eq!(
             back.head.output_bucket(11, 2),
             2,
-            "ARCHON: count 11 → bucket 2"
+            "TEMPO: count 11 → bucket 2"
         );
         assert_eq!(back, archon, "full net equality including the layout");
     }

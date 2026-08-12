@@ -1,11 +1,11 @@
-//! The ACTIVE ARCHON-original bench suite (2026-08 originality audit, item
+//! The ACTIVE TEMPO-original bench suite (2026-08 originality audit, item
 //! 6b; `docs/audit/2026-08-originality/00-synthesis.md` §2). Re-exported as
 //! [`crate::bench::BENCH_POSITIONS`], so this list IS the `Bench:` trailer's
 //! input.
 //!
 //! It replaced a 49/49 byte-identical subsequence of Stockfish's
 //! `benchmark.cpp` `Defaults` (foundation-infra.md F2), and is drawn
-//! entirely from ARCHON's OWN played games:
+//! entirely from TEMPO's OWN played games:
 //! 47 positions sampled from the sfdev5k-a campaign PGNs (146 files, first
 //! 3000 games) by `tools/bench/derive_bench_suite.py` — deterministic
 //! phase-stratified selection (10 opening / 18 middlegame / 14 endgame /

@@ -1,4 +1,4 @@
-# ARCHON
+# TEMPO
 
 A UCI chess engine in Rust, built from an empty repository toward
 Stockfish-class strength — with every design decision documented, every
@@ -41,12 +41,12 @@ with a net card documenting their full training lineage.
 
 ## Provenance and attribution
 
-ARCHON's search architecture follows the ideas of the open-source
+TEMPO's search architecture follows the ideas of the open-source
 state of the art. Concretely:
 
 - **Stockfish** (GPLv3): the search-heuristic canon and many tunable
   starting values were adopted at a documented upstream revision; the
-  transcription is disclosed in the design documents, and ARCHON is
+  transcription is disclosed in the design documents, and TEMPO is
   licensed GPLv3 accordingly. No Stockfish code is copied.
 - **Reckless** (AGPLv3) and other engines are studied as idea sources
   only, with attributed design notes in-repo.

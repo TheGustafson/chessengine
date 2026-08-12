@@ -282,7 +282,7 @@ const fn layout_c(ceilings: [u8; PIECE_BUCKETS]) -> BucketLayout {
 pub const LEGACY_BUCKET_LAYOUT: BucketLayout =
     layout_from_ceilings([8, 12, 16, 19, 22, 25, 28, 32]);
 
-/// ARCHON's own output-bucket layout: equal-mass buckets over the piece-count
+/// TEMPO's own output-bucket layout: equal-mass buckets over the piece-count
 /// distribution of our training data — derived, not designed, by
 /// `tools/nnue/derive_output_buckets.py` (ceiling k = smallest piece count whose
 /// cumulative mass reaches k/8; receipt in
@@ -1099,7 +1099,7 @@ mod tests {
     }
 
     /// The ceiling expansion is the ONLY definition of both layouts: pin legacy
-    /// against the EDGES every pre-OBL1 net was trained under, ARCHON against
+    /// against the EDGES every pre-OBL1 net was trained under, TEMPO against
     /// its derivation receipt.
     #[test]
     fn bucket_layouts_expand_their_ceilings_exactly() {
@@ -1128,7 +1128,7 @@ mod tests {
                 "legacy count {count}"
             );
         }
-        // ARCHON edges: 8 | 10 | 13 | 15 | 18 | 21 | 25 | 32.
+        // TEMPO edges: 8 | 10 | 13 | 15 | 18 | 21 | 25 | 32.
         for (count, bucket) in [
             (0usize, 0u8),
             (8, 0),
@@ -1186,7 +1186,7 @@ mod tests {
         let mut archon = synth_head();
         archon.bucket_layout = ARCHON_BUCKET_LAYOUT;
         let (pst, threat) = synth_accs();
-        // Count 11: legacy bucket 1, ARCHON bucket 2, and the head's per-bucket
+        // Count 11: legacy bucket 1, TEMPO bucket 2, and the head's per-bucket
         // tables differ, so the values must differ.
         assert_eq!(legacy.output_bucket(11, 2), 1);
         assert_eq!(archon.output_bucket(11, 2), 2);

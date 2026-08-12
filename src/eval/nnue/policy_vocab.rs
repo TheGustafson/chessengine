@@ -15,7 +15,7 @@
 //!
 //! Total: **1,858**, matching the Lc0/AlphaZero-style flat policy vector.
 //!
-//! ## Canonical frame (the ARCHON deviation from Lc0 — deliberate)
+//! ## Canonical frame (the TEMPO deviation from Lc0 — deliberate)
 //!
 //! IDs are computed in the **trunk-normalized frame**, not the raw board
 //! frame: the mover's perspective (vertical flip `^56` for black to move)

@@ -1241,7 +1241,7 @@ impl Worker {
         if let Some(rec) = self.obs_recorder.as_mut()
             && let Err(error) = rec.flush_game()
         {
-            eprintln!("ARCHON obs capture: game flush failed: {error}");
+            eprintln!("TEMPO obs capture: game flush failed: {error}");
         }
     }
 
@@ -1266,7 +1266,7 @@ impl Worker {
                 match crate::search_intervention::LmrIntervention::from_env() {
                     Ok(intervention) => intervention,
                     Err(error) => {
-                        eprintln!("ARCHON LMR intervention disabled: {error}");
+                        eprintln!("TEMPO LMR intervention disabled: {error}");
                         None
                     }
                 }
@@ -1282,13 +1282,13 @@ impl Worker {
         #[cfg(feature = "search-control")]
         if let Some(trace) = self.search_trace.as_mut() {
             if let Err(error) = trace.flush() {
-                eprintln!("ARCHON search trace write failed: {error}");
+                eprintln!("TEMPO search trace write failed: {error}");
             }
         }
         #[cfg(feature = "search-control")]
         if let Some(intervention) = self.lmr_intervention.as_ref() {
             if let Err(error) = intervention.flush() {
-                eprintln!("ARCHON LMR intervention result write failed: {error}");
+                eprintln!("TEMPO LMR intervention result write failed: {error}");
             }
         }
         // Release this `go`'s sink so the UCI layer regains sole ownership of
@@ -1362,10 +1362,7 @@ impl Worker {
                 .clamp(0, MAX_PLY as i64) as Depth,
             sample_bits: self.options.obs_capture_sample_bits().clamp(0, 63) as u32,
             per_game_cap: self.options.obs_capture_per_game_cap().max(0) as usize,
-            engine_version: format!(
-                "ARCHON {} (in-search-capture v0)",
-                env!("CARGO_PKG_VERSION")
-            ),
+            engine_version: format!("TEMPO {} (in-search-capture v0)", env!("CARGO_PKG_VERSION")),
             search_config,
             net_version,
             hardware_identity: crate::obs::recorder::hardware_identity(),
@@ -3706,7 +3703,7 @@ impl Worker {
                     // without a cutoff says the node is already well-resolved
                     // — remaining siblings get a cheaper search. Decisive
                     // scores are exempt (mate distances stay exact). Root is
-                    // exempt (ARCHON deviation): the ID driver owns root
+                    // exempt (TEMPO deviation): the ID driver owns root
                     // depth, and mutating it mid-iteration corrupts the
                     // aspiration invariants. NB this makes non-root
                     // fixed-depth values order-dependent.

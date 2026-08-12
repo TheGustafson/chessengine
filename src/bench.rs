@@ -370,7 +370,7 @@ fn board_from_entry(entry: &str) -> Board {
     board
 }
 
-/// The default bench suite: 49 ARCHON-original positions — 47 sampled from
+/// The default bench suite: 49 TEMPO-original positions — 47 sampled from
 /// our own played games (the sfdev5k-a campaign, deterministic
 /// phase-stratified selection by `tools/bench/derive_bench_suite.py`) plus
 /// two diagnosed-loss positions from `searchopt/positions/hard.json`.
@@ -446,7 +446,7 @@ mod tests {
     #[test]
     fn suite_has_49_entries_and_no_moves_suffixes() {
         // design/06 §3.6 / design/14 §5: 49 standard-chess entries. The
-        // ARCHON suite is sampled from played games, so every entry is a
+        // TEMPO suite is sampled from played games, so every entry is a
         // plain FEN — no `moves ...` replay suffixes (the SF-derived suite
         // it replaced carried three).
         assert_eq!(BENCH_POSITIONS.len(), 49);
@@ -477,7 +477,7 @@ mod tests {
         // Depth 1 keeps this cheap; 1,349 is the sum of legal-move counts
         // over all 49 entries, cross-checked against stockfish-eca43a97
         // `go perft 1` position by position (recorded 2026-08-11 when the
-        // ARCHON suite replaced the SF-derived one, whose sum was 1,380).
+        // TEMPO suite replaced the SF-derived one, whose sum was 1,380).
         let params = BenchParams::parse(&["16", "1", "1", "default", "perft"]).unwrap();
         let result = run_to(&params, &mut io::sink()).unwrap();
         assert_eq!(result.nodes, 1_349);

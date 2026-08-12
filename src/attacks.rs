@@ -542,7 +542,7 @@ impl AttackTables {
 /// consumption order, so the candidate loop below must consume the PRNG
 /// identically: prefilter rejections also advance it.
 ///
-/// ARCHON's own row, derived by the `find_own_magic_seeds` harness below
+/// TEMPO's own row, derived by the `find_own_magic_seeds` harness below
 /// (deterministic 4096-candidate sweep, per-rank argmin on attempt count,
 /// every winner re-validated against the attack oracle). Seeds only affect
 /// init time — the magics they find are exact, so lookups, node counts and
@@ -1749,7 +1749,7 @@ mod tests {
     }
 
     /// REMEDIATION-PENDING harness (originality audit item 6a): find and
-    /// validate ARCHON's OWN per-rank magic seeds, replacing the SF row.
+    /// validate TEMPO's OWN per-rank magic seeds, replacing the SF row.
     /// A rank's cost under a seed is independent of every other rank (the
     /// PRNG re-seeds per square), so the best row is the per-rank argmin
     /// over one shared candidate sweep. `#[ignore]`d (minutes); run with
@@ -1831,7 +1831,7 @@ mod tests {
         };
         let ours = total(&rook_new, &bishop_new);
         let shipped = total(&rook_old, &bishop_old);
-        println!("ARCHON candidate row: const MAGIC_SEEDS: [u64; 8] = {best_seed:?};");
+        println!("TEMPO candidate row: const MAGIC_SEEDS: [u64; 8] = {best_seed:?};");
         println!("per-rank attempts (rook+bishop): {best_cost:?}");
         println!("total attempts: found {ours} vs shipped(SF) {shipped}");
         assert!(

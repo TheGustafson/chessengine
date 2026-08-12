@@ -1454,7 +1454,7 @@ fn export_value(args: &[String]) -> ExitCode {
 }
 
 /// The design/19 §8.1 CLASSICAL-ORDERING baseline: where does the teacher's
-/// reference best move sit in ARCHON's own MovePicker order (fresh
+/// reference best move sit in TEMPO's own MovePicker order (fresh
 /// histories, no TT move — the cold ordering a Phase-1 model must beat)?
 /// Only complete deepest-tier references count; unstable positions are the
 /// model's hard class, not the baseline's.
